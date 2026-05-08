@@ -13,7 +13,7 @@ import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from ci.fixtures.rsync_fixtures import RsyncMock
 from control.transfer.daemon import (
@@ -36,37 +36,23 @@ def _mock_grpc_client() -> MagicMock:
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=None)
     client.GenerateManifest = AsyncMock(return_value={"success": True, "file_count": 0})
+    
+    # Mock GetManifest as an async generator
+    async def mock_get_manifest(*args, **kwargs):
+        if False: yield {}
+    client.GetManifest.side_effect = mock_get_manifest
+
     client.CleanupData = AsyncMock(return_value={"success": True, "deleted_count": 0})
     return client
 
 
 @contextmanager
 def _mock_grpc_modules(mock_client: MagicMock):
-    """Inject fake panoseti_grpc modules into sys.modules."""
-    stub_root = ModuleType("panoseti_grpc")
-    stub_daq = ModuleType("panoseti_grpc.daq_control")
-    stub_client_mod = ModuleType("panoseti_grpc.daq_control.client")
-    stub_client_mod.AsyncDaqControlClient = MagicMock(return_value=mock_client)
-    stub_root.daq_control = stub_daq
-    stub_daq.client = stub_client_mod
-
-    injected = {
-        "panoseti_grpc": stub_root,
-        "panoseti_grpc.daq_control": stub_daq,
-        "panoseti_grpc.daq_control.client": stub_client_mod,
-    }
-    prev: dict = {}
-    for key, mod in injected.items():
-        prev[key] = sys.modules.get(key)
-        sys.modules[key] = mod
-    try:
-        yield stub_client_mod.AsyncDaqControlClient
-    finally:
-        for key, original in prev.items():
-            if original is None:
-                sys.modules.pop(key, None)
-            else:
-                sys.modules[key] = original
+    """Patch the daq_client module in daemon.py."""
+    with patch("control.transfer.daemon.daq_client") as m_daq:
+        # Mocking daq_client.AsyncDaqControlClient to return mock_client
+        m_daq.AsyncDaqControlClient = MagicMock(return_value=mock_client)
+        yield m_daq.AsyncDaqControlClient
 
 
 # ---------------------------------------------------------------------------

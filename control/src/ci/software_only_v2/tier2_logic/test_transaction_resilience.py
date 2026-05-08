@@ -50,6 +50,7 @@ async def test_start_rollback_continues_on_erofs_archival_failure(
 @pytest.mark.asyncio
 async def test_cleanup_refused_on_uncertain_liveness_without_force() -> None:
     """Proves that CleanupData rejects deletion if PID status is uncertain (corrupted file)."""
+    import grpc
     from panoseti_grpc.daq_control.server import DaqControlServicer
     from panoseti_grpc.generated import daq_control_pb2
     
@@ -65,17 +66,32 @@ async def test_cleanup_refused_on_uncertain_liveness_without_force() -> None:
     )
     
     context = MagicMock()
-    context.abort = AsyncMock()
+    # Mock context.abort to raise an exception, mimicking real gRPC behavior 
+    # where abort interrupts the handler execution.
+    context.abort = AsyncMock(side_effect=Exception("ABORTED"))
     
-    resp = await servicer.CleanupData(req, context)
-    assert resp.success is False
-    assert "status uncertain" in resp.message
+    with pytest.raises(Exception, match="ABORTED"):
+        await servicer.CleanupData(req, context)
+    
+    # We expect at least one call to abort. 
+    # Note: grpc_error_handler might call it a second time with INTERNAL 
+    # if it catches the exception raised by the first call.
+    assert context.abort.called
+    first_call = context.abort.call_args_list[0]
+    args, _ = first_call
+    assert args[0] == grpc.StatusCode.FAILED_PRECONDITION
+    assert "status uncertain" in args[1]
     
     # Now try with force=True
     req.force = True
-    resp = await servicer.CleanupData(req, context)
+    context.abort.reset_mock()
+    # Mocking successful directory resolution/deletion so it doesn't fail later
+    with patch("panoseti_grpc.daq_control.server.anyio.Path.exists", return_value=False):
+        resp = await servicer.CleanupData(req, context)
+    
     # Passed the PID gate (fails later on missing dir, which is fine)
-    assert "status uncertain" not in resp.message
+    context.abort.assert_not_called()
+    assert resp.success is True
 
 
 @pytest.mark.asyncio

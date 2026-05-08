@@ -112,6 +112,15 @@ class TestStaleLedgerHealing:
             patch("control.start.util.is_local", return_value=True),
             patch("control.start.util.is_hk_recorder_running", return_value=False),
             patch("control.start.ph_baseline_file_ok", return_value=True),
+            patch("control.start.make_run_dirs"),
+            patch("control.start.config_file.associate"),
+            patch("control.start.config_file.show_daq_assignments"),
+            patch("control.start.util.write_run_name"),
+            patch("control.start._check_daq_reachability"),
+            patch("control.start._check_quabo_reachability"),
+            patch("control.start.start_data_flow"),
+            patch("control.start.util.start_hk_recorder"),
+            patch("control.start.AsyncDaqControlClient"),
         ):
             result = await start_run(
                 obs_cfg,  # type: ignore[arg-type]

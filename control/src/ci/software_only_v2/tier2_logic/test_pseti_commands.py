@@ -80,13 +80,15 @@ class TestPsetiShow:
         assert "PSETI_STATE" in result.output
 
     def test_when_pseti_show_config_runs_then_topology_module_ids_are_shown(
-        self, pseti_workspace: Workspace, runner: CliRunner
+        self, pseti_workspace: Workspace, runner: CliRunner, caplog: pytest.LogCaptureFixture
     ) -> None:
         """pseti cfg show: module ID from the topology appears in config output."""
-        result = runner.invoke(app, ["cfg", "show"])
+        import logging
+        with caplog.at_level(logging.INFO):
+            result = runner.invoke(app, ["cfg", "show"])
         assert result.exit_code == 0
         # Derive the expected module ID from the materialized topology rather
         # than hard-coding it (minimal_unit uses module_id=200, not 0).
         expected_id = pseti_workspace.topology.daq.daq_nodes[0].module_ids[0]
-        assert "module ID" in result.output
-        assert f"module ID {expected_id}" in result.output
+        assert "module ID" in caplog.text
+        assert f"module ID {expected_id}" in caplog.text
