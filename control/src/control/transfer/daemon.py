@@ -14,8 +14,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import anyio
-from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+from panoseti_grpc.telemetry.logger import get_logger
 
 from control.transfer.lifecycle import MAX_ATTEMPTS, RETRY_DELAYS
 from control.transfer.models import TransferJob, TransferNodeSpec
@@ -27,7 +27,6 @@ from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
 from control.utils.util import daq_grpc_endpoint
-
 
 POLL_INTERVAL_SEC = 5.0
 

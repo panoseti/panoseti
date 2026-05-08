@@ -72,9 +72,10 @@ def worker_id(request: Any) -> str:
 @pytest.fixture(autouse=True)
 def clear_shared_state(request: pytest.FixtureRequest) -> None:
     """Clear shared state between tests (ledger, transfer queue, and running processes)."""
-    from control.utils.run_state import RunStateManager
-    from control.utils.paths import PanoPaths
     import shutil
+
+    from control.utils.paths import PanoPaths
+    from control.utils.run_state import RunStateManager
 
     # 1. Clear ledger
     with contextlib.suppress(Exception):

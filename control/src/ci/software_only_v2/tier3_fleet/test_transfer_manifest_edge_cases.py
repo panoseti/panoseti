@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 

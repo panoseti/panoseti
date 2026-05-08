@@ -8,7 +8,6 @@ same 192.168.x.x addresses.
 
 from __future__ import annotations
 
-import contextlib
 import os
 import pathlib
 
@@ -47,8 +46,9 @@ class SharedNetwork:
         self._network = None
 
     def create(self) -> None:
-        import docker
         import time
+
+        import docker
         client = docker.from_env()
         # Retry up to 3 times to handle potential race conditions during
         # parallel creation by multiple xdist workers.

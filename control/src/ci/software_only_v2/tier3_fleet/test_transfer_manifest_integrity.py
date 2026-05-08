@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from collections.abc import Callable
 
 from ci.fixtures.fleet import Fleet
 from ci.fixtures.rsync_fixtures import RsyncMock
@@ -17,8 +16,7 @@ from ci.software_only_v2.tier3_fleet.transfer_testing_utils import (
 )
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferStatus
-from control.transfer.models import RunStateManager
-from ci.software_only_v2.orchestrator.network import worker_subnet_offset
+from control.transfer.queue import TransferQueue
 
 # Mark tests as requiring docker
 requires_docker = pytest.mark.requires_docker

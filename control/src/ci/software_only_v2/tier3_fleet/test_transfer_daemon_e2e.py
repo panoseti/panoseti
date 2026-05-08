@@ -16,14 +16,13 @@ Tests:
 
 from __future__ import annotations
 
-import sys
 import asyncio
 import os
+import sys
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

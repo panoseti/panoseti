@@ -6,7 +6,6 @@ import os
 import pathlib
 import tempfile
 import tomllib
-from typing import Any
 
 from control.transfer.models import TransferJob, TransferStatus
 from control.utils.paths import PanoPaths
