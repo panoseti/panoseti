@@ -10,6 +10,7 @@ from __future__ import annotations
 import pathlib
 
 from ci.software_only_v2.infra.spec import Topology
+
 from control.utils.paths import PanoPaths
 
 # Mapping of filename → Topology attribute name

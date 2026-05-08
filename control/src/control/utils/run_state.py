@@ -15,7 +15,7 @@ from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger, RunStatus
 
 LOCK_FILE = "panoseti_control.lock"
-STATE_FILE = "run_state.toml"
+STATE_FILE = "ledger.toml"
 STATE_FILE_STALE = f"stale_{STATE_FILE}"
 
 logger = get_logger("PSETI.RunState")
@@ -148,7 +148,7 @@ class RunStateManager:
                 return RunStateLedger(**data)
         except Exception as e:
             # If state is corrupt, we might need to handle it or return None
-            print(f"Warning: Failed to load run_state.toml: {e}")
+            print(f"Warning: Failed to load ledger.toml: {e}")
             return None
 
     def _escape_toml_str(self, s: str) -> str:

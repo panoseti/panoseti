@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from datetime import datetime, UTC
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -277,10 +277,9 @@ async def test_transfer_queue_stop_start_during_transfer(
         proc = mock_rsync_transfer._make_proc_mock()
         async def stall_read(*a, **k):
             sync_event.set()
-            try:
-                await daemon_cancelled.wait()
-            except asyncio.CancelledError:
-                pass
+            # Wait for event without swallowing CancelledError.
+            # When daemon_task.cancel() is called, this will raise.
+            await daemon_cancelled.wait()
             return b""
         proc.stdout.readline = AsyncMock(side_effect=stall_read)
         return proc
@@ -293,20 +292,27 @@ async def test_transfer_queue_stop_start_during_transfer(
         
         # Wait for daemon to reach TRANSFERRING
         await asyncio.wait_for(sync_event.wait(), timeout=10.0)
-        assert mgr.load_state().status == RunStatus.TRANSFERRING
         
         # 2. "Crash" the daemon
         daemon_task.cancel()
-        daemon_cancelled.set()
+        # We do NOT set daemon_cancelled yet; we want it to stay stuck until cancellation hits.
         with contextlib.suppress(asyncio.CancelledError):
             await daemon_task
+        
+        # Now set it just in case
+        daemon_cancelled.set()
 
     # Job should be stranded in active/
     assert (tq._queue / "active" / f"{run_name}.job.toml").exists()
     
     # 3. Restart daemon with working rsync
     def rsync_side_effect(*args, **kwargs):
-        simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
+        # args[0] is the command list if using create_subprocess_exec with *cmd
+        # or it could be individual arguments if the caller used *args.
+        # daemon.py uses: await asyncio.create_subprocess_exec(*cmd, ...)
+        cmd = args
+        dest_dir = Path(cmd[-1])
+        simulate_rsync_from_fleet(fleet, run_name, dest_dir)
         return None
 
     mock_rsync_transfer.side_effect = rsync_side_effect

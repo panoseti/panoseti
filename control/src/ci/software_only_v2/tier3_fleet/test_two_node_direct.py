@@ -36,11 +36,25 @@ class TestTwoNodeDirect:
         fleet.exec_in_node(0, "mkdir -p /data/run0 && chmod 777 /data/run0")
         fleet.exec_in_node(1, "mkdir -p /data/run1 && chmod 777 /data/run1")
 
+        from control.utils.run_state import RunStateManager
+        from control.utils.pydantic_config_models import RunStateLedger, RunStatus
+        from datetime import datetime, UTC
+        
+        mgr = RunStateManager()
+        mgr.save_state(RunStateLedger(
+            run_name="two_node_direct",
+            status=RunStatus.STARTING,
+            start_time=datetime.now(UTC).isoformat(),
+            nodes=[]
+        ))
+
         ok0 = client0.StartDaq(make_startdaq_params(fleet, 0, "run0"))
         assert ok0 is True
 
         ok1 = client1.StartDaq(make_startdaq_params(fleet, 1, "run1"))
         assert ok1 is True
+        
+        mgr.transition(RunStatus.ACTIVE)
 
         _, s0 = client0.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
         _, s1 = client1.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
@@ -50,6 +64,7 @@ class TestTwoNodeDirect:
 
         # Stop node 0 only; node 1 must remain running
         client0.StopDaq({"data_dir": "/data", "run_dir": "run0"})
+        mgr.transition(RunStatus.RECORDING_ENDED)
         _, s0_stopped = client0.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
         _, s1_still_running = client1.StatusDaq(
             {"data_dir": "/data", "check_hashpipe_running": True}

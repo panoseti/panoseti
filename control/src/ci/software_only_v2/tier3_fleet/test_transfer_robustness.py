@@ -14,11 +14,11 @@ import asyncio
 import logging
 import os
 import uuid
-from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
+
+from collections.abc import Callable
 
 from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.software_only_v2.orchestrator.fleet import Fleet
@@ -33,6 +33,8 @@ from control.transfer.models import TransferJob, TransferStatus
 from control.transfer.queue import TransferQueue
 from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
+
+from unittest.mock import patch
 
 logger = logging.getLogger(__name__)
 

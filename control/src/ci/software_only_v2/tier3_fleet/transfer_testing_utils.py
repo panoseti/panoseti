@@ -29,7 +29,6 @@ def get_mapped_client_factory(daq_config: config_file.DaqConfig):
 
 import fnmatch
 
-
 def _should_exclude(filename: str) -> bool:
     """Returns True if the file should be excluded from rsync (e.g. manifests)."""
     patterns = ["dp_manifest.node_*.txt", "manifest.*"]
