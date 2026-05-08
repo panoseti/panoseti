@@ -7,8 +7,6 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient
-
 from ci.software_only_v2.orchestrator.fleet import Fleet
 from control.start import start_run
 from control.stop import stop_run
@@ -18,6 +16,7 @@ from control.utils.paths import PanoPaths
 
 def get_mapped_client_factory(daq_config: config_file.DaqConfig):
     """Returns a factory function for AsyncDaqControlClient that handles port forwarding."""
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     def _get_mapped_client(host, port=50051):
         for node in daq_config.daq_nodes:
             # Match by internal IP (if non-forwarded) OR by gateway IP + port (if forwarded)
@@ -28,20 +27,21 @@ def get_mapped_client_factory(daq_config: config_file.DaqConfig):
         return AsyncDaqControlClient(host=host, port=port)
     return _get_mapped_client
 
+import fnmatch
+
+def _should_exclude(filename: str) -> bool:
+    """Returns True if the file should be excluded from rsync (e.g. manifests)."""
+    patterns = ["dp_manifest.node_*.txt", "manifest.*"]
+    return any(fnmatch.fnmatch(filename, p) for p in patterns)
+
 def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -> None:
     """Simulates the effect of rsync by copying files from the fleet's host paths to the head node."""
     head_run_dir.mkdir(parents=True, exist_ok=True)
     
-    exclude_patterns = ["dp_manifest.node_*.txt", "manifest.*"]
-
-    def _should_exclude(name: str) -> bool:
-        import fnmatch
-        return any(fnmatch.fnmatch(name, pat) for pat in exclude_patterns)
-
     # In v2, self._temp_dirs matches the order of self.daq_nodes
     for _i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
-        # 1. Root contents (hp_stdout, pss, meta.json)
+        # 1. Root contents (hp_stdout, pss, meta.json, manifests)
         daq_run_dir = host_root / run_name
         if daq_run_dir.is_dir():
             for f in daq_run_dir.iterdir():
@@ -75,6 +75,7 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
          patch("control.start._check_daq_reachability"), \
          patch("control.start._check_quabo_reachability"), \
          patch("control.start.start_data_flow"), \
+         patch("control.start.make_run_dirs"), \
          patch("control.start.util.start_hk_recorder"), \
          patch("control.start.util.write_run_name"):
          
@@ -83,6 +84,10 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
              run_name=run_name, no_hv=True, no_redis=True, no_data=False, no_check_daq=True
          )
          assert actual_run_name == run_name
+         
+    # Manually create the head node run directory since make_run_dirs was patched
+    head_run_dir = Path(daq_config.head_node_data_dir) / run_name
+    head_run_dir.mkdir(parents=True, exist_ok=True)
 
     expected_data = {}
     for i, temp_dir in enumerate(fleet._temp_dirs):

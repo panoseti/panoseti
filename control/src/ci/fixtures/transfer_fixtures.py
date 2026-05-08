@@ -21,7 +21,7 @@ from control.utils.paths import PanoPaths
 
 
 @pytest.fixture
-def transfer_queue(mock_env) -> TransferQueue:
+def transfer_queue() -> TransferQueue:
     """Provides a TransferQueue instance in an isolated environment.
     Ensures the queue directory structure is fully initialized.
     """
@@ -30,25 +30,24 @@ def transfer_queue(mock_env) -> TransferQueue:
     return TransferQueue(queue_dir=queue_dir)
 
 @pytest.fixture
-def transfer_job_factory(no_collect: bool=False, no_cleanup: bool=False) -> Callable[..., TransferJob]:
+def transfer_job_factory() -> Callable[..., TransferJob]:
     """Returns a factory function for creating valid TransferJob objects.
-    Defaults are derived from the active PSETI_CONFIG (set by mock_env or auto_isolate).
+    Defaults are derived from the active PSETI_CONFIG.
     """
     def _make(
         run_name: str | None = None,
         head_data_dir: str | pathlib.Path | None = None,
-        no_collect: bool = no_collect,
-        no_cleanup: bool = no_cleanup,
+        no_collect: bool = False,
+        no_cleanup: bool = False,
         daq_nodes: list[TransferNodeSpec] | None = None,
         bwlimit: int | None = None,
+        daq_config: Any | None = None,
     ) -> TransferJob:
         from control.utils import config_file
 
-        # 1. Resolve DAQ nodes from topology if not provided
         if daq_nodes is None:
-            # We use the raw DaqConfig to get the most accurate PortForwarding etc.
-            # but mapping it to TransferNodeSpec.
-            daq_config = config_file.get_daq_config()
+            # Use provided daq_config or load from disk
+            cfg = daq_config or config_file.get_daq_config()
             daq_nodes = [
                 TransferNodeSpec(
                     ip_addr=str(n.ip_addr),
@@ -57,12 +56,13 @@ def transfer_job_factory(no_collect: bool=False, no_cleanup: bool=False) -> Call
                     module_ids=n.module_ids,
                     port_forwarding=n.port_forwarding
                 )
-                for n in daq_config.daq_nodes
+                for n in cfg.daq_nodes
             ]
 
         # 2. Resolve Head Node Data Dir
         if head_data_dir is None:
-            head_data_dir = config_file.get_daq_config().head_node_data_dir
+            cfg = daq_config or config_file.get_daq_config()
+            head_data_dir = cfg.head_node_data_dir
 
         return TransferJob(
             schema_version=1,

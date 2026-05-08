@@ -11,6 +11,8 @@ import pathlib
 
 from ci.software_only_v2.infra.spec import Topology
 
+from control.utils.paths import PanoPaths
+
 # Mapping of filename → Topology attribute name
 _CONFIG_FILES = {
     "obs_config.json":     "obs",
@@ -36,7 +38,13 @@ def write_all(topology: Topology, config_dir: pathlib.Path) -> None:
     for filename, attr in _CONFIG_FILES.items():
         model = getattr(topology, attr)
         dest = config_dir / filename
-        dest.write_text(model.model_dump_json(indent=2))  # type: ignore[union-attr]
+        content = model.model_dump_json(indent=2)  # type: ignore[union-attr]
+        dest.write_text(content)
+
+        # CRITICAL: get_quabo_uids() expects quabo_uids.json in PanoPaths.tmp_dir()
+        if filename == "quabo_uids.json":
+            tmp_dest = PanoPaths.tmp_dir() / filename
+            tmp_dest.write_text(content)
 
 
 def read_back(config_dir: pathlib.Path) -> dict[str, dict]:

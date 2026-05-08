@@ -90,6 +90,7 @@ class TestTransferBasicHappyPath:
         """_process_job returns True and writes run_complete."""
         job = transfer_job_factory(
             run_name=run_name,
+            head_data_dir=run_dir.parent,
             no_collect=True,
             no_cleanup=True,
             daq_nodes=[TransferNodeSpec(ip_addr="1.1.1.1", username="u", data_dir="/d", module_ids=[1])]

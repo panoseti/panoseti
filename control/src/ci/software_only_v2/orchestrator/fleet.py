@@ -119,11 +119,12 @@ class Fleet:
         setup_docker_host()
         # Combine session ID with per-instance UUID so parallel sessions AND
         # multiple Fleet objects within the same session get unique names.
-        tc_id = f"{os.environ.get('TC_SESSION_ID', 'solo')}-{self._instance_uuid}"
+        session_id = os.environ.get("TC_SESSION_ID", "solo")
+        tc_id = f"{session_id}-{self._instance_uuid}"
         subnet = placeholder_subnet()
 
         # 1. Shared Docker network
-        self._network = SharedNetwork(f"pseti-v2-{tc_id}")
+        self._network = SharedNetwork(f"pseti-v2-{session_id}")
         self._network.create()
 
         # Docker Network object (not just the name string) — testcontainers
@@ -163,8 +164,8 @@ class Fleet:
             self._daqnode_containers.append(sim)
 
         # 4. Start all containers (headnode first, then daq nodes)
-        all_containers: list[Any] = [*self._headnode_container, self._daqnode_containers]  # type: ignore[list-item]
-        start_all(all_containers)  # type: ignore[arg-type]
+        all_containers: list[Any] = [self._headnode_container, *self._daqnode_containers]
+        start_all(all_containers)
 
         # 5. Patch DaqConfig with live ports (Boot-and-Discover)
         self.live_daq_config = self._build_live_daq_config(subnet)

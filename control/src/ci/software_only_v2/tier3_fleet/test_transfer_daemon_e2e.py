@@ -16,6 +16,7 @@ Tests:
 
 from __future__ import annotations
 
+import sys
 import asyncio
 import os
 import uuid
@@ -76,7 +77,11 @@ async def test_when_run_enqueued_then_daemon_archives_it(
 
     mgr = RunStateManager()
     tq = transfer_queue
-    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir)
+    job = transfer_job_factory(
+        run_name=run_name,
+        head_data_dir=head_data_dir,
+        daq_config=daq_config,
+    )
     tq.enqueue(job)
     claimed = tq.claim()
     assert claimed is not None
@@ -133,7 +138,7 @@ async def test_when_lock_held_then_second_daemon_exits(
     env["PSETI_STATE"] = str(pseti_workspace.root / "state")
 
     p1 = await asyncio.create_subprocess_exec(
-        "python3", str(lock_script), str(lock_path),
+        sys.executable, str(lock_script), str(lock_path),
         stdout=asyncio.subprocess.PIPE,
         env=env,
     )
@@ -146,7 +151,7 @@ async def test_when_lock_held_then_second_daemon_exits(
     env2 = {**env, "PYTHONPATH": python_path}
 
     p2 = await asyncio.create_subprocess_exec(
-        "python3", "-m", "control.transfer",
+        sys.executable, "-m", "control.transfer",
         cwd=base,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,

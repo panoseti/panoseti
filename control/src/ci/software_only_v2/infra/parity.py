@@ -307,9 +307,11 @@ def _fleet_boot_and_healthy(fleet: Any) -> None:
 def _grpc_status_returns_idle(fleet: Any, node_index: int = 0) -> None:
     """Assert freshly-booted DAQ node reports no running hashpipe process."""
     client = fleet.daq_control_client(node_index)
-    resp = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
-    assert resp.hashpipe_pid == 0, (
-        f"Expected hashpipe_pid=0 on idle node, got {resp.hashpipe_pid}"
+    success, status = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+    assert success is True
+    pid = status.get("hashpipe_pid") or 0
+    assert pid == 0, (
+        f"Expected hashpipe_pid=0 on idle node, got {pid}"
     )
 
 

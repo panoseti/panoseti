@@ -15,6 +15,7 @@ from typing import Any
 
 import anyio
 from panoseti_grpc.telemetry.logger import get_logger
+from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
 from control.transfer.lifecycle import MAX_ATTEMPTS, RETRY_DELAYS
 from control.transfer.models import TransferJob, TransferNodeSpec
@@ -26,6 +27,7 @@ from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
 from control.utils.util import daq_grpc_endpoint
+
 
 POLL_INTERVAL_SEC = 5.0
 
@@ -55,6 +57,7 @@ def _clear_progress(run_name: str) -> None:
 _log_dir = PanoPaths.daemon_logs_dir("transfer_daemon")
 _log_dir.mkdir(parents=True, exist_ok=True)
 logger = get_logger("transfer_daemon", log_dir=_log_dir, grpc_enabled=False)
+
 
 
 def _safe_ledger_update(state_mgr: RunStateManager, *, status: RunStatus, **fields: Any) -> None:
@@ -174,77 +177,71 @@ async def _process_job(
             _safe_ledger_update(state_mgr, status=RunStatus.MANIFEST_GENERATING)
             manifest_errors: list[str] = []
 
-            try:
-                from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+            async def gen_manifest(node: object) -> None:
+                from control.transfer.models import TransferNodeSpec as _TNS
+                assert isinstance(node, _TNS)
 
-                async def gen_manifest(node: object) -> None:
-                    from control.transfer.models import TransferNodeSpec as _TNS
-                    assert isinstance(node, _TNS)
-
-                    host, port = daq_grpc_endpoint(node)
-                    async with AsyncDaqControlClient(host=host, port=port) as client:
-                        try:
-                            # 1. Generate the manifest on the DAQ node
-                            resp = await asyncio.wait_for(
-                                client.GenerateManifest({
-                                    "data_dir": node.data_dir,
-                                    "run_dir": run_name,
-                                    "module_id": node.module_ids,
-                                    "algorithm": job.algo,
-                                }),
-                                timeout=30.0,
-                            )
-                            if not resp.get("success", True):
-                                err = f"GenerateManifest failed on {node.ip_addr}: {resp.get('message', 'unknown error')}"
-                                manifest_errors.append(err)
-                                logger.warning(err)
-                                return
-
-                            # 2. Fetch the manifest entries via secure gRPC stream
-                            # This ensures the manifest used for verification is independent of the rsync transfer.
-                            lines: list[str] = []
-                            # Note: client.GetManifest is decorated with @grpc_call which returns the 
-                            # AsyncIterator directly for agen functions. However, AsyncMock in tests 
-                            # often returns a coroutine that must be awaited to get the mock's result.
-                            manifest_res = client.GetManifest({
+                host, port = daq_grpc_endpoint(node)
+                async with AsyncDaqControlClient(host=host, port=port) as client:
+                    try:
+                        # 1. Generate the manifest on the DAQ node
+                        resp = await asyncio.wait_for(
+                            client.GenerateManifest({
                                 "data_dir": node.data_dir,
                                 "run_dir": run_name,
                                 "module_id": node.module_ids,
-                            })
-                            if inspect.isawaitable(manifest_res):
-                                manifest_res = await manifest_res
-
-                            async for entry in manifest_res:
-                                # Format: <digest>  <size>  <mtime_ns>  <relpath>
-                                line = f"{entry['digest_hex']}  {entry['size_bytes']}  {entry['mtime_ns']}  {entry['relative_path']}"
-                                lines.append(line)
-                            
-                            # 3. Write securely to the head node
-                            manifest_name = f"dp_manifest.node_{node.ip_addr}.algo_{job.algo}.txt"
-                            manifest_path = pathlib.Path(head_data_dir) / run_name / manifest_name
-                            manifest_path.parent.mkdir(parents=True, exist_ok=True)
-                            await anyio.Path(manifest_path).write_text("\n".join(lines) + "\n")
-                            logger.info("[%s] Securely fetched manifest from %s", run_name, node.ip_addr)
-
-                        except Exception as exc:
-                            err = f"Manifest retrieval failed on {node.ip_addr}: {exc}"
+                                "algorithm": job.algo,
+                            }),
+                            timeout=30.0,
+                        )
+                        if not resp.get("success", True):
+                            err = f"GenerateManifest failed on {node.ip_addr}: {resp.get('message', 'unknown error')}"
                             manifest_errors.append(err)
                             logger.warning(err)
+                            return
 
-                # Wrap TaskGroup so an ExceptionGroup doesn't escape this function.
-                try:
-                    async with asyncio.TaskGroup() as tg:
-                        for node in daq_nodes:
-                            tg.create_task(gen_manifest(node))
-                except* Exception as eg:
-                    for exc in eg.exceptions:
-                        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-                        err = f"gen_manifest task failed: {exc}\n{tb}"
+                        # 2. Fetch the manifest entries via secure gRPC stream
+                        # This ensures the manifest used for verification is independent of the rsync transfer.
+                        lines: list[str] = []
+                        # Note: client.GetManifest is decorated with @grpc_call which returns the 
+                        # AsyncIterator directly for agen functions. However, AsyncMock in tests 
+                        # often returns a coroutine that must be awaited to get the mock's result.
+                        manifest_res = client.GetManifest({
+                            "data_dir": node.data_dir,
+                            "run_dir": run_name,
+                            "module_id": node.module_ids,
+                        })
+                        if inspect.isawaitable(manifest_res):
+                            manifest_res = await manifest_res
+
+                        async for entry in manifest_res:
+                            # Format: <digest>  <size>  <mtime_ns>  <relpath>
+                            line = f"{entry['digest_hex']}  {entry['size_bytes']}  {entry['mtime_ns']}  {entry['relative_path']}"
+                            lines.append(line)
+                        
+                        # 3. Write securely to the head node
+                        manifest_name = f"dp_manifest.node_{node.ip_addr}.algo_{job.algo}.txt"
+                        manifest_path = pathlib.Path(head_data_dir) / run_name / manifest_name
+                        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+                        await anyio.Path(manifest_path).write_text("\n".join(lines) + "\n")
+                        logger.info("[%s] Securely fetched manifest from %s", run_name, node.ip_addr)
+
+                    except Exception as exc:
+                        err = f"Manifest retrieval failed on {node.ip_addr}: {exc}"
                         manifest_errors.append(err)
-                        logger.warning("gen_manifest task raised: %s", exc)
+                        logger.warning(err)
 
-            except ImportError:
-                logger.warning("panoseti_grpc not available; skipping manifest generation")
+            # Wrap TaskGroup so an ExceptionGroup doesn't escape this function.
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for node in daq_nodes:
+                        tg.create_task(gen_manifest(node))
+            except* Exception as eg:
+                for exc in eg.exceptions:
+                    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                    err = f"gen_manifest task failed: {exc}\n{tb}"
+                    manifest_errors.append(err)
+                    logger.warning("gen_manifest task raised: %s", exc)
 
             if manifest_errors:
                 err_msg = "; ".join(manifest_errors)
@@ -371,47 +368,41 @@ async def _process_job(
             state_mgr.transition(RunStatus.CLEANING)
             cleanup_errors: list[str] = []
 
-            try:
-                from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+            async def cleanup_node(node: object) -> None:
+                from control.transfer.models import TransferNodeSpec as _TNS
+                assert isinstance(node, _TNS)
 
-                async def cleanup_node(node: object) -> None:
-                    from control.transfer.models import TransferNodeSpec as _TNS
-                    assert isinstance(node, _TNS)
-
-                    host, port = daq_grpc_endpoint(node)
-                    async with AsyncDaqControlClient(host=host, port=port) as client:
-                        try:
-                            resp = await asyncio.wait_for(
-                                client.CleanupData({
-                                    "data_dir": node.data_dir,
-                                    "run_dir": run_name,
-                                    "module_id": node.module_ids,
-                                    "mode": "CLEANUP_SELECTIVE",
-                                    "delete_patterns": ["*.pff"],
-                                    "preserve_patterns": ["*.json", "*.log", "*.toml"],
-                                }),
-                                timeout=15.0,
-                            )
-                            if not resp.get("success", True):
-                                err = f"CleanupData failed for {node.ip_addr}: {resp.get('message', 'unknown error')}"
-                                cleanup_errors.append(err)
-                                logger.warning(err)
-                        except Exception as exc:
-                            err = f"CleanupData failed for {node.ip_addr}: {exc}"
+                host, port = daq_grpc_endpoint(node)
+                async with AsyncDaqControlClient(host=host, port=port) as client:
+                    try:
+                        resp = await asyncio.wait_for(
+                            client.CleanupData({
+                                "data_dir": node.data_dir,
+                                "run_dir": run_name,
+                                "module_id": node.module_ids,
+                                "mode": "CLEANUP_SELECTIVE",
+                                "delete_patterns": ["*.pff"],
+                                "preserve_patterns": ["*.json", "*.log", "*.toml"],
+                            }),
+                            timeout=15.0,
+                        )
+                        if not resp.get("success", True):
+                            err = f"CleanupData failed for {node.ip_addr}: {resp.get('message', 'unknown error')}"
                             cleanup_errors.append(err)
                             logger.warning(err)
+                    except Exception as exc:
+                        err = f"CleanupData failed for {node.ip_addr}: {exc}"
+                        cleanup_errors.append(err)
+                        logger.warning(err)
 
-                try:
-                    async with asyncio.TaskGroup() as tg:
-                        for node in daq_nodes:
-                            tg.create_task(cleanup_node(node))
-                except* Exception as eg:
-                    for exc in eg.exceptions:
-                        cleanup_errors.append(f"cleanup_node task failed: {exc}")
-                        logger.warning("cleanup_node task raised: %s", exc)
-
-            except ImportError:
-                logger.warning("panoseti_grpc not available; skipping cleanup")
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for node in daq_nodes:
+                        tg.create_task(cleanup_node(node))
+            except* Exception as eg:
+                for exc in eg.exceptions:
+                    cleanup_errors.append(f"cleanup_node task failed: {exc}")
+                    logger.warning("cleanup_node task raised: %s", exc)
 
             if cleanup_errors:
                 err_msg = "; ".join(cleanup_errors)

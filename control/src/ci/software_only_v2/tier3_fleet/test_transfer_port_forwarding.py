@@ -227,7 +227,7 @@ class TestProcessJobWithPortForwarding:
         rsync_calls: list[list[str]] = []
 
         def rsync_side_effect(*args: object, **kwargs: object) -> None:
-            rsync_calls.append(list(args[0]))  # type: ignore[arg-type]
+            rsync_calls.append(list(args))
             (head_data_dir / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
 
         mock_rsync_transfer.side_effect = rsync_side_effect

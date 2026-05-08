@@ -114,7 +114,7 @@ class TestDaqLifecycle:
         """After StartDaq, the run_dir appears in the StatusDaq run_dirs list."""
         fleet = session_fleet
         client = fleet.daq_control_client(0)
-        run_dir = "status_test_run"
+        run_dir = "status_test_run.pffd"
 
         fleet.exec_in_node(0, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
         client.StartDaq(make_startdaq_params(fleet, 0, run_dir))

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from datetime import datetime, UTC
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -94,7 +95,7 @@ async def test_transfer_queue_chaos_partial_transfer_recovery(
         from ci.software_only_v2.infra.parity import run_scenario
         run_scenario("transfer_partial_recovery", 
                      success=success2, 
-                     archived=(mgr.load_state(run_name).status == RunStatus.ARCHIVED))
+                     archived=(mgr.load_state().status == RunStatus.ARCHIVED))
 
     verify_head_node_accuracy(head_data_dir, run_name, expected_data)
     # Call count: 1 (fail) + 2 (success across 2 nodes) = 3
@@ -134,8 +135,6 @@ async def test_transfer_queue_parameterized_scale(
     
     run_name = "scale_test.pffd"
     tq = transfer_queue
-    from datetime import UTC, datetime
-
     job = transfer_job_factory(
         run_name=run_name,
         head_data_dir=head_data_dir,
@@ -274,11 +273,17 @@ async def test_transfer_queue_stop_start_during_transfer(
     sync_event = asyncio.Event()
     daemon_cancelled = asyncio.Event()
 
-    async def stalling_rsync(*args, **kwargs):
-        sync_event.set()
-        await daemon_cancelled.wait()
-        # This will be interrupted by task cancellation
-        return None
+    def stalling_rsync(*args, **kwargs):
+        proc = mock_rsync_transfer._make_proc_mock()
+        async def stall_read(*a, **k):
+            sync_event.set()
+            try:
+                await daemon_cancelled.wait()
+            except asyncio.CancelledError:
+                pass
+            return b""
+        proc.stdout.readline = AsyncMock(side_effect=stall_read)
+        return proc
 
     mock_rsync_transfer.side_effect = stalling_rsync
 
@@ -288,7 +293,7 @@ async def test_transfer_queue_stop_start_during_transfer(
         
         # Wait for daemon to reach TRANSFERRING
         await asyncio.wait_for(sync_event.wait(), timeout=10.0)
-        assert mgr.load_state(run_name).status == RunStatus.TRANSFERRING
+        assert mgr.load_state().status == RunStatus.TRANSFERRING
         
         # 2. "Crash" the daemon
         daemon_task.cancel()
@@ -314,7 +319,7 @@ async def test_transfer_queue_stop_start_during_transfer(
         timeout = 20.0
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < timeout:
-            if mgr.load_state(run_name).status == RunStatus.ARCHIVED:
+            if mgr.load_state().status == RunStatus.ARCHIVED:
                 break
             await asyncio.sleep(0.5)
         else:

@@ -48,14 +48,27 @@ class SharedNetwork:
 
     def create(self) -> None:
         import docker
+        import time
         client = docker.from_env()
-        try:
-            self._network = client.networks.get(self.name)
-        except docker.errors.NotFound:
-            with contextlib.suppress(Exception):
-                self._network = client.networks.create(
-                    self.name, check_duplicate=True
-                )
+        # Retry up to 3 times to handle potential race conditions during
+        # parallel creation by multiple xdist workers.
+        for _ in range(3):
+            try:
+                self._network = client.networks.get(self.name)
+                return
+            except docker.errors.NotFound:
+                try:
+                    self._network = client.networks.create(
+                        self.name, check_duplicate=True
+                    )
+                    return
+                except Exception:
+                    # Possibly a race condition: someone else created it
+                    # after our .get() failed but before our .create() finished.
+                    time.sleep(0.5)
+        
+        # Final attempt without catching, let it raise if it still fails.
+        self._network = client.networks.get(self.name)
 
     def remove(self) -> None:
         # Never remove the shared backbone during tests — other workers may

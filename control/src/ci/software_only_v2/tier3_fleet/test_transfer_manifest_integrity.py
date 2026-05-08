@@ -1,37 +1,27 @@
-"""
-tier3_fleet/test_transfer_manifest_integrity.py
-
-Verifies that the manifest on the head node is obtained via the GetManifest
-RPC (not copied from the DAQ node disk via rsync).
-
-Ported from software_only/tier3_fleet/test_transfer_manifest_integrity.py.
-"""
-
 from __future__ import annotations
 
 import asyncio
 import uuid
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import pytest
 
 from collections.abc import Callable
 
+from ci.fixtures.fleet import Fleet
 from ci.fixtures.rsync_fixtures import RsyncMock
-from ci.software_only_v2.orchestrator.fleet import Fleet
-from ci.software_only_v2.tier3_fleet.conftest import requires_docker
 from ci.software_only_v2.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
-    get_mapped_client_factory,
     simulate_rsync_from_fleet,
 )
 from control.transfer.daemon import _process_job
-from control.transfer.models import TransferJob
-from control.utils.run_state import RunStateManager
+from control.transfer.models import TransferJob, TransferStatus
+from control.transfer.models import RunStateManager
+from ci.software_only_v2.orchestrator.network import worker_subnet_offset
 
-pytestmark = pytest.mark.tier3
-
+# Mark tests as requiring docker
+requires_docker = pytest.mark.requires_docker
 
 @requires_docker
 @pytest.mark.asyncio
@@ -39,6 +29,7 @@ async def test_when_poisoned_manifest_on_daq_node_then_grpc_content_wins(
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
     transfer_job_factory: Callable[..., TransferJob],
+    transfer_queue: TransferQueue,
 ) -> None:
     """Manifest on head node must reflect GetManifest RPC content, not rsync copy.
 
@@ -65,7 +56,16 @@ async def test_when_poisoned_manifest_on_daq_node_then_grpc_content_wins(
         )
 
     mgr = RunStateManager()
-    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir)
+    tq = transfer_queue
+
+    # stop_run auto-enqueued a job. We remove it so we can enqueue our
+    # custom one with the right config.
+    pending_path = tq._job_path(TransferStatus.PENDING, run_name)
+    if pending_path.exists():
+        pending_path.unlink()
+
+    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir, daq_config=daq_config)
+    assert tq.enqueue(job) is True
 
     def rsync_side_effect(*args: object, **kwargs: object) -> None:
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
@@ -76,30 +76,22 @@ async def test_when_poisoned_manifest_on_daq_node_then_grpc_content_wins(
     _SECURE_CONTENT = "REAL_SECURE_MANIFEST_CONTENT"
     _SECURE_FILE = "secure_file.pff"
 
-    def wrapped_client_factory(*args: object, **kwargs: object) -> object:
-        client = get_mapped_client_factory(daq_config)(*args, **kwargs)
-        original_aenter = client.__aenter__
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient as RealADCC
 
-        async def mocked_aenter() -> object:
-            stub = await original_aenter()
+    def wrapped_client_factory(host: str, port: int = 50051) -> object:
+        mock_client = AsyncMock(spec=RealADCC)
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.GenerateManifest.return_value = {"success": True, "manifest_path": "mocked_path"}
 
-            async def mock_generate_manifest(*a: object, **kw: object) -> dict:
-                return {"success": True, "manifest_path": "mocked_path"}
-
-            async def mock_get_manifest(*a: object, **kw: object):  # type: ignore[return]
-                yield {
-                    "digest_hex": _SECURE_CONTENT,
-                    "size_bytes": 123,
-                    "mtime_ns": 456,
-                    "relative_path": _SECURE_FILE,
-                }
-
-            stub.GenerateManifest = mock_generate_manifest
-            stub.GetManifest = mock_get_manifest
-            return stub
-
-        client.__aenter__ = mocked_aenter
-        return client
+        async def mock_get_manifest(*a: object, **kw: object):  # type: ignore
+            yield {
+                "digest_hex": _SECURE_CONTENT,
+                "size_bytes": 123,
+                "mtime_ns": 456,
+                "relative_path": _SECURE_FILE,
+            }
+        mock_client.GetManifest.side_effect = mock_get_manifest
+        return mock_client
 
     with patch(
         "panoseti_grpc.daq_control.client.AsyncDaqControlClient",

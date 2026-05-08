@@ -144,7 +144,7 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
     
     # Check that job is in pending
     assert len(list((tq._queue / "pending").glob("*.job.toml"))) == 1
-    assert mgr.load_state(run_name).status == RunStatus.RECORDING_ENDED
+    assert mgr.load_state().status == RunStatus.RECORDING_ENDED
     
     # 2. Pick a random node to be unresponsive
     unresponsive_node = random.choice(daq_config.daq_nodes)
@@ -179,7 +179,7 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
         # 4. Wait for job to eventually reach 'failed' state in queue
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < 30:
-            ledger = mgr.load_state(run_name)
+            ledger = mgr.load_state()
             if ledger and ledger.status == RunStatus.TRANSFER_FAILED and (tq._queue / "failed" / f"{run_name}.job.toml").exists():
                     break
             await asyncio.sleep(0.5)

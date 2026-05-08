@@ -67,3 +67,44 @@ def worker_id(request: Any) -> str:
     if hasattr(request.config, "workerinput"):
         return request.config.workerinput["workerid"]
     return "master"
+
+
+@pytest.fixture(autouse=True)
+def clear_shared_state(request: pytest.FixtureRequest) -> None:
+    """Clear shared state between tests (ledger, transfer queue, and running processes)."""
+    from control.utils.run_state import RunStateManager
+    from control.utils.paths import PanoPaths
+    import shutil
+
+    # 1. Clear ledger
+    with contextlib.suppress(Exception):
+        RunStateManager().clear_state()
+
+    # 2. Clear transfer queue
+    with contextlib.suppress(Exception):
+        q_dir = PanoPaths.transfer_queue_dir()
+        if q_dir.exists():
+            for d in q_dir.iterdir():
+                if d.is_dir():
+                    shutil.rmtree(d)
+
+    # 3. Stop all DAQ processes if a fleet is active
+    if "session_fleet" in request.fixturenames:
+        with contextlib.suppress(Exception):
+            fleet = request.getfixturevalue("session_fleet")
+            for i in range(fleet.n_nodes):
+                client = fleet.daq_control_client(i)
+                # StopDaq on our server implementation kills all instances by name
+                client.StopDaq({"data_dir": "/data", "run_dir": "reset"})
+                client.close()
+    
+    if "chaos_fleet" in request.fixturenames:
+        with contextlib.suppress(Exception):
+            fleet = request.getfixturevalue("chaos_fleet")
+            for i in range(fleet.n_nodes):
+                client = fleet.daq_control_client(i)
+                client.StopDaq({"data_dir": "/data", "run_dir": "reset"})
+                client.close()
+
+
+import contextlib

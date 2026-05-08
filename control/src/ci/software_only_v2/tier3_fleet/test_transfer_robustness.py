@@ -29,7 +29,7 @@ from ci.software_only_v2.tier3_fleet.transfer_testing_utils import (
     simulate_rsync_from_fleet,
 )
 from control.transfer.daemon import _process_job
-from control.transfer.models import TransferJob
+from control.transfer.models import TransferJob, TransferStatus
 from control.transfer.queue import TransferQueue
 from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
@@ -62,21 +62,28 @@ async def test_when_rsync_interrupted_four_times_then_transfer_converges(
     head_data_dir = Path(daq_config.head_node_data_dir)
     run_name = f"robust_{uuid.uuid4().hex[:8]}.pffd"
 
+    # 1. Valid start and stop condition
     await generate_mocked_run(fleet, daq_config, run_name, file_size_kb=512)
 
     mgr = RunStateManager()
     tq = transfer_queue
+
+    # stop_run auto-enqueued a job. We remove it so we can enqueue our
+    # custom one with bwlimit.
+    pending_path = tq._job_path(TransferStatus.PENDING, run_name)
+    if pending_path.exists():
+        pending_path.unlink()
 
     # Create the job with an explicit bwlimit so the assertion below is meaningful.
     job_initial = transfer_job_factory(
         run_name=run_name,
         head_data_dir=head_data_dir,
         bwlimit=1024,
+        daq_config=daq_config,
     )
-    tq.enqueue(job_initial)
+    assert tq.enqueue(job_initial) is True
 
     interruptions_remaining = 4
-
     def rsync_side_effect(*args: object, **kwargs: object) -> None:
         nonlocal interruptions_remaining
         # Verify the bwlimit flag is present in the rsync command.

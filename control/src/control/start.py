@@ -930,11 +930,14 @@ async def _check_daq_data_status(
             if not status or not status.hp_io_initialized:
                 if do_init:
                     logger.info(f"Initializing DaqData hp_io on {host}...")
+                    
+                    # Find the node-specific data directory.
+                    node_data_dir = daq_config.get_node_by_ip(host).data_dir
+                    
                     # Construct a default hp_io_cfg. 
-                    # We'll use the head_node_data_dir from daq_config.
                     # Note: In a real run, it should watch the root data_dir.
                     hp_io_cfg = {
-                        "data_dir": daq_config.head_node_data_dir,
+                        "data_dir": node_data_dir,
                         "update_interval_seconds": 0.1,
                         "force": False,
                         "simulate_daq": False,

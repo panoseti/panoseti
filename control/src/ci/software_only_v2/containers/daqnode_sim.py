@@ -81,6 +81,14 @@ class DaqNodeSimContainer(PsetiContainer):
         # Data directory
         self._env("DATA_DIR", self._data_dir)
 
+        # Mount fake hashpipe and configure daq_control to use it
+        fake_hp_host = (
+            pathlib.Path(__file__).parents[2] / "fixtures" / "build" / "fake_hashpipe.py"
+        )
+        self._volume(str(fake_hp_host.resolve()), "/usr/local/bin/fake_hashpipe.py", "ro")
+        self._env("PSETI_DAQ_CONTROL_HASHPIPE_PATH", "/usr/local/bin/fake_hashpipe.py")
+        self._env("PSETI_DAQ_CONTROL_HASHPIPE_NAME", "fake_hashpipe.py")
+
         # Mount live grpc source only if the host path is a valid Python package.
         # Checking __init__.py prevents mounting a stale empty directory that
         # would shadow the COPY'd source inside the image.
@@ -88,8 +96,10 @@ class DaqNodeSimContainer(PsetiContainer):
             self._volume(str(_GRPC_SRC), "/grpc/src/panoseti_grpc", "rw")
             self._env("PYTHONPATH", "/grpc/src")
 
-        # Run the unified gRPC server in daq_node profile
-        self._command("pseti-grpc server --profile daq_node")
+        # Run the unified gRPC server in daq_node profile.
+        # We wrap it in a shell loop so that 'chaos kill' tests don't kill the
+        # container, and the process automatically restarts.
+        self._command("/bin/sh -c 'while true; do pseti-grpc server --profile daq_node; sleep 1; done'")
 
         # Capabilities required by hashpipe (even in sim mode, the base image
         # requires IPC_LOCK for shared-memory setup).

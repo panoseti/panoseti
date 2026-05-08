@@ -52,7 +52,12 @@ async def test_transfer_selective_cleanup(
     await generate_mocked_run(fleet, daq_config, run_name)
     
     mgr = RunStateManager()
-    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir, no_cleanup=False)
+    job = transfer_job_factory(
+        run_name=run_name, 
+        head_data_dir=head_data_dir, 
+        no_cleanup=False,
+        daq_config=daq_config,
+    )
 
     def rsync_side_effect(*args, **kwargs):
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
@@ -67,7 +72,7 @@ async def test_transfer_selective_cleanup(
          
          assert success is True, f"Job failed: {_err}"
          
-         state = mgr.load_state(run_name)
+         state = mgr.load_state()
          assert state is not None
          assert state.status == RunStatus.ARCHIVED
 
@@ -116,7 +121,12 @@ async def test_transfer_cleanup_isolation(
     await generate_mocked_run(fleet, daq_config, run_to_keep)
     
     mgr = RunStateManager()
-    job = transfer_job_factory(run_name=run_to_clean, head_data_dir=head_data_dir, no_cleanup=False)
+    job = transfer_job_factory(
+        run_name=run_to_clean, 
+        head_data_dir=head_data_dir, 
+        no_cleanup=False,
+        daq_config=daq_config,
+    )
 
     def rsync_side_effect(*args, **kwargs):
         simulate_rsync_from_fleet(fleet, run_to_clean, head_data_dir / run_to_clean)
@@ -165,7 +175,12 @@ async def test_transfer_no_cleanup_on_verification_failure(
     await generate_mocked_run(fleet, daq_config, run_name)
     
     mgr = RunStateManager()
-    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir, no_cleanup=False)
+    job = transfer_job_factory(
+        run_name=run_name, 
+        head_data_dir=head_data_dir, 
+        no_cleanup=False,
+        daq_config=daq_config,
+    )
 
     def rsync_side_effect(*args, **kwargs):
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
@@ -181,7 +196,7 @@ async def test_transfer_no_cleanup_on_verification_failure(
          
          success, _ = await asyncio.wait_for(_process_job(job, asyncio.Event(), mgr), timeout=30.0)
          assert success is False
-         assert mgr.load_state(run_name).status == RunStatus.VERIFY_FAILED
+         assert mgr.load_state().status == RunStatus.VERIFY_FAILED
 
     # Verify NO cleanup happened on DAQ
     for i, temp_dir in enumerate(fleet._temp_dirs):

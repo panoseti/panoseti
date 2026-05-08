@@ -1,35 +1,26 @@
-"""
-tier3_fleet/test_transfer_manifest_edge_cases.py
-
-'Expect-to-fail' scenarios for the manifest verification and selective
-cleanup contracts.  Ported from software_only/tier3_fleet/.
-"""
-
 from __future__ import annotations
 
 import asyncio
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import pytest
 
 from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.software_only_v2.orchestrator.fleet import Fleet
-from ci.software_only_v2.tier3_fleet.conftest import requires_docker
 from ci.software_only_v2.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
-    get_mapped_client_factory,
     simulate_rsync_from_fleet,
 )
 from control.transfer.daemon import _process_job
-from control.transfer.models import TransferJob
-from control.utils.pydantic_config_models import RunStatus
+from control.transfer.models import TransferJob, TransferStatus
+from control.transfer.queue import TransferQueue
 from control.utils.run_state import RunStateManager
 
-pytestmark = pytest.mark.tier3
-
+# Mark tests as requiring docker
+requires_docker = pytest.mark.requires_docker
 
 @requires_docker
 @pytest.mark.asyncio
@@ -37,11 +28,14 @@ async def test_when_pff_corrupted_after_transfer_then_verify_fails_and_cleanup_s
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
     transfer_job_factory: Callable[..., TransferJob],
+    transfer_queue: TransferQueue,
 ) -> None:
-    """VERIFYING stage detects a bit-flip and never calls CleanupData.
+    """Detection of data corruption on the head node.
 
-    Scenario: a .pff byte is flipped on the head node after rsync completes.
-    Expectation: job transitions to VERIFY_FAILED; CleanupData is never invoked.
+    Scenario: files are transferred successfully.  A bit is flipped in one .pff
+    file on the head node disk.
+    Expectation: Manifest verification fails; job is moved to VERIFY_FAILED;
+    CleanupData is NOT called on the DAQ node.
     """
     fleet = session_fleet
     daq_config = fleet.live_daq_config
@@ -51,10 +45,19 @@ async def test_when_pff_corrupted_after_transfer_then_verify_fails_and_cleanup_s
     await generate_mocked_run(fleet, daq_config, run_name)
 
     mgr = RunStateManager()
-    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir)
+    tq = transfer_queue
+    pending_path = tq._job_path(TransferStatus.PENDING, run_name)
+    if pending_path.exists():
+        pending_path.unlink()
+
+    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir, daq_config=daq_config)
+    assert tq.enqueue(job) is True
+
+    cleanup_called = False
 
     def rsync_side_effect(*args: object, **kwargs: object) -> None:
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
+        # Flip a bit in one transferred file
         dest_run = head_data_dir / run_name
         pff_files = [f for f in dest_run.glob("**/*.pff") if f.stat().st_size > 0]
         assert len(pff_files) > 0
@@ -64,26 +67,40 @@ async def test_when_pff_corrupted_after_transfer_then_verify_fails_and_cleanup_s
 
     mock_rsync_transfer.side_effect = rsync_side_effect
 
-    cleanup_called = False
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient as RealADCC
 
-    def wrapped_client_factory(*args: object, **kwargs: object) -> object:
-        client = get_mapped_client_factory(daq_config)(*args, **kwargs)
-        original_aenter = client.__aenter__
+    def wrapped_client_factory(host: str, port: int = 50051) -> object:
+        mock_client = AsyncMock(spec=RealADCC)
+        mock_client.__aenter__.return_value = mock_client
+        
+        # We need real manifest for verification to fail correctly on the corrupt file
+        # But we want to spy on CleanupData.
+        # Actually, let's just mock GenerateManifest and GetManifest to return
+        # what they would normally return, but since we are in a fleet, we can
+        # just use a real client for everything EXCEPT CleanupData.
+        
+        # Manually map to gateway if needed (avoiding recursion)
+        target_host, target_port = host, port
+        assert daq_config is not None
+        for node in daq_config.daq_nodes:
+            if str(node.ip_addr) == host:
+                if node.port_forwarding and node.port_forwarding.status:
+                    target_host = str(node.port_forwarding.gw_ip)
+                    target_port = node.port_forwarding.grpc_port
+                break
+        
+        real_client = RealADCC(host=target_host, port=target_port)
+        
+        mock_client.GenerateManifest.side_effect = real_client.GenerateManifest
+        mock_client.GetManifest.side_effect = real_client.GetManifest
 
-        async def mocked_aenter() -> object:
-            stub = await original_aenter()
-            original_cleanup = stub.CleanupData
-
-            async def spy_cleanup(*c_args: object, **c_kwargs: object) -> object:
-                nonlocal cleanup_called
-                cleanup_called = True
-                return await original_cleanup(*c_args, **c_kwargs)
-
-            stub.CleanupData = spy_cleanup
-            return stub
-
-        client.__aenter__ = mocked_aenter
-        return client
+        async def spy_cleanup(*a: object, **kw: object) -> dict:
+            nonlocal cleanup_called
+            cleanup_called = True
+            return {"success": True}
+        mock_client.CleanupData.side_effect = spy_cleanup
+        
+        return mock_client
 
     with patch(
         "panoseti_grpc.daq_control.client.AsyncDaqControlClient",
@@ -92,11 +109,10 @@ async def test_when_pff_corrupted_after_transfer_then_verify_fails_and_cleanup_s
         success, _err = await _process_job(job, asyncio.Event(), mgr)
 
     assert success is False, "Job should have failed due to data corruption"
-    assert not cleanup_called, "CleanupData MUST NOT be called when verification fails"
+    assert not cleanup_called, "Cleanup should not be called after verification failure"
 
     state = mgr.load_state()
-    assert state is not None
-    assert state.status == RunStatus.VERIFY_FAILED
+    assert state.status == TransferStatus.VERIFY_FAILED
 
 
 @requires_docker
@@ -105,8 +121,9 @@ async def test_when_cleanup_dag_rejects_digest_then_job_fails(
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
     transfer_job_factory: Callable[..., TransferJob],
+    transfer_queue: TransferQueue,
 ) -> None:
-    """CleanupData rejection with FAILED_PRECONDITION causes the job to fail.
+    """Detection of CleanupData failure.
 
     Scenario: the DAQ node's CleanupData returns FAILED_PRECONDITION because
     the manifest_digest from the head node doesn't match the server's copy.
@@ -114,37 +131,53 @@ async def test_when_cleanup_dag_rejects_digest_then_job_fails(
     """
     fleet = session_fleet
     daq_config = fleet.live_daq_config
+    assert daq_config is not None
     head_data_dir = Path(daq_config.head_node_data_dir)
     run_name = f"xfail_precond_{uuid.uuid4().hex[:8]}.pffd"
 
     await generate_mocked_run(fleet, daq_config, run_name)
 
     mgr = RunStateManager()
-    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir)
+    tq = transfer_queue
+    pending_path = tq._job_path(TransferStatus.PENDING, run_name)
+    if pending_path.exists():
+        pending_path.unlink()
+
+    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir, daq_config=daq_config)
+    assert tq.enqueue(job) is True
 
     def rsync_side_effect(*args: object, **kwargs: object) -> None:
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
 
     mock_rsync_transfer.side_effect = rsync_side_effect
 
-    def wrapped_client_factory(*args: object, **kwargs: object) -> object:
-        client = get_mapped_client_factory(daq_config)(*args, **kwargs)
-        original_aenter = client.__aenter__
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient as RealADCC
 
-        async def mocked_aenter() -> object:
-            stub = await original_aenter()
+    def wrapped_client_factory(host: str, port: int = 50051) -> object:
+        mock_client = AsyncMock(spec=RealADCC)
+        mock_client.__aenter__.return_value = mock_client
+        
+        # Manually map to gateway if needed (avoiding recursion)
+        target_host, target_port = host, port
+        for node in daq_config.daq_nodes:
+            if str(node.ip_addr) == host:
+                if node.port_forwarding and node.port_forwarding.status:
+                    target_host = str(node.port_forwarding.gw_ip)
+                    target_port = node.port_forwarding.grpc_port
+                break
+        
+        real_client = RealADCC(host=target_host, port=target_port)
+        mock_client.GenerateManifest.side_effect = real_client.GenerateManifest
+        mock_client.GetManifest.side_effect = real_client.GetManifest
 
-            async def reject_cleanup(*c_args: object, **c_kwargs: object) -> dict:
-                return {
-                    "success": False,
-                    "message": "FAILED_PRECONDITION: manifest_digest mismatch",
-                }
-
-            stub.CleanupData = reject_cleanup
-            return stub
-
-        client.__aenter__ = mocked_aenter
-        return client
+        async def reject_cleanup(*c_args: object, **c_kwargs: object) -> dict:
+            return {
+                "success": False,
+                "message": "FAILED_PRECONDITION: manifest_digest mismatch",
+            }
+        mock_client.CleanupData.side_effect = reject_cleanup
+        
+        return mock_client
 
     with patch(
         "panoseti_grpc.daq_control.client.AsyncDaqControlClient",
@@ -157,3 +190,4 @@ async def test_when_cleanup_dag_rejects_digest_then_job_fails(
 
     state = mgr.load_state()
     assert state is not None
+    assert state.status == TransferStatus.CLEAN_FAILED

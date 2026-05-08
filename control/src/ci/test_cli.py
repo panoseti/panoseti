@@ -427,6 +427,18 @@ def sw2_integration(ctx: typer.Context) -> None:
         raise typer.Exit(code=1)
 
 
+@sw2_app.command(name="build")
+def sw2_build(ctx: typer.Context) -> None:
+    """Rebuild all test images"""
+    asyncio.run(ctx.obj.build_images())
+
+
+@sw2_app.command(name="cleanup")
+def sw2_cleanup(ctx: typer.Context) -> None:
+    """Tear down all test containers and volumes"""
+    asyncio.run(ctx.obj.run_suite("cleanup"))
+
+
 @sw2_app.command(name="all")
 def sw2_all(ctx: typer.Context) -> None:
     """Run all v2 tiers (1-5) sequentially"""

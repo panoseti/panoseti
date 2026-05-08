@@ -95,8 +95,10 @@ class TransferQueue:
                     f.write("\ndaq_nodes = []\n")
                 for node in daq_nodes:
                     f.write("\n[[daq_nodes]]\n")
-                    pf_data: dict[str, Any] | None = node.pop("port_forwarding", None)
+                    # Write base node fields first
                     for k, v in node.items():
+                        if k == "port_forwarding":
+                            continue
                         if isinstance(v, list):
                             # module_ids is a list of ints
                             f.write(f"{k} = [{', '.join(str(i) for i in v)}]\n")
@@ -107,6 +109,8 @@ class TransferQueue:
                         else:
                             f.write(f"{k} = {self._escape_toml_str(str(v))}\n")
                     
+                    # Write port_forwarding as a nested table for THIS node
+                    pf_data = node.get("port_forwarding")
                     if pf_data is not None:
                         f.write("\n[daq_nodes.port_forwarding]\n")
                         for k, v in pf_data.items():
