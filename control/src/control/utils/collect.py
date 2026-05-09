@@ -145,6 +145,8 @@ if __name__ == "__main__":
         run_dir = run_dir_val
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
+    if not quabo_uids:
+        raise RuntimeError("quabo_uids.json not found")
     config_file.associate(daq_config, quabo_uids)
     if cleanup:
         cleanup_daq(daq_config, run_dir, verbose)

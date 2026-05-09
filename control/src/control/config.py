@@ -1012,11 +1012,19 @@ def do_dry_run_interleave() -> None:
 
 
 
+def _get_quabo_uids_or_exit() -> QuaboUids:
+    try:
+        return config_file.get_quabo_uids()
+    except Exception as e:
+        logger.error(f"Failed to load quabo_uids.json: {e}")
+        raise typer.Exit(code=1) from e
+
+
 @app.command()
 def show() -> None:
     """Show list of domes/modules/quabos."""
     obs_config = config_file.get_obs_config()
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     show_config(obs_config, quabo_uids)
     util.show_redis_daemons()
 
@@ -1033,7 +1041,7 @@ def reboot() -> None:
     """Reboot quabos."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     daq_config = config_file.get_daq_config()
     network_config = config_file.get_network_config()
     util.attach_daq_config(daq_config, network_config)
@@ -1053,7 +1061,7 @@ def loads() -> None:
     """Load silver firmware in quabos."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     quabo_info = config_file.get_quabo_info()
     network_config = config_file.get_network_config()
     do_loads(modules, quabo_uids, quabo_info, network_config)
@@ -1070,7 +1078,7 @@ def hk_dest() -> None:
     """Set the dest IP for HK packet."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     daq_config = config_file.get_daq_config()
     network_config = config_file.get_network_config()
     util.attach_daq_config(daq_config, network_config)
@@ -1111,7 +1119,7 @@ def hv_on() -> None:
     """Enable detectors."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     quabo_info = config_file.get_quabo_info()
     network_config = config_file.get_network_config()
     detector_info = config_file.get_detector_info()
@@ -1122,7 +1130,7 @@ def hv_off() -> None:
     """Disable detectors."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     network_config = config_file.get_network_config()
     do_hv_off(modules, quabo_uids, network_config)
 
@@ -1131,7 +1139,7 @@ def maroc_config() -> None:
     """Configure MAROCs based on data_config.json and quabo_calib_*.json."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     daq_config = config_file.get_daq_config()
     quabo_info = config_file.get_quabo_info()
     network_config = config_file.get_network_config()
@@ -1145,7 +1153,7 @@ def mask_config() -> None:
     """Configure masks based on data_config.json."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     network_config = config_file.get_network_config()
     data_config = config_file.get_data_config()
     do_mask_config(modules, data_config, network_config, quabo_uids, True)
@@ -1159,14 +1167,14 @@ def calibrate_ph(
     """Run PH baseline calibration on quabos and write to file"""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     network_config = config_file.get_network_config()
     do_calibrate_ph(modules, quabo_uids, network_config, min_baseline, max_baseline, strict)
 
 @app.command()
 def show_ph_baselines() -> None:
     """Show PH baseline calibration summary statistics"""
-    quabo_uids = config_file.get_quabo_uids()
+    quabo_uids = _get_quabo_uids_or_exit()
     do_show_ph_baselines(quabo_uids)
 
 @app.command()

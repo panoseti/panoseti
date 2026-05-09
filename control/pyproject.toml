@@ -80,6 +80,7 @@ markers = [
     "tier5: Real hashpipe binary, static Docker Compose stack",
     "hw_class(name): hardware test class name (env_check, boot_sequence, happy_path)",
     "slow_hw: marks tests that require full hardware I/O (may take minutes)",
+    "requires_docker: marks tests that require a local Docker daemon (software-only CI)",
 ]
 
 [tool.ruff]

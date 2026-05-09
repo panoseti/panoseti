@@ -77,19 +77,25 @@ def session_start(
         stage = 'reboot'
         logger.info('getting quabo UIDs')
         quabo_uids = get_uids.get_uids(obs_config, network_config)
+        if not quabo_uids:
+            raise RuntimeError("Failed to get quabo UIDs")
 
     if stage == 'reboot':
         stage = 'hk_dest'
         modules = config_file.get_modules(obs_config)
         logger.info('rebooting quabos')
-        quabo_uids = config_file.get_quabo_uids()
+        quabo_uids = config_file.get_quabo_uids() # type: ignore[assignment]
+        if not quabo_uids:
+            raise RuntimeError("Missing quabo_uids.json")
         config.do_reboot(modules, quabo_uids, network_config)
         logger.info('Reboot Successfully.')
 
     if stage == 'hk_dest':
         stage = 'start_redis'
         logger.info('setting hk dest to this computer')
-        quabo_uids = config_file.get_quabo_uids()
+        quabo_uids = config_file.get_quabo_uids() # type: ignore[assignment]
+        if not quabo_uids:
+            raise RuntimeError("Missing quabo_uids.json")
         config.do_hk_dest(modules, quabo_uids, daq_config, network_config)
 
     if stage == 'start_redis':
@@ -102,19 +108,25 @@ def session_start(
     if stage == 'maroc_config':
         stage = 'mask_config'
         logger.info('configuring Marocs')
-        quabo_uids = config_file.get_quabo_uids()
+        quabo_uids = config_file.get_quabo_uids() # type: ignore[assignment]
+        if not quabo_uids:
+            raise RuntimeError("Missing quabo_uids.json")
         config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
 
     if stage == 'mask_config':
         stage = 'calibrate_ph'
         logger.info('configuring Masks')
-        quabo_uids = config_file.get_quabo_uids()
+        quabo_uids = config_file.get_quabo_uids() # type: ignore[assignment]
+        if not quabo_uids:
+            raise RuntimeError("Missing quabo_uids.json")
         config.do_mask_config(modules, data_config, network_config, quabo_uids, True)
     
     if stage == 'calibrate_ph':
         stage = 'open_shutters'
         logger.info('calibrating PH')
-        quabo_uids = config_file.get_quabo_uids()
+        quabo_uids = config_file.get_quabo_uids() # type: ignore[assignment]
+        if not quabo_uids:
+            raise RuntimeError("Missing quabo_uids.json")
         config.do_calibrate_ph(modules, quabo_uids, network_config)
         config.do_show_ph_baselines(quabo_uids)
 

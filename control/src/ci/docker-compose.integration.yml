@@ -43,6 +43,7 @@ services:
       influxdb:
         condition: service_healthy
 
+
   influxdb:
     image: influxdb:1.8
     networks:
@@ -97,6 +98,7 @@ services:
       dockerfile: control/src/ci/Dockerfile.ci
       target: test-runner
     restart: always
+    user: root
     network_mode: "service:influxdb"
     volumes: []
     environment:
@@ -127,6 +129,7 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: integration-daqnode
+    user: root
     networks:
       headnode_net:
         ipv4_address: ${HEAD_NET_DAQNODE_1:-10.0.1.10}
@@ -158,6 +161,7 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: integration-daqnode
+    user: root
     networks:
       headnode_net:
         ipv4_address: ${HEAD_NET_DAQNODE_2:-10.0.1.11}
@@ -212,6 +216,7 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: test-runner
+    user: root
     networks:
       headnode_net:
         ipv4_address: ${HEAD_NET_TESTER:-10.0.1.5}

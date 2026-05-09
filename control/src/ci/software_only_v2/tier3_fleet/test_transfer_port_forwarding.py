@@ -16,10 +16,8 @@ Ported from software_only/tier3_fleet/test_transfer_port_forwarding.py.
 from __future__ import annotations
 
 import asyncio
-import pathlib
 import tomllib
 import uuid
-from collections.abc import Callable
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 

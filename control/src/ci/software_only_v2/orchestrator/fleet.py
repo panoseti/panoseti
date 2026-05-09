@@ -188,6 +188,11 @@ class Fleet:
         self._temp_dirs.clear()
         self._daqnode_containers.clear()
         self._headnode_container = None
+        
+        # 4. Shared network cleanup
+        if self._network:
+            self._network.remove()
+            self._network = None
 
     # ------------------------------------------------------------------
     # Context manager
@@ -211,7 +216,7 @@ class Fleet:
         """
         live_nodes: list[DaqNode] = []
         for i, (sim, orig_node) in enumerate(
-            zip(self._daqnode_containers, self.topology.daq.daq_nodes)
+            zip(self._daqnode_containers, self.topology.daq.daq_nodes, strict=False)
         ):
             pf = PortForwarding(
                 status=True,

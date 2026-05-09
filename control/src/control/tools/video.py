@@ -117,6 +117,9 @@ while i<len(argv):
 
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
+    if not quabo_uids:
+        raise RuntimeError("quabo_uids.json not found")
+    assert quabo_uids is not None
     data_config = config_file.get_data_config()
     config_file.associate(daq_config, quabo_uids)
     

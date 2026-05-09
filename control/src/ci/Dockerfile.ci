@@ -74,7 +74,7 @@ RUN --mount=type=cache,uid=1000,target=/home/panoseti/.cache/uv \
 # Install shell completion for pseti
 RUN /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
-USER root
+USER panoseti
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["sleep", "infinity"]
 
@@ -82,6 +82,8 @@ CMD ["sleep", "infinity"]
 # Stage: test-runner (alias of headnode)
 # ═══════════════════════════════════════════════════════════════════════════
 FROM headnode AS test-runner
+USER panoseti
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: hashpipe-builder (needed for integration)
@@ -92,14 +94,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential git autoconf automake libtool g++ make \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-
-# 1. Initialize empty repo, fetch exact commit shallowly, and checkout
-RUN mkdir hashpipe && cd hashpipe && \
-    git init && \
-    git remote add origin https://github.com/david-macmahon/hashpipe.git && \
-    git fetch --depth 1 origin 6b16dc80354d44a12a25faa8e6797aad3a54ceaf && \
-    git checkout FETCH_HEAD
-
+RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
 WORKDIR /build/hashpipe/src
 RUN autoreconf -is && ./configure --prefix=/usr/local && make && make install
 
@@ -144,8 +139,6 @@ RUN --mount=type=cache,uid=1000,target=/home/panoseti/.cache/uv \
 RUN mkdir -p /etc/bash_completion.d && \
     /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
-USER root
-# entrypoint-daqnode.sh copies hashpipe.so to the data dir, then delegates to
-# entrypoint.sh for optional runtime UID rewrite before exec gosu panoseti.
+USER panoseti
 ENTRYPOINT ["/entrypoint-daqnode.sh"]
 CMD ["/bin/sh", "-c", "pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/src/ci/fixtures/configs/grpc/daqnode/server.toml}"]

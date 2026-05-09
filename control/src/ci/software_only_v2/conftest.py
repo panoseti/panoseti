@@ -8,6 +8,7 @@ v1 modules are still available from the parent ci/conftest.py).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 from typing import Any
@@ -61,6 +62,24 @@ def pytest_configure(config: Any) -> None:
     os.environ.setdefault("LOKI_TENANT_ID", f"v2_test_tenant_{db_index}")
 
 
+def pytest_unconfigure(config: Any) -> None:
+    """Final cleanup after all tests finish."""
+    # Only prune if we are the master process (or solo)
+    if not hasattr(config, "workerinput"):
+        try:
+            import docker
+            client = docker.from_env()
+            # Aggressively prune any pseti-v2 networks left behind
+            patterns = ["pseti-v2-tc-", "pseti-v2-shared-net"]
+            for network in client.networks.list():
+                if any(p in network.name for p in patterns):
+                    with contextlib.suppress(Exception):
+                        network.remove()
+        except Exception:
+            # If docker is not available (e.g. inside a restricted container), just skip
+            pass
+
+
 @pytest.fixture(scope="session")
 def worker_id(request: Any) -> str:
     """Returns the xdist worker ID, or 'master' for single-process runs."""
@@ -72,9 +91,10 @@ def worker_id(request: Any) -> str:
 @pytest.fixture(autouse=True)
 def clear_shared_state(request: pytest.FixtureRequest) -> None:
     """Clear shared state between tests (ledger, transfer queue, and running processes)."""
-    from control.utils.run_state import RunStateManager
-    from control.utils.paths import PanoPaths
     import shutil
+
+    from control.utils.paths import PanoPaths
+    from control.utils.run_state import RunStateManager
 
     # 1. Clear ledger
     with contextlib.suppress(Exception):
@@ -107,4 +127,3 @@ def clear_shared_state(request: pytest.FixtureRequest) -> None:
                 client.close()
 
 
-import contextlib

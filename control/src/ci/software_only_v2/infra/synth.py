@@ -98,6 +98,8 @@ def _build_obs_config(spec: FleetSpec) -> ObsConfig:
                 ip_addr=IPv4Address(mod.ip),
                 timing_mode=mod.timing,
                 wps=mod.wps,
+                azimuth=0.0,
+                elevation=0.0,
                 id=mod.module_id,
             ))
         domes.append(ObsDomeConfig(
@@ -110,12 +112,13 @@ def _build_obs_config(spec: FleetSpec) -> ObsConfig:
         ))
     obs = ObsConfig(
         name=spec.name,
+        gps_port=None,
         domes=domes,
         detector_overvoltage=spec.data_spec.overvoltage,  # type: ignore[arg-type]
+        # Inject a default WPS definition so _check_wps_references passes when
+        # any module references "wps" (the default value).
+        wps={"url": "http://192.168.1.1", "quabo_socket": 4},
     )
-    # Inject a default WPS definition so _check_wps_references passes when
-    # any module references "wps" (the default value).
-    obs.wps = {"url": "http://192.168.1.1", "quabo_socket": 4}  # type: ignore[assignment]
     return obs
 
 
@@ -129,6 +132,8 @@ def _build_daq_config(spec: FleetSpec) -> DaqConfig:
             pf = PortForwarding(
                 status=True,
                 gw_ip=IPv4Address(gw.ip),
+                reboot_port=None,
+                cmd_port=None,
                 port=gw.ssh_port,
                 grpc_port=gw.grpc_port,
             )
@@ -145,6 +150,7 @@ def _build_daq_config(spec: FleetSpec) -> DaqConfig:
         head_node_data_dir=head_data_dir,
         head_node_ip_addr=IPv4Address(spec.headnode_ip),
         head_node_container=True,
+        daq_node_module_limit=4,
         daq_nodes=nodes,
     )
 
@@ -159,6 +165,8 @@ def _build_network_config(spec: FleetSpec) -> NetworkConfig:
             pf = PortForwarding(
                 status=True,
                 gw_ip=gw_ip,
+                reboot_port=None,
+                cmd_port=None,
                 port=gw.ssh_port,
                 grpc_port=gw.grpc_port,
             )
@@ -177,6 +185,7 @@ def _build_network_config(spec: FleetSpec) -> NetworkConfig:
                             gw_ip=gw_ip,
                             reboot_port=[69, 60004, 60005, 60006],
                             cmd_port=[60000, 60001, 60002, 60003],
+                            grpc_port=50051
                         ),
                     ))
     return NetworkConfig(modules=net_modules, daq_nodes=net_daq_nodes)

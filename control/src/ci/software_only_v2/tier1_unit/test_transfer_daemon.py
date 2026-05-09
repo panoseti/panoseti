@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import pathlib
-import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ci.fixtures.rsync_fixtures import RsyncMock
@@ -39,7 +37,8 @@ def _mock_grpc_client() -> MagicMock:
     
     # Mock GetManifest as an async generator
     async def mock_get_manifest(*args, **kwargs):
-        if False: yield {}
+        if False:
+            yield {}
     client.GetManifest.side_effect = mock_get_manifest
 
     client.CleanupData = AsyncMock(return_value={"success": True, "deleted_count": 0})

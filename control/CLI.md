@@ -21,9 +21,10 @@ Start a new recording run.
 
 ### `pseti stat`
 Show observatory health, acquisition status, and transactional ledger.
+- `pseti stat`: (Default) Summary of head node and remote DAQ node status.
 - `pseti stat ledger`: Inspect the run state ledger (read-only).
-- `pseti stat remote`: Query each DAQ node via gRPC.
-- `pseti stat sweep`: Full network reachability sweep.
+- `pseti stat sweep`: Full network reachability sweep (Quabo ping + gRPC).
+- Options: `--watch` (interactive), `--interval`, `--no-remote`.
 
 ### `pseti stop`
 Stop and finish the current recording run.
@@ -60,8 +61,9 @@ Gracefully terminate a session. Powers off all modules and stops background Redi
 
 ### `pseti show`
 Inspect and visualize PSETI system state.
-- `commands`: Display a tree-like view of all available PSETI commands.
 - `paths`: Display the current resolved paths for all key directories and environment variable overrides.
+- `sci`: Live-updating text visualization of the science data stream (requires running gRPC).
+- `commands`: Display a tree-like view of all available PSETI commands.
 
 ### `pseti test`
 Quality Assurance and Testing Suite.

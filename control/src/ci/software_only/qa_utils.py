@@ -294,6 +294,12 @@ class TestRunner:
                 compose_file = env_cfg.compose_file
 
         if not compose_file:
+            # For host-based suites, we don't have a compose project to down,
+            # but we might have a SharedNetwork to clean up.
+            if suite.name in self._temp_envs:
+                _, expanded_env = self._temp_envs[suite.name]
+                net_name = expanded_env.get("COMPOSE_PROJECT_NAME", f"pseti-v2-{suite.name}")
+                await self._cleanup_orphaned_networks(net_name, quiet=quiet)
             return
 
         # Use temp env if it exists
@@ -309,8 +315,33 @@ class TestRunner:
         full_env.update(expanded_env)
         full_env["COMPOSE_PROJECT_NAME"] = project_name
 
+        # 1. Standard compose down
         cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} down -v --remove-orphans"
         await self._run_cmd(cmd, env=full_env, quiet=quiet)
+
+        # 2. Aggressive network cleanup for this project
+        await self._cleanup_orphaned_networks(project_name, quiet=quiet)
+
+    async def _cleanup_orphaned_networks(self, project_name: str, quiet: bool = False):
+        """Find and remove all networks related to this project or pseti-v2-tc-* leftovers."""
+        import docker
+        client = docker.from_env()
+        try:
+            # Prune networks that match our naming patterns
+            patterns = [project_name, "pseti-v2-tc-"]
+            for network in client.networks.list():
+                if any(p in network.name for p in patterns):
+                    if not quiet:
+                        from rich.console import Console
+                        Console().print(f"[dim]Cleaning up network: {network.name}[/dim]")
+                    try:
+                        network.remove()
+                    except Exception as e:
+                        if not quiet:
+                            from rich.console import Console
+                            Console().print(f"[dim]Failed to remove {network.name}: {e}[/dim]")
+        except Exception:
+            pass
 
     async def _run_test_suite(self, suite: SuiteConfig, project_name: str, jobs: int | None, extra_args: list[str] | None) -> list[Result]:
         self._header(f"TESTING: {suite.name.upper()}")
@@ -364,7 +395,7 @@ class TestRunner:
                 compose_file = env_cfg.compose_file
 
         dev_flag = self._dev_overlay_flag(compose_file)
-        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
+        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} exec -T --user panoseti {env_str} {suite.service} {pytest_cmd}"
         res = await self._stream(f"test.{suite.name}", cmd, lock, env={"COMPOSE_PROJECT_NAME": project_name})
         return [res]
 

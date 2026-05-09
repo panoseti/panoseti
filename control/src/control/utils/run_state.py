@@ -240,7 +240,8 @@ class RunStateManager:
     def transition(self, status: RunStatus, **fields: Any) -> RunStateLedger | None:
         """Load current state, update status and any extra fields, save, return new state.
 
-        Returns None if no state exists.
+        If 'node_ip' is provided in fields, the remaining fields are applied to the 
+        NodeReceipt with that IP address instead of the root ledger.
         """
         state = self.load_state()
         if state is None:
@@ -248,6 +249,28 @@ class RunStateManager:
         
         logger.info(f"Transaction Phase: [{status.value}]")
         state.status = status
+
+        node_ip = fields.pop("node_ip", None)
+        if node_ip:
+            from ipaddress import IPv4Address, IPv6Address
+            target_ip = node_ip
+            if isinstance(node_ip, str):
+                 try:
+                     target_ip = IPv4Address(node_ip)
+                 except ValueError:
+                     try:
+                         target_ip = IPv6Address(node_ip)
+                     except ValueError:
+                         pass
+
+            node = next((n for n in state.nodes if n.ip_addr == target_ip), None)
+            if node:
+                for key, value in fields.items():
+                    setattr(node, key, value)
+                fields = {}
+            else:
+                logger.warning(f"Transition: node {node_ip} not found in ledger")
+
         for key, value in fields.items():
             setattr(state, key, value)
         self.save_state(state)

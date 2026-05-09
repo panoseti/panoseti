@@ -304,9 +304,11 @@ async def cleanup_daq(daq_config: DaqConfig, run: str, verbose: bool, force: boo
             except Exception:
                 pass
 
-    from pathlib import Path
+    import anyio
     # ...
-    head_run_dir = f"{daq_config.head_node_data_dir}/{run}" if Path(f"{daq_config.head_node_data_dir}/{run}").exists() else None
+    head_run_path = anyio.Path(f"{daq_config.head_node_data_dir}/{run}")
+    head_run_dir_exists = await head_run_path.exists()
+    head_run_dir = str(head_run_path) if head_run_dir_exists else None
 
     async def cleanup_node(node: DaqNode) -> None:
         ip_addr = str(node.ip_addr)
@@ -314,7 +316,8 @@ async def cleanup_daq(daq_config: DaqConfig, run: str, verbose: bool, force: boo
         # Guard: check if collection succeeded for this node if not forced
         # In this legacy mode, we don't have a manifest readily available,
         # so we rely on the existence of the head-side directory.
-        if not force and head_run_dir and not Path(f"{head_run_dir}/module_{node.module_ids[0]}").is_dir():
+        collection_dir = anyio.Path(f"{head_run_dir}/module_{node.module_ids[0]}")
+        if not force and head_run_dir and not await collection_dir.is_dir():
             logger.warning(f"Skipping cleanup for node {ip_addr} due to collection failure.")
             return
             

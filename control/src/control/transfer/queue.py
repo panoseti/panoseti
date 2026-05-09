@@ -6,7 +6,6 @@ import os
 import pathlib
 import tempfile
 import tomllib
-from typing import Any
 
 from control.transfer.models import TransferJob, TransferStatus
 from control.utils.paths import PanoPaths
@@ -232,6 +231,8 @@ class TransferQueue:
         Returns:
             Sorted list of run names (without the ``.job.toml`` suffix).
         """
+        if bucket not in list(TransferStatus):
+             raise ValueError(f"Invalid bucket: {bucket}")
         bucket_dir = self._queue / bucket
         return [
             e.stem.removesuffix(".job")

@@ -48,6 +48,8 @@ def generate_data_config(
             pe_threshold=pe_threshold,
             quabo_sample_size=quabo_sample_size,  # type: ignore[arg-type]
         ),
+        max_file_size_mb=None,
+        xfr_bwlimit=None
     )
 
 
@@ -112,6 +114,8 @@ def generate_fleet_configs(
             pf = PortForwarding(
                 status=True,
                 gw_ip=IPv4Address(gw_ip),
+                reboot_port=None,
+                cmd_port=None,
                 port=22, # SSH/rsync
                 grpc_port=50051 + i
             )
@@ -144,7 +148,8 @@ def generate_fleet_configs(
                         status=True,
                         gw_ip=pf.gw_ip,
                         reboot_port=[69, 60004, 60005, 60006],
-                        cmd_port=[60000, 60001, 60002, 60003]
+                        cmd_port=[60000, 60001, 60002, 60003],
+                        grpc_port=50051
                     )
                 ))
 
@@ -154,6 +159,8 @@ def generate_fleet_configs(
                 quabo_version="qfp",
                 ip_addr=mod_ip,
                 timing_mode="wr",
+                azimuth=None,
+                elevation=None,
                 id=current_module_id
             )
             obs_modules.append(obs_module)
@@ -190,6 +197,7 @@ def generate_fleet_configs(
 
     obs_config = ObsConfig(
         name="synthetic_fleet",
+        gps_port=None,
         domes=[ObsDomeConfig(
             name="dome0",
             obslat=37.3425,
@@ -223,14 +231,15 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     mid2 = ip_addr_to_module_id(str(mod2_ip))
     
     daq_nodes = [
-        DaqNode(username="panoseti", data_dir="/data", ip_addr=node1_ip, module_ids=[mid1], bindhost="lo"),
-        DaqNode(username="panoseti", data_dir="/data", ip_addr=node2_ip, module_ids=[mid2], bindhost="lo")
+        DaqNode(username="panoseti", data_dir="/data", ip_addr=node1_ip, module_ids=[mid1], bindhost="lo", port_forwarding=None, modules=[]),
+        DaqNode(username="panoseti", data_dir="/data", ip_addr=node2_ip, module_ids=[mid2], bindhost="lo", port_forwarding=None, modules=[])
     ]
     
     daq_config = DaqConfig(
         head_node_data_dir=head_data_dir,
         head_node_ip_addr=IPv4Address(f"{head_prefix}.22"),
-        head_node_container=True,
+        head_node_container=False,
+        daq_node_module_limit=4,
         daq_nodes=daq_nodes
     )
     
@@ -253,17 +262,18 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
             name="ci_dome",
             obslat=37.0, obslon=-121.0, obsalt=1000.0,
             modules=[
-                ObsModuleConfig(mobo_serialno="M200", quabo_version="qfp", ip_addr=mod1_ip, timing_mode="wr", id=mid1),
-                ObsModuleConfig(mobo_serialno="M201", quabo_version="qfp", ip_addr=mod2_ip, timing_mode="wr", id=mid2)
+                ObsModuleConfig(mobo_serialno="M200", quabo_version="qfp", ip_addr=mod1_ip, timing_mode="wr", azimuth=None, elevation=None, id=mid1),
+                ObsModuleConfig(mobo_serialno="M201", quabo_version="qfp", ip_addr=mod2_ip, timing_mode="wr", azimuth=None, elevation=None, id=mid2)
             ],
             num=0
         )
     ]
     obs_config = ObsConfig(
         name="CI_Fleet",
-        domes=obs_domes
+        gps_port=None,
+        domes=obs_domes,
+        wps={"url": f"http://admin:1234@{head_prefix}.100", "quabo_socket": 4}
     )
-    obs_config.wps = {"url": f"http://admin:1234@{head_prefix}.100", "quabo_socket": 4} # type: ignore
     
     return daq_config, quabo_uids, network_config, obs_config
 
@@ -295,6 +305,8 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
         pf = PortForwarding(
             status=True,
             gw_ip=gw_ip,
+            reboot_port=None,
+            cmd_port=None,
             port=22,
             grpc_port=50051
         )
@@ -307,6 +319,7 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
             data_dir="/data",
             ip_addr=node_ip,
             module_ids=[module_id],
+            bindhost="0.0.0.0",
             port_forwarding=pf
         ))
         
@@ -324,7 +337,8 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
                 status=True,
                 gw_ip=IPv4Address(gw_ip),
                 reboot_port=[69, 60004, 60005, 60006],
-                cmd_port=[60000, 60001, 60002, 60003]
+                cmd_port=[60000, 60001, 60002, 60003],
+                grpc_port=50051
             )
         ))
 
@@ -335,27 +349,28 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
             quabos=[QuaboUidEntry(uid=f"q_palomar_{module_id}_{k}") for k in range(4)],
             id=module_id
         ))
-        
         # Obs Dome
         obs_domes.append(ObsDomeConfig(
             name=f"dome_{site['name']}",
-            obslat=33.3533, # Palomar approx
-            obslon=-116.8622,
+            obslat=33.35, # Palomar
+            obslon=-116.86,
             obsalt=1700.0,
             modules=[ObsModuleConfig(
-                mobo_serialno=f"SN_PAL_{module_id}",
-                quabo_version="qfp",
+                mobo_serialno=f"M_PAL_{module_id}",
+                quabo_version="bga",
                 ip_addr=mod_ip,
                 timing_mode="wr",
+                azimuth=None,
+                elevation=None,
                 id=module_id
-            )],
-            num=i
+            )]
         ))
 
     daq_config = DaqConfig(
         head_node_data_dir="/data/head",
         head_node_ip_addr=IPv4Address("10.200.146.1"),
         head_node_container=True,
+        daq_node_module_limit=4,
         daq_nodes=daq_nodes
     )
     
@@ -364,9 +379,8 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
     
     obs_config = ObsConfig(
         name="Palomar_Full",
+        gps_port="/dev/ttyUSB0",
         domes=obs_domes,
-        # Add required WPS definition
+        wps={"url": "http://192.168.1.1", "quabo_socket": 4},
     )
-    obs_config.wps = {"url": "http://admin:1234@10.200.146.100", "quabo_socket": 4} # type: ignore
-    
     return daq_config, quabo_uids, network_config, obs_config

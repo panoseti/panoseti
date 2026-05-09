@@ -88,7 +88,7 @@ class InterleaveController:
             logger.info(f"Attached to active run: {run_name}")
 
         self.data_config = data_config
-        self.interleave_cfg = data_config.interleave or InterleaveConfig()
+        self.interleave_cfg = data_config.interleave or InterleaveConfig(enable=False, states=[])
         
         if not self.interleave_cfg.enable:
             logger.warning("Interleaving is disabled in the current data configuration.")
@@ -391,12 +391,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     controller = None
+    quabo_uids = config_file.get_quabo_uids()
+    if not quabo_uids:
+        logger.error("Missing quabo_uids.json")
+        sys.exit(1)
+
     try:
         controller = InterleaveController(
             data_config=config_file.get_data_config(),
             obs_config=config_file.get_obs_config(),
             daq_config=config_file.get_daq_config(),
-            quabo_uids=config_file.get_quabo_uids(),
+            quabo_uids=quabo_uids,
             quabo_info=config_file.get_quabo_info(),
             network_config=config_file.get_network_config(),
             dry_run=args.dry_run,

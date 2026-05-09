@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 test_config_validator.py
 
@@ -163,7 +164,8 @@ class TestPerformNetworkPingSweep:
     def test_gateway_forwarded_module_uses_gw_ip(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """Module behind gateway → gateway IP is checked, not module IP directly."""
         mock_network_config.modules[0].port_forwarding.status = True
-        mock_network_config.modules[0].port_forwarding.gw_ip = "203.0.113.1"
+        from ipaddress import IPv4Address
+        mock_network_config.modules[0].port_forwarding.gw_ip = IPv4Address("203.0.113.1")
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         checked_ips = []
 

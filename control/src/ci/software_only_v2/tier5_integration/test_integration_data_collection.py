@@ -125,6 +125,7 @@ class TestIntegrationDataCollection:
         run_params: dict[str, Any],
     ) -> None:
         """CleanupData must fail (server rejects) while hashpipe is active."""
+        from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
         params = dict(run_params)
         daq_control_node1.StartDaq(params)
         _prepare_host_dirs(params)
@@ -132,16 +133,15 @@ class TestIntegrationDataCollection:
 
         try:
             for mid in params["module_id"]:
-                result = daq_control_node1.CleanupData({
-                    "data_dir": params["data_dir"],
-                    "run_dir": params["run_dir"],
-                    "module_id": [mid],
-                })
-                assert not result.get("success", True), (
-                    f"Expected cleanup to be refused while hashpipe is running (module {mid})"
-                )
-                msg = result.get("message", "")
-                assert "alive" in msg.lower() or "running" in msg.lower(), (
+                with pytest.raises(FailedPreconditionError) as exc_info:
+                    daq_control_node1.CleanupData({
+                        "data_dir": params["data_dir"],
+                        "run_dir": params["run_dir"],
+                        "module_id": [mid],
+                    })
+                
+                msg = str(exc_info.value).lower()
+                assert "alive" in msg or "running" in msg, (
                     f"Expected 'alive'/'running' in refusal message, got: {msg}"
                 )
         finally:

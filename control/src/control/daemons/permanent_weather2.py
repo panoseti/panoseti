@@ -86,7 +86,10 @@ def save_to_redis(weather: dict[str, Any]) -> None:
     """Store weather hash in Redis."""
     try:
         r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-        r.hset(REDIS_KEY, mapping=weather)
+        # Ensure all values are strings/numbers for Redis hset
+        clean_mapping = {k: (v if isinstance(v, (str, int, float, bytes)) else str(v)) 
+                         for k, v in weather.items()}
+        r.hset(REDIS_KEY, mapping=clean_mapping) # type: ignore[arg-type]
         print(f"? Updated Redis key '{REDIS_KEY}'")
     except Exception as e:
         print(f"? Redis error: {e}")

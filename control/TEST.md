@@ -10,11 +10,11 @@ The current test tree lives at `ci/software_only_v2/` (v2). A v1 tree at `ci/sof
 
 | Tier | v2 Directory | Purpose | Infrastructure |
 |---|---|---|---|
-| **Tier 1 (Unit)** | `ci/software_only_v2/tier1_unit/` | Pure logic, parsing, and math. | Native (Parallel) |
-| **Tier 2 (Logic)** | `ci/software_only_v2/tier2_logic/` | Subsystem logic with isolated workspace. | Native + Isolated State |
-| **Tier 3 (Fleet)** | `ci/software_only_v2/tier3_fleet/` | Distributed flows with dynamic nodes. | `testcontainers` (no persistent service) |
-| **Tier 4 (Chaos)** | `ci/software_only_v2/tier4_chaos/` | Fault injection & resilience tests. | `testcontainers` + Failure Injection |
-| **Tier 5 (Integration)** | `ci/software_only_v2/tier5_integration/` | Heavy realistic SW simulation with tcpreplay → Hashpipe and panoseti gRPC. | Static Docker Compose |
+| **Tier 1 (Unit)** | `src/ci/software_only_v2/tier1_unit/` | Pure logic, parsing, and math. | Native (Parallel) |
+| **Tier 2 (Logic)** | `src/ci/software_only_v2/tier2_logic/` | Subsystem logic with isolated workspace. | Native + Isolated State |
+| **Tier 3 (Fleet)** | `src/ci/software_only_v2/tier3_fleet/` | Distributed flows with dynamic nodes. | `testcontainers` (no persistent service) |
+| **Tier 4 (Chaos)** | `src/ci/software_only_v2/tier4_chaos/` | Fault injection & resilience tests. | `testcontainers` + Failure Injection |
+| **Tier 5 (Integration)** | `src/ci/software_only_v2/tier5_integration/` | Heavy realistic SW simulation with tcpreplay → Hashpipe and panoseti gRPC. | Static Docker Compose |
 
 ---
 
@@ -33,9 +33,6 @@ pseti test lint             # Ruff & MyPy verification
 
 # 2. Comprehensive run
 pseti test sw2 all          # Run Tiers 1 through 5 sequentially
-
-# Legacy alias (v1 sunset in progress)
-pseti test sw v2 unit       # equivalent to pseti test sw2 unit
 ```
 
 ---

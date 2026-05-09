@@ -303,6 +303,8 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
         r: Active Redis client.
         quabo_status: Persistent state dictionary tracking all Quabos.
     """
+    if not quabo_uids:
+        return
     for dome in quabo_uids.domes:
         for module in dome.modules:
             module_ip_addr = str(module.ip_addr)

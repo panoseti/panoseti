@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -16,8 +16,9 @@ from ci.software_only_v2.tier3_fleet.transfer_testing_utils import (
 )
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferStatus
-from control.utils.run_state import RunStateManager
+from control.transfer.queue import TransferQueue
 from control.utils.pydantic_config_models import RunStatus
+from control.utils.run_state import RunStateManager
 
 # Mark tests as requiring docker
 requires_docker = pytest.mark.requires_docker
@@ -89,12 +90,11 @@ async def test_when_pff_corrupted_after_transfer_then_verify_fails_and_cleanup_s
                 nonlocal cleanup_called
                 cleanup_called = True
                 # Call real cleanup via the stub which is now initialized
-                from panoseti_grpc.daq_control import daq_control_pb2
                 v_params = type('v_params', (), kw) # dummy
                 # Actually, just return success since we want to spy
                 return {"success": True}
 
-            setattr(res, "CleanupData", spy_cleanup)
+            res.CleanupData = spy_cleanup
             return res
 
         client.__aenter__ = mocked_aenter

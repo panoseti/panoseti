@@ -220,6 +220,8 @@ async def _sweep_summary() -> list[Text]:
 
     # Quabo reachability report
     try:
+        if not quabo_uids:
+            raise RuntimeError("quabo_uids.json not found")
         results = await _quabo_reachability_report(quabo_uids, network_config)
         total = len(results)
         reachable = [r for r in results if r.reachable]

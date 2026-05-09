@@ -47,9 +47,15 @@ class SharedNetwork:
         self._network = None
 
     def create(self) -> None:
-        import docker
         import time
+
+        import docker
         client = docker.from_env()
+        # Add labels for easier cleanup and potential Ryuk detection
+        labels = {
+            "com.panoseti.test.v2": "true",
+            "com.panoseti.session": os.environ.get("TC_SESSION_ID", "solo")
+        }
         # Retry up to 3 times to handle potential race conditions during
         # parallel creation by multiple xdist workers.
         for _ in range(3):
@@ -59,7 +65,7 @@ class SharedNetwork:
             except docker.errors.NotFound:
                 try:
                     self._network = client.networks.create(
-                        self.name, check_duplicate=True
+                        self.name, check_duplicate=True, labels=labels
                     )
                     return
                 except Exception:
@@ -71,9 +77,20 @@ class SharedNetwork:
         self._network = client.networks.get(self.name)
 
     def remove(self) -> None:
-        # Never remove the shared backbone during tests — other workers may
-        # still be using it.  Prune via 'docker network prune' after the run.
-        pass
+        """Force-remove the shared network. Safe to call idempotently."""
+        if self._network:
+            try:
+                self._network.remove()
+                self._network = None
+            except Exception:
+                pass
+        else:
+            # Try by name if we don't have the object handle
+            import docker
+            client = docker.from_env()
+            with contextlib.suppress(Exception):
+                net = client.networks.get(self.name)
+                net.remove()
 
     @property
     def id(self) -> str | None:

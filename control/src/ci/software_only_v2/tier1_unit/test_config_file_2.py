@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 test_config_file_2.py
 

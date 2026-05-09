@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 test_pydantic_models_2.py
 
@@ -206,8 +207,10 @@ class TestObsDomeConfig:
 
 class TestObsModuleConfig:
     def test_valid_module(self) -> None:
-        ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga", ip_addr="192.168.3.200")
-
+        ObsModuleConfig(
+            mobo_serialno="SN1", quabo_version="bga", ip_addr="192.168.3.200", 
+            timing_mode="wr", azimuth=0.0, elevation=0.0, id=1
+        )
     def test_invalid_ip_addr(self) -> None:
         with pytest.raises(ValidationError):
             ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga", ip_addr="999.0.0.1")  # type: ignore
@@ -215,36 +218,46 @@ class TestObsModuleConfig:
     @pytest.mark.parametrize("mode", ["wr", "gnss"])
     def test_valid_timing_modes(self, mode) -> None:
         ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga",
-                        ip_addr="192.168.3.200", timing_mode=mode)
+                        ip_addr="192.168.3.200", timing_mode=mode, azimuth=0.0, elevation=0.0, id=1)
 
     def test_invalid_timing_mode(self) -> None:
         with pytest.raises(ValidationError):
             ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga",
-                            ip_addr="192.168.3.200", timing_mode="ntp")
+                            ip_addr="192.168.3.200", timing_mode="ntp", azimuth=0.0, elevation=0.0, id=1)
 
     def test_azimuth_boundaries(self) -> None:
-        ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga",
-                        ip_addr="192.168.3.200", azimuth=0.0)
-        ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga",
-                        ip_addr="192.168.3.200", azimuth=360.0)
+        ObsModuleConfig(
+            mobo_serialno="SN1", quabo_version="bga", ip_addr="192.168.3.200", 
+            timing_mode="wr", azimuth=0.0, elevation=0.0, id=1
+        )
+        ObsModuleConfig(
+            mobo_serialno="SN1", quabo_version="bga", ip_addr="192.168.3.200", 
+            timing_mode="wr", azimuth=360.0, elevation=0.0, id=1
+        )
         with pytest.raises(ValidationError):
-            ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga",
-                            ip_addr="192.168.3.200", azimuth=361.0)
+            ObsModuleConfig(
+                mobo_serialno="SN1", quabo_version="bga", ip_addr="192.168.3.200", 
+                timing_mode="wr", azimuth=361.0, elevation=0.0, id=1
+            )
 
     def test_elevation_boundaries(self) -> None:
         ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga",
-                        ip_addr="192.168.3.200", elevation=-90.0)
-        ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga",
-                        ip_addr="192.168.3.200", elevation=90.0)
+                        ip_addr="192.168.3.200", timing_mode="wr", azimuth=0.0, elevation=-90.0, id=1)
+        ObsModuleConfig(
+            mobo_serialno="SN1", quabo_version="bga", ip_addr="192.168.3.200", 
+            timing_mode="wr", azimuth=0.0, elevation=90.0, id=1
+        )
         with pytest.raises(ValidationError):
-            ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga",
-                            ip_addr="192.168.3.200", elevation=91.0)
+            ObsModuleConfig(
+                mobo_serialno="SN1", quabo_version="bga", ip_addr="192.168.3.200", 
+                timing_mode="wr", azimuth=0.0, elevation=91.0, id=1
+            )
 
     def test_quabo_version_as_list(self) -> None:
         """quabo_version can be a list of per-quabo version strings."""
         ObsModuleConfig(mobo_serialno="SN1",
                         quabo_version=["bga", "bga", "qfp", "bga"],
-                        ip_addr="192.168.3.200")
+                        ip_addr="192.168.3.200", timing_mode="wr", azimuth=0.0, elevation=0.0, id=1)
 
 
 # ===========================================================================

@@ -5,9 +5,9 @@ This file serves as a foundational mandate for Gemini CLI and other AI agents wo
 ## 🚀 Architectural Invariants
 
 ### 1. Transactional Integrity (Context Managers)
-Every observing run lifecycle event (Start/Stop) MUST be managed by a context manager defined in `control/utils/run_state.py`.
-- **`StartTransaction`**: Implements a strict, ordered rollback ladder. Any exception within the `with` block triggers a hardware-wide reset and state archival.
-- **`StopTransaction`**: Implements a "Fast-Path" teardown. It performs minimal hardware stop commands, enqueues a background job in the `TransferQueue`, and transitions the ledger to `RECORDING_ENDED`.
+Every observing run lifecycle event (Start/Stop) MUST be managed by a context manager.
+- **`StartTransaction`** (`control/src/control/start.py`): Implements a strict, ordered rollback ladder. Any exception within the `with` block triggers a hardware-wide reset and state archival.
+- **`StopTransaction`** (`control/src/control/stop.py`): Implements a "Fast-Path" teardown. It performs minimal hardware stop commands, enqueues a background job in the `TransferQueue`, and transitions the ledger to `RECORDING_ENDED`.
 - **Mandate**: NEVER implement procedural rollback or collection logic. Use the context managers and let the `TransferWorker` daemon handle post-run processing.
 
 ### 2. Atomic Advisory Locking
@@ -36,12 +36,12 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 ---
 ## 🧪 Testing & Validation
 
-### Tiered Validation
-- **Tier 1 (Unit)**: Pure logic, no external dependencies. `ci/tier1_unit/`.
-- **Tier 2 (Logic)**: State logic with mocked gRPC. `ci/tier2_logic/`.
-- **Tier 3 (Fleet)**: Dynamic multi-node with testcontainers. `ci/tier3_fleet/`.
-- **Tier 4 (Chaos)**: Fail-fast and resilience tests. `ci/tier4_chaos/`.
-- **Tier 5 (Integration)**: Static stack HW-SW simulation. `ci/tier5_integration/`.
+### Tiered Validation (Software v2)
+- **Tier 1 (Unit)**: Pure logic, no external dependencies. `src/ci/software_only_v2/tier1_unit/`.
+- **Tier 2 (Logic)**: State logic with mocked gRPC. `src/ci/software_only_v2/tier2_logic/`.
+- **Tier 3 (Fleet)**: Dynamic multi-node with testcontainers. `src/ci/software_only_v2/tier3_fleet/`.
+- **Tier 4 (Chaos)**: Fail-fast and resilience tests. `src/ci/software_only_v2/tier4_chaos/`.
+- **Tier 5 (Integration)**: Static stack HW-SW simulation. `src/ci/software_only_v2/tier5_integration/`.
 
 ### 🛡️ Resilience Mandates
 - **Idempotent Cleanup**: `CleanupData` MUST be idempotent. Requests to clean missing/already-deleted directories must return `ok=True`.
@@ -49,8 +49,7 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 - **Permission Boundary**: Host-side prepared directories MUST be recursively `chmod 777` to allow container root access.
 
 ### Chaos-Forced Green
-...
-- All transaction-related changes MUST be verified via the chaos suite: `pseti test sw chaos`.
+- All transaction-related changes MUST be verified via the chaos suite: `pseti test sw2 chaos`.
 - **Mandate**: A change is considered broken if it passes on localhost but fails in the 4-node Docker fleet simulation.
 
 ### CI Environment Detection

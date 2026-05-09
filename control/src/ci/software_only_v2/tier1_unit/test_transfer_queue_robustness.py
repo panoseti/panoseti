@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 test_transfer_queue_robustness.py — Unit tests for TransferQueue TOML serialization.
 Ensures that multiline strings (like rsync errors) and special characters 

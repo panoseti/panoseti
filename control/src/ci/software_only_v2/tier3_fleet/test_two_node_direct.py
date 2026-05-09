@@ -36,9 +36,10 @@ class TestTwoNodeDirect:
         fleet.exec_in_node(0, "mkdir -p /data/run0 && chmod 777 /data/run0")
         fleet.exec_in_node(1, "mkdir -p /data/run1 && chmod 777 /data/run1")
 
-        from control.utils.run_state import RunStateManager
+        from datetime import UTC, datetime
+
         from control.utils.pydantic_config_models import RunStateLedger, RunStatus
-        from datetime import datetime, UTC
+        from control.utils.run_state import RunStateManager
         
         mgr = RunStateManager()
         mgr.save_state(RunStateLedger(

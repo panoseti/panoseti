@@ -339,6 +339,13 @@ class DaqConfig(BaseStrictModel):
     daq_node_module_limit: int | None = Field(4, description="Maximum number of modules per DAQ node (structural limit)")
     daq_nodes: list[DaqNode]
 
+    def get_node_by_ip(self, ip: str) -> DaqNode:
+        """Returns the DaqNode matching the given IP address string."""
+        for node in self.daq_nodes:
+            if str(node.ip_addr) == ip:
+                return node
+        raise ValueError(f"No DAQ node found with IP {ip}")
+
     @model_validator(mode='after')
     def check_head_node_data_dir_match(self) -> DaqConfig:
         # If the head node and the DAQ node are the same machine, data_dir must match.

@@ -305,7 +305,7 @@ class PFFCorpus:
             AssertionError: if validation fails.
         """
         try:
-            from pypff import io2
+            from pypff import io2  # type: ignore[attr-defined]
         except ImportError as exc:
             raise ImportError(
                 "pypff is not installed. Install with: "

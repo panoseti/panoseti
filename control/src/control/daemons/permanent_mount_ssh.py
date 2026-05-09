@@ -295,7 +295,7 @@ def main() -> None:
                 }
                 combined["mounts"][name] = snap
                 if r:
-                    r.hset(f"MOUNT_{name.upper()}", mapping=safe_redis_mapping(snap))
+                    r.hset(f"MOUNT_{name.upper()}", mapping=safe_redis_mapping(snap)) # type: ignore[arg-type]
                 continue
 
             # ---------- Compute J2000 RA/Dec from EOD ----------
@@ -365,7 +365,7 @@ def main() -> None:
             # Redis
             if r:
                 try:
-                    r.hset(f"MOUNT_{name.upper()}", mapping=safe_redis_mapping(snap))
+                    r.hset(f"MOUNT_{name.upper()}", mapping=safe_redis_mapping(snap)) # type: ignore[arg-type]
                 except Exception as e:
                     print(f"[WARN] Redis HSET failed for {name}: {e}")
 
