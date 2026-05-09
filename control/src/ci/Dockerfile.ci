@@ -92,7 +92,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential git autoconf automake libtool g++ make \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
+
+# 1. Initialize empty repo, fetch exact commit shallowly, and checkout
+RUN mkdir hashpipe && cd hashpipe && \
+    git init && \
+    git remote add origin https://github.com/david-macmahon/hashpipe.git && \
+    git fetch --depth 1 origin 6b16dc80354d44a12a25faa8e6797aad3a54ceaf && \
+    git checkout FETCH_HEAD
+
 WORKDIR /build/hashpipe/src
 RUN autoreconf -is && ./configure --prefix=/usr/local && make && make install
 
