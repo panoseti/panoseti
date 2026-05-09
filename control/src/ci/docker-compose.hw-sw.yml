@@ -51,6 +51,7 @@ services:
       target: headnode
     profiles: ["headnode"]
     network_mode: host
+    user: root
     volumes:
       - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
       - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
@@ -78,6 +79,7 @@ services:
       target: integration-daqnode
     profiles: ["daqnode"]
     network_mode: host
+    user: root
     cap_add:
       - NET_RAW
       - NET_ADMIN

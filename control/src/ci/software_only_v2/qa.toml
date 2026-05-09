@@ -61,7 +61,7 @@ service = "int-tester"
 requires_docker = true
 compose_file = "docker-compose.integration.yml"
 test_dir = "software_only_v2/tier5_integration/"
-env = { ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-v2-daqnode-integration", PSETI_CONFIG = "/tmp/pseti_test/integration_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/app/src/ci/fixtures/configs/direct", PSETI_LOGS = "/tmp/pseti_test/logs" }
+env = { ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-v2-integration-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/integration_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/app/src/ci/fixtures/configs/direct", PSETI_LOGS = "/tmp/pseti_test/logs" }
 pre_run = "python3 /app/src/ci/tier5_setup.py"
 
 # ---------------------------------------------------------------------------

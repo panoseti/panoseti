@@ -31,7 +31,7 @@ def _get_client() -> Any:
     return docker.from_env()
 
 
-def _exec(container_name: str, cmd: str) -> tuple[int, str]:
+def _exec(container_name: str, cmd: str, user: str | None = None) -> tuple[int, str]:
     """Run a shell command inside a container. Returns (exit_code, output).
 
     Uses list-form exec_run so the cmd string is passed directly to sh -c
@@ -39,7 +39,7 @@ def _exec(container_name: str, cmd: str) -> tuple[int, str]:
     """
     client = _get_client()
     container = client.containers.get(container_name)
-    result = container.exec_run(["sh", "-c", cmd])
+    result = container.exec_run(["sh", "-c", cmd], user=user)
     return result.exit_code, (result.output or b"").decode("utf-8", errors="replace")
 
 

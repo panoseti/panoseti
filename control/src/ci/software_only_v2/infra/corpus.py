@@ -321,8 +321,17 @@ class PFFCorpus:
         for product_key, seq in run.products.items():
             if len(seq) == 0:
                 continue
-            arrays = seq.get_metadata_arrays(["pkt_num"])
-            pkt_nums = arrays.get("pkt_num")
+            
+            # Identify the correct pkt_num key based on available offsets
+            pkt_num_key = "pkt_num"
+            if "quabo_0.pkt_num" in seq.metadata_offsets:
+                pkt_num_key = "quabo_0.pkt_num"
+            elif "pkt_num" not in seq.metadata_offsets:
+                # If neither is found, we might be looking at a non-standard product
+                continue
+
+            arrays = seq.get_metadata_arrays([pkt_num_key])
+            pkt_nums = arrays.get(pkt_num_key)
             if pkt_nums is None or len(pkt_nums) < 2:
                 continue
             diffs = pkt_nums[1:] - pkt_nums[:-1]

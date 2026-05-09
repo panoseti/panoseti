@@ -133,6 +133,8 @@ def _stop_patches(state_mgr: RunStateManager):
     stack.enter_context(patch("control.stop.util.stop_data_flow", return_value=None))
     stack.enter_context(patch("control.stop.util.remove_run_name", return_value=None))
     stack.enter_context(patch("control.stop.util.read_run_name", return_value=RUN_NAME))
+    stack.enter_context(patch("control.stop.config_file.get_obs_config", return_value=MagicMock()))
+    stack.enter_context(patch("control.stop.config_file.get_data_config", return_value=MagicMock()))
 
     # Mock AsyncDaqControlClient
     mock_async_client = MagicMock()

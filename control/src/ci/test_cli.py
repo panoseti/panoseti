@@ -447,6 +447,31 @@ def sw2_all(ctx: typer.Context) -> None:
     for s in suites:
         ok = asyncio.run(ctx.obj.run_suite(s))
         success = success and ok
+
+    # Print summary
+    from rich.console import Console
+    from rich.table import Table
+    console = Console()
+    table = Table(title="Overall Test Summary (SW v2)")
+    table.add_column("Suite", style="cyan")
+    table.add_column("Passed", justify="right", style="green")
+    table.add_column("Failed", justify="right", style="red")
+    table.add_column("Skipped", justify="right", style="yellow")
+    table.add_column("Error", justify="right", style="red")
+    table.add_column("Time (s)", justify="right")
+
+    for res in ctx.obj.all_results:
+        st = res.stats
+        table.add_row(
+            res.name,
+            str(st.get("passed", 0)),
+            str(st.get("failed", 0)),
+            str(st.get("skipped", 0)),
+            str(st.get("error", 0)),
+            f"{res.elapsed:.1f}"
+        )
+    console.print(table)
+
     if not success:
         raise typer.Exit(code=1)
 

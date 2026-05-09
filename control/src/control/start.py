@@ -134,7 +134,11 @@ class StartTransaction:
                     # Use traceback.format_exception to handle ExceptionGroups (Python 3.11+)
                     # This automatically renders the nested tree of sub-exceptions.
                     full_tb = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
-                    logger.error(f"[FAILURE] Start process aborted: {exc_val}\n{full_tb}")
+                    summary = str(exc_val)
+                    if isinstance(exc_val, ExceptionGroup):
+                        sub_errs = ", ".join(type(e).__name__ + ": " + str(e) for e in exc_val.exceptions)
+                        summary = f"{summary} -> {sub_errs}"
+                    logger.error(f"[FAILURE] Start process aborted: {summary}\n{full_tb}")
                 
                 logger.info("Triggering Rollback Ladder...")
 

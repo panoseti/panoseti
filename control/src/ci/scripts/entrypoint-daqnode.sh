@@ -15,8 +15,8 @@ rm -f "${DATA_DIR}/module.config"
 if [ "$(id -u)" = "0" ]; then
     TARGET_UID="${LOCAL_UID:-1000}"
     TARGET_GID="${LOCAL_GID:-1000}"
-    chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}"
-    chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}/hashpipe.so"
+    chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}" 2>/dev/null || true
+    chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}/hashpipe.so" 2>/dev/null || true
 fi
 
 exec /entrypoint.sh "$@"

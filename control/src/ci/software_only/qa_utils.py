@@ -85,6 +85,7 @@ class TestRunner:
         self.default_parallel = self.cfg.settings.get("default_parallel", 4)
         self.project_prefix = self.cfg.settings.get("project_prefix", "pseti")
         self._temp_envs: dict[str, tuple[Path, dict[str, str]]] = {}
+        self.all_results: list[Result] = []
 
     async def run_suite(self, suite_name: str, jobs: int | None = None, target: str | None = None, extra_args: list[str] | None = None) -> bool:
         if suite_name not in self.cfg.suites:
@@ -116,6 +117,7 @@ class TestRunner:
                 self._temp_envs[suite_name][0].unlink(missing_ok=True)
                 del self._temp_envs[suite_name]
 
+        self.all_results.extend(results)
         return all(r.ok for r in results)
 
     async def build_images(self, suite_name: str | None = None):
@@ -204,6 +206,11 @@ class TestRunner:
             "DAQ_NET_TESTER": f"{daq_prefix}.5",
             "QUABO_NET_MOCK": f"{quabo_prefix}.32",
             "QUABO_NET_TESTER": f"{quabo_prefix}.5",
+            "DAQNODE_DIRECT_HOST": f"{daq_prefix}.10",
+            "DAQNODE2_HOST": f"{daq_prefix}.20",
+            "DAQNODE_DATA_HOST": f"{daq_prefix}.10",
+            "DAQNODE_GATEWAY_HOST": f"{head_prefix}.254",
+            "HEADNODE_HOST": f"{head_prefix}.22",
             "COMPOSE_PROJECT_NAME": f"{self.project_prefix}-{suite.name}"
         }
 

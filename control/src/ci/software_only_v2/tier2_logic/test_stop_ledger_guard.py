@@ -43,6 +43,8 @@ async def test_stop_refuses_if_already_finished(mock_state_mgr: MagicMock, mock_
     with patch("control.utils.util.is_local", return_value=True), \
          patch("control.utils.util.read_run_name", return_value="r1"), \
          patch("control.stop.RunStateManager", return_value=mock_state_mgr), \
+         patch("control.stop.config_file.get_obs_config", return_value=MagicMock()), \
+         patch("control.stop.config_file.get_data_config", return_value=MagicMock()), \
          caplog.at_level(logging.WARNING):
         
         res = await stop_run(
@@ -66,6 +68,8 @@ async def test_stop_proceeds_with_force_cleanup(mock_state_mgr: MagicMock, mock_
     with patch("control.utils.util.is_local", return_value=True), \
          patch("control.utils.util.read_run_name", return_value="r1"), \
          patch("control.stop.RunStateManager", return_value=mock_state_mgr), \
+         patch("control.stop.config_file.get_obs_config", return_value=MagicMock()), \
+         patch("control.stop.config_file.get_data_config", return_value=MagicMock()), \
          patch("control.stop.StopTransaction") as mock_tx_cls:
         
         # We need mock_tx to be an async context manager
@@ -93,6 +97,8 @@ async def test_stop_proceeds_if_active(mock_state_mgr: MagicMock, mock_daq_confi
     with patch("control.utils.util.is_local", return_value=True), \
          patch("control.utils.util.read_run_name", return_value="r1"), \
          patch("control.stop.RunStateManager", return_value=mock_state_mgr), \
+         patch("control.stop.config_file.get_obs_config", return_value=MagicMock()), \
+         patch("control.stop.config_file.get_data_config", return_value=MagicMock()), \
          patch("control.stop.StopTransaction") as mock_tx_cls:
         
         mock_tx = mock_tx_cls.return_value

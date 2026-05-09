@@ -52,7 +52,7 @@ def add_netem(
     if corrupt_pct:
         parts += ["corrupt", f"{corrupt_pct}%"]
     cmd = " ".join(parts)
-    code, out = _pc._exec(container_name, cmd)
+    code, out = _pc._exec(container_name, cmd, user="root")
     if code != 0:
         raise RuntimeError(f"netem add failed: {out}")
     logger.info(f"netem applied to {container_name}/{iface}: {parts[7:]}")
@@ -63,7 +63,7 @@ def remove_netem(container_name: str, iface: str | None = None) -> None:
     if iface is None:
         iface = _iface(container_name)
     with contextlib.suppress(Exception):
-        _pc._exec(container_name, f"tc qdisc del dev {iface} root")
+        _pc._exec(container_name, f"tc qdisc del dev {iface} root", user="root")
     logger.info(f"netem removed from {container_name}/{iface}")
 
 

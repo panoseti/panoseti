@@ -19,12 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 def _ipt(container_name: str, action: str, dst_ip: str, port: int | None = None) -> None:
-    parts = ["iptables", "-", action, "OUTPUT", "-d", dst_ip]
+    parts = ["iptables", f"-{action}", "OUTPUT", "-d", dst_ip]
     if port:
         parts += ["-p", "tcp", "--dport", str(port)]
     parts += ["-j", "DROP"]
     cmd = " ".join(parts)
-    code, out = _pc._exec(container_name, cmd)
+    code, out = _pc._exec(container_name, cmd, user="root")
     if code != 0 and action == "A":
         raise RuntimeError(f"iptables {action} failed: {out}")
 

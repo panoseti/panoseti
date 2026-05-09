@@ -38,8 +38,8 @@ import pytest
 # Static IP defaults (match docker-compose.integration.yml)
 # ---------------------------------------------------------------------------
 
-DAQNODE1_HOST = os.getenv("DAQNODE_DIRECT_HOST", "192.168.0.10")
-DAQNODE2_HOST = os.getenv("DAQNODE2_HOST", "192.168.0.20")
+DAQNODE1_HOST = os.getenv("DAQNODE_DIRECT_HOST", "daqnode")
+DAQNODE2_HOST = os.getenv("DAQNODE2_HOST", "daqnode-2")
 GRPC_PORT = int(os.getenv("GRPC_PORT", "50051"))
 REDIS_HOST = os.getenv("REDIS_HOST", "10.0.1.20")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
@@ -67,18 +67,18 @@ def _tcp_reachable(host: str, port: int, timeout: float = 2.0) -> bool:
 
 def _compose_stack_running() -> bool:
     """Return True if both daqnodes are TCP-reachable on their gRPC port."""
-    return (
-        _tcp_reachable(DAQNODE1_HOST, GRPC_PORT)
-        and _tcp_reachable(DAQNODE2_HOST, GRPC_PORT)
-    )
+    ok1 = _tcp_reachable(DAQNODE1_HOST, GRPC_PORT)
+    ok2 = _tcp_reachable(DAQNODE2_HOST, GRPC_PORT)
+    if not ok1:
+        print(f"DEBUG: Failed to reach DAQNODE1 at {DAQNODE1_HOST}:{GRPC_PORT}")
+    if not ok2:
+        print(f"DEBUG: Failed to reach DAQNODE2 at {DAQNODE2_HOST}:{GRPC_PORT}")
+    return ok1 and ok2
 
 
 requires_compose_stack = pytest.mark.skipif(
     not _compose_stack_running(),
-    reason=(
-        f"Compose stack not running — {DAQNODE1_HOST}:{GRPC_PORT} or "
-        f"{DAQNODE2_HOST}:{GRPC_PORT} unreachable"
-    ),
+    reason=f"Compose stack not running — {DAQNODE1_HOST} or {DAQNODE2_HOST} unreachable",
 )
 
 

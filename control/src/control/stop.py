@@ -398,7 +398,6 @@ async def stop_run(
     """
 
     # Prepare configs
-    obs_config = config_file.get_obs_config()
     data_config = config_file.get_data_config()
 
     state_mgr = RunStateManager()

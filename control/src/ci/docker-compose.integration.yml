@@ -21,8 +21,6 @@ volumes:
   mock_quabo_uds:
   grafana_data:
 
-
-
 services:
 
   grafana:
@@ -42,7 +40,6 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
-
 
   influxdb:
     image: influxdb:1.8
@@ -145,7 +142,7 @@ services:
       - daq_data:/data
     environment:
       GRPC_PORT:          "${GRPC_PORT:-50051}"
-      BINDHOST:           "${BINDHOST:-lo}"
+      BINDHOST:           "0.0.0.0"
       HEADNODE_IP:        "${HEAD_NET_HEADNODE:-10.0.1.22}"
       HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
     healthcheck:
@@ -177,7 +174,7 @@ services:
       - daq_data_2:/data
     environment:
       GRPC_PORT:          "${GRPC_PORT:-50051}"
-      BINDHOST:           "${BINDHOST:-lo}"
+      BINDHOST:           "0.0.0.0"
       HEADNODE_IP:        "${HEAD_NET_HEADNODE:-10.0.1.22}"
       HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
     healthcheck:
@@ -242,6 +239,7 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - daq_data:/data
+      - daq_data_2:/data_2
       - mock_quabo_uds:/uds:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -84,14 +85,15 @@ def mocked_make_run_dirs_factory(daqnode_container: Any):
     return mocked_make_run_dirs
 
 def mocked_build_rsync_cmd(node, run_name, head_run_dir, bwlimit):
-    # We simulate the per-node rsync by copying everything from /data 
+    # We simulate the per-node rsync by copying everything from the appropriate local mount
     cmd = ["rsync", "-rtv"]
+    ip_str = str(node.ip_addr)
+    daq_base = "/data_2" if (".20" in ip_str or "daqnode-2" in ip_str) else "/data"
     for mid in node.module_ids:
-        cmd.append(f"/data/module_{mid}/{run_name}/")
-    cmd.append(f"/data/{run_name}/")
+        cmd.append(f"{daq_base}/module_{mid}/{run_name}/")
+    cmd.append(f"{daq_base}/{run_name}/")
     cmd.append(str(head_run_dir) + "/")
     return cmd
-
 async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode_container: Any) -> None:
     """Start run, generate real data via tcpreplay, simulate metadata, and stop run."""
     from control.start import start_run
@@ -101,13 +103,19 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
     data_config = config_file.get_data_config()
     net_config = config_file.get_network_config()
     
+    import subprocess
+    
     data_config.run_type = "modified" # avoid strict checks
 
     hostname = getattr(daqnode_container, "name", "test-node")
-    
+
+    from control.utils import util
+    util.kill_hk_recorder()
+
     with patch("control.start.make_run_dirs", side_effect=mocked_make_run_dirs_factory(daqnode_container)), \
          patch("control.start.start_data_flow"), \
          patch("control.start._check_quabo_reachability"), \
+         patch("control.start.util.is_hk_recorder_running", return_value=False), \
          patch("control.start.util.write_run_name"), \
          patch("control.transfer.daemon.build_rsync_cmd", side_effect=mocked_build_rsync_cmd):
 
@@ -118,19 +126,40 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
         )
         assert actual_run_name == run_name
 
-        # Enable promisc mode and start tcpreplay to generate real data
-        daqnode_container.exec_run("ip link set lo promisc on")
+        # Enable promisc mode and start tcpreplay to generate real data on all nodes
+        import docker
+        client = docker.from_env()
+        project_name = os.getenv("COMPOSE_PROJECT_NAME", "pseti-v2-integration")
+        containers = client.containers.list(filters={"label": f"com.docker.compose.project={project_name}"})
+        daq_containers = [c for c in containers if "daqnode" in c.name]
+        
         from ci.software_only.conftest import PCAP_GLOB
         replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=lo {PCAP_GLOB}'"
-        daqnode_container.exec_run(replay_cmd, detach=True)
+        
+        for c in daq_containers:
+            try:
+                c.exec_run("ip link set lo promisc on", user="root")
+                c.exec_run(replay_cmd, detach=True, user="root")
+            except Exception as e:
+                print(f"Warning: failed to start tcpreplay in {c.name}: {e}")
 
-        # Simulate metadata and logs generation on the DAQ node.
-        # Since /data is a shared volume between int-tester and daqnode, we can write directly.
-        daq_run_path = Path("/data") / run_name
-        daq_run_path.mkdir(parents=True, exist_ok=True)
-        (daq_run_path / "meta.json").write_text('{"test": true}')
-        (daq_run_path / f"hp_stdout_{hostname}.log").touch()
-        (daq_run_path / "dp_manifest.node_test.txt").touch()
+        # Simulate metadata and logs generation on all DAQ nodes.
+        for node in daq_config.daq_nodes:
+            ip_str = str(node.ip_addr)
+            daq_base = Path("/data")
+            if ".20" in ip_str or "daqnode-2" in ip_str:
+                daq_base = Path("/data_2")
+                
+            if not daq_base.exists():
+                print(f"Warning: {daq_base} mount not found - skipping mock data for {ip_str}")
+                continue
+                
+            daq_run_path = daq_base / run_name
+            daq_run_path.mkdir(parents=True, exist_ok=True)
+            (daq_run_path / "meta.json").write_text('{"test": true}')
+            (daq_run_path / f"hp_stdout_{ip_str}.log").touch()
+            # Also touch a node-specific manifest to pass some legacy checks if needed
+            (daq_run_path / f"dp_manifest.node_{ip_str}.txt").touch()
 
         # Let it run for a bit to generate .pff files
         await asyncio.sleep(5.0)
@@ -142,8 +171,20 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
         )
         assert stop_ok
         
-        # Kill tcpreplay for this run
-        daqnode_container.exec_run("pkill -9 tcpreplay", detach=False)
+        # Kill tcpreplay for this run and fix permissions so rsync can copy the files
+        for c in daq_containers:
+            try:
+                c.exec_run("pkill -9 tcpreplay", user="root", detach=False)
+            except Exception:
+                pass
+            try:
+                c.exec_run("chmod -R 777 /data", user="root", detach=False)
+            except Exception:
+                pass
+            try:
+                c.exec_run("chmod -R 777 /data_2", user="root", detach=False)
+            except Exception:
+                pass
 
 def verify_integration_transfer_accuracy(head_data_dir: Path, run_name: str, daq_config: DaqConfig) -> None:
     head_run_dir = head_data_dir / run_name

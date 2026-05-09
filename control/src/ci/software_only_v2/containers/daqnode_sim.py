@@ -106,6 +106,6 @@ class DaqNodeSimContainer(PsetiContainer):
         # init=True enables Docker's built-in tini as PID 1, which properly
         # reaps orphaned zombie processes (needed for process chaos tests).
         self._kwargs(
-            cap_add=["IPC_LOCK", "SYS_NICE"],
+            cap_add=["IPC_LOCK", "SYS_NICE", "NET_ADMIN"],
             init=True,
         )

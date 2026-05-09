@@ -40,6 +40,7 @@ dependencies = [
   "pytest-timeout>=2.0",
   "pytest-xdist>=3.0",
   "docker>=7.0",
+  "pypff",
 ]
 
   [project.optional-dependencies]
