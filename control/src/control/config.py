@@ -664,7 +664,7 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
             quabo.send_maroc_params(qc_dict)
             quabo.close()
             if write_config:
-                quabo_i_config_path = PanoPaths.tmp_dir() / quabo_driver.QUABO_CONFIG_FILE_TEMPLATE.format(ip_addr=ip_addr)
+                quabo_i_config_path = PanoPaths.calibration_dir() / quabo_driver.QUABO_CONFIG_FILE_TEMPLATE.format(ip_addr=ip_addr)
                 _maroc_cfg = quabo.write_maroc_config(qc_dict, quabo_i_config_path)
 
 # set CHANMASK and GOEMASK for modules
@@ -727,10 +727,9 @@ def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfig, netw
             quabo.send_goe_mask(qc_dict_int, do_flush_rx_buf=do_flush_rx_buf)
             quabo.close()
             if write_config:
-                quabo_i_config_path = PanoPaths.tmp_dir() / quabo_driver.QUABO_CONFIG_FILE_TEMPLATE.format(ip_addr=ip_addr)
+                quabo_i_config_path = PanoPaths.calibration_dir() / quabo_driver.QUABO_CONFIG_FILE_TEMPLATE.format(ip_addr=ip_addr)
                 _trigger_mask_cfg   = quabo.write_trigger_mask_config(qc_dict_int, quabo_i_config_path)
                 _goe_mask_cfg       = quabo.write_goe_mask_config(qc_dict_int, quabo_i_config_path)
-
 def do_calibrate_ph(
     modules: list[ObsModuleConfig], 
     quabo_uids: QuaboUids, 
