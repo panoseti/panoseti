@@ -12,9 +12,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import anyio
-import grpc
 import pytest
 
+import grpc
 from ci.software_only_v2.fixtures.chaos import Chaos
 from ci.software_only_v2.infra.spec import FleetSpec
 from ci.software_only_v2.orchestrator.fleet import Fleet
@@ -57,10 +57,10 @@ class TestScGrpcFailures:
         from control.adapters.real_adapters import RealNetworkClient
 
         class ChaosNetworkClient(RealNetworkClient):
-            async def start_daq_node(self, node: Any, params: dict[str, Any], timeout: float = 10.0) -> bool:
+            async def start_daq_node(self, node: Any, params: dict[str, Any], timeout_s: float = 10.0) -> bool:
                 if str(node.ip_addr) == str(daq_config.daq_nodes[0].ip_addr):
                     raise grpc.RpcError("Injected timeout")
-                return await super().start_daq_node(node, params, timeout)
+                return await super().start_daq_node(node, params, timeout_s)
 
         net_client = ChaosNetworkClient(daq_config)
         process_mgr = FakeProcessManager()
@@ -104,12 +104,12 @@ class TestScGrpcFailures:
         from control.adapters.real_adapters import RealNetworkClient
 
         class ChaosNetworkClient(RealNetworkClient):
-            async def stop_daq_node(self, node: Any, timeout: float = 15.0) -> bool:
+            async def stop_daq_node(self, node: Any, timeout_s: float = 15.0) -> bool:
                 ip = str(node.ip_addr)
                 stop_called_ips.add(ip)
                 if ip == str(daq_config.daq_nodes[0].ip_addr):
                     raise grpc.RpcError("Injected failure")
-                return await super().stop_daq_node(node, timeout)
+                return await super().stop_daq_node(node, timeout_s)
 
         net_client = ChaosNetworkClient(daq_config)
         process_mgr = FakeProcessManager()

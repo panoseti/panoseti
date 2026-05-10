@@ -111,6 +111,10 @@ class TestRunner:
             # 3. Teardown
             if suite.requires_docker and not self.no_teardown:
                 await self._teardown_docker(suite, project_name)
+            elif not self.no_teardown:
+                # Even if suite doesn't require docker, it might have spawned 
+                # testcontainers (e.g. sw2 fleet). Prune them.
+                await self._cleanup_orphaned_networks(project_name, quiet=True)
             
             # Clean up temp env file
             if suite_name in self._temp_envs:
@@ -346,10 +350,19 @@ class TestRunner:
         import docker
         client = docker.from_env()
         try:
-            # Prune networks that match our naming patterns
-            patterns = [project_name, "pseti-v2-tc-"]
+            # 1. Aggressively kill and remove any containers matching the project or pseti-v2- prefix
+            # This ensures that SharedNetwork removal doesn't fail with "active endpoints".
+            container_patterns = [project_name, "pseti-v2-"]
+            for container in client.containers.list(all=True):
+                if any(p in container.name for p in container_patterns):
+                    with contextlib.suppress(Exception):
+                        container.stop(timeout=2)
+                        container.remove(force=True)
+
+            # 2. Prune networks that match our naming patterns
+            network_patterns = [project_name, "pseti-v2-tc-"]
             for network in client.networks.list():
-                if any(p in network.name for p in patterns):
+                if any(p in network.name for p in network_patterns):
                     if not quiet:
                         from rich.console import Console
                         Console().print(f"[dim]Cleaning up network: {network.name}[/dim]")

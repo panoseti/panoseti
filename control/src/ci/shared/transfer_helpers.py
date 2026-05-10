@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import subprocess
@@ -181,18 +182,12 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
         
         # Kill tcpreplay for this run and fix permissions so rsync can copy the files
         for c in daq_containers:
-            try:
+            with contextlib.suppress(Exception):
                 c.exec_run("pkill -9 tcpreplay", user="root", detach=False)
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 c.exec_run("chmod -R 777 /data", user="root", detach=False)
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 c.exec_run("chmod -R 777 /data_2", user="root", detach=False)
-            except Exception:
-                pass
 
 def verify_integration_transfer_accuracy(head_data_dir: Path, run_name: str, daq_config: DaqConfig) -> None:
     head_run_dir = head_data_dir / run_name

@@ -90,6 +90,7 @@ services:
 
   headnode:
     image: pseti-test-runner:latest
+    user: root
     build:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
@@ -215,6 +216,7 @@ services:
 
   int-tester:
     image: pseti-test-runner:latest
+    user: root
     build:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci

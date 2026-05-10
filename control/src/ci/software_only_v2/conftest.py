@@ -69,10 +69,21 @@ def pytest_unconfigure(config: Any) -> None:
         try:
             import docker
             client = docker.from_env()
-            # Aggressively prune any pseti-v2 networks left behind
-            patterns = ["pseti-v2-tc-", "pseti-v2-shared-net"]
+
+            # 1. Aggressively kill and remove any pseti-v2 containers
+            # This ensures that SharedNetwork removal doesn't fail with "active endpoints"
+            # if a test crashed or a fixture failed to tear down.
+            container_patterns = ["pseti-v2-"]
+            for container in client.containers.list(all=True):
+                if any(p in container.name for p in container_patterns):
+                    with contextlib.suppress(Exception):
+                        container.stop(timeout=2)
+                        container.remove(force=True)
+
+            # 2. Prune any pseti-v2 networks left behind
+            network_patterns = ["pseti-v2-tc-", "pseti-v2-shared-net"]
             for network in client.networks.list():
-                if any(p in network.name for p in patterns):
+                if any(p in network.name for p in network_patterns):
                     with contextlib.suppress(Exception):
                         network.remove()
         except Exception:

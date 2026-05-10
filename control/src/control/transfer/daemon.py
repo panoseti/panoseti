@@ -59,7 +59,7 @@ logger = get_logger("transfer_daemon", log_dir=_log_dir, grpc_enabled=False)
 try:
     import panoseti_grpc.daq_control.client as daq_client
 except ImportError:
-    daq_client = None 
+    daq_client = None  # type: ignore
 
 
 def _safe_ledger_update(state_mgr: RunStateManager, *, status: RunStatus, **fields: Any) -> None:
@@ -247,7 +247,7 @@ async def _process_job(
                         logger.warning("gen_manifest task raised: %s", exc)
 
             else:
-                logger.warning("panoseti_grpc not available; skipping manifest generation")
+                logger.warning("panoseti_grpc not available; skipping manifest generation")  # type: ignore[unreachable]
 
             if manifest_errors:
                 err_msg = "; ".join(manifest_errors)
@@ -411,7 +411,7 @@ async def _process_job(
                         cleanup_errors.append(f"cleanup_node task failed: {exc}")
                         logger.warning("cleanup_node task raised: %s", exc)
             else:
-                logger.warning("panoseti_grpc not available; skipping cleanup")
+                logger.warning("panoseti_grpc not available; skipping cleanup")  # type: ignore[unreachable]
 
             if cleanup_errors:
                 err_msg = "; ".join(cleanup_errors)

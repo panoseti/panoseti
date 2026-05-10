@@ -26,7 +26,12 @@ from typing import Any
 
 import typer
 
-from panoseti_grpc.telemetry.logger import get_logger
+try:
+    from panoseti_grpc.telemetry.logger import get_logger
+except ImportError:
+    # fallback for development/CI environments
+    from panoseti_grpc.telemetry.logger import get_logger
+
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
 from control.interfaces import FileSystemManager, NetworkClient, ProcessManager
@@ -156,7 +161,7 @@ class StopTransaction:
             try:
                 async def stop_node_task(node: DaqNode) -> None:
                     try:
-                        ok = await self.net_client.stop_daq_node(node, timeout=15.0)
+                        ok = await self.net_client.stop_daq_node(node, timeout_s=15.0)
                         if not ok:
                             self.all_errors.append(f"StopDaq failed for {node.ip_addr}")
                     except Exception as e:

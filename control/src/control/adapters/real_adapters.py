@@ -15,8 +15,8 @@ from typing import Any
 
 import psutil
 
-from control.interfaces import FileSystemManager, NetworkClient, ProcessManager
-from control.utils.pydantic_config_models import DaqConfig, DaqNode
+from ..interfaces import FileSystemManager, NetworkClient, ProcessManager
+from ..utils.pydantic_config_models import DaqConfig, DaqNode
 
 logger = logging.getLogger(__name__)
 

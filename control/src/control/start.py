@@ -47,8 +47,8 @@ from panoseti_grpc.telemetry.logger import get_logger
 
 # control imports
 import control.session_stop as session_stop
-from control.adapters.real_adapters import NetworkClient
 from control.driver import quabo_driver
+from control.interfaces import NetworkClient
 from control.tools.sw_info import get_sw_info
 from control.utils import config_file, file_xfer, pff, util
 from control.utils.paths import PanoPaths
@@ -523,7 +523,8 @@ async def start_recording(
     """
     # 1. Start local daemons
     if tx.process_mgr:
-         await asyncio.to_thread(tx.process_mgr.start, [sys.executable, util.hk_recorder_name, str(PanoPaths.logs_dir())])
+         hk_path = f'{daq_config.head_node_data_dir}/{run_name}/{util.hk_file_name}'
+         await asyncio.to_thread(tx.process_mgr.start, [sys.executable, util.hk_recorder_name, hk_path])
          if not no_hv:
              await asyncio.to_thread(tx.process_mgr.start, [sys.executable, util.hv_updater_name])
              await asyncio.to_thread(tx.process_mgr.start, [sys.executable, util.module_temp_monitor_name])
@@ -571,7 +572,7 @@ async def start_recording(
         for attempt in range(1, startdaq_retries + 1):
             try:
                 ok = await asyncio.wait_for(
-                    net_client.start_daq_node(node_validator, start_args, timeout=startdaq_timeout),
+                    net_client.start_daq_node(node_validator, start_args, timeout_s=startdaq_timeout),
                     timeout=startdaq_timeout + 5
                 )
                 if ok:
@@ -629,7 +630,7 @@ async def start_recording(
             await asyncio.sleep(1.0) # 1s between attempts
             
             try:
-                status = await net_client.get_daq_status(node_validator, timeout=5.0)
+                status = await net_client.get_daq_status(node_validator, timeout_s=5.0)
                 if hasattr(status, 'hashpipe_running'):
                     running = status.hashpipe_running
                     pid = status.hashpipe_pid
@@ -677,7 +678,7 @@ async def start_recording(
                 return
             
             try:
-                status = await net_client.get_daq_status(node_validator, timeout=5.0)
+                status = await net_client.get_daq_status(node_validator, timeout_s=5.0)
                 if hasattr(status, 'hashpipe_running'):
                     running = status.hashpipe_running
                     msg = status.message
@@ -778,7 +779,7 @@ async def _check_daq_reachability(daq_config: DaqConfig, net_client: NetworkClie
         if not node.module_ids:
             return
         try:
-            await net_client.get_daq_status(node, timeout=5.0)
+            await net_client.get_daq_status(node, timeout_s=5.0)
         except Exception as e:
             raise ValidationError(f"DAQ node {node.ip_addr} gRPC is unreachable: {e}") from e
 
@@ -846,7 +847,7 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, net_client: NetworkCl
         if not node.module_ids:
             return
         try:
-            status = await net_client.get_daq_status(node, timeout=5.0)
+            status = await net_client.get_daq_status(node, timeout_s=5.0)
             if hasattr(status, 'hashpipe_running'):
                 running = status.hashpipe_running
                 pid = status.hashpipe_pid
@@ -864,7 +865,7 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, net_client: NetworkCl
                     node.ip_addr, pid,
                 )
                 try:
-                    await net_client.stop_daq_node(node, timeout=15.0)
+                    await net_client.stop_daq_node(node, timeout_s=15.0)
                 except Exception as stop_err:
                     raise ValidationError(
                         f"--force-restart: StopDaq failed for {node.ip_addr}: {stop_err}"
@@ -1193,8 +1194,10 @@ async def start_run(
             # Write legacy current_run file for compatibility
             if fs_mgr:
                 await asyncio.to_thread(fs_mgr.write_metadata, run_name, {"run_name": run_name})
-            else:
-                util.write_run_name(daq_config, run_name)
+            
+            # Always write the local legacy current_run file so background daemons (interleaver, HK)
+            # can find the active run.
+            util.write_run_name(daq_config, run_name)
             
             logger.info(f'started run {run_name}')
             tx.success = True

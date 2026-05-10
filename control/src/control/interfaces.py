@@ -35,15 +35,15 @@ class NetworkClient(typing.Protocol):
         """Return True if the given DaqNode is reachable."""
         ...
 
-    async def start_daq_node(self, node: Any, params: dict[str, Any], timeout: float = 10.0) -> bool:
+    async def start_daq_node(self, node: Any, params: dict[str, Any], timeout_s: float = 10.0) -> bool:
         """Send the StartDaq command to a specific node."""
         ...
         
-    async def stop_daq_node(self, node: Any, timeout: float = 15.0) -> bool:
+    async def stop_daq_node(self, node: Any, timeout_s: float = 15.0) -> bool:
         """Send the StopDaq command to a specific node."""
         ...
         
-    async def get_daq_status(self, node: Any, timeout: float = 5.0) -> Any:
+    async def get_daq_status(self, node: Any, timeout_s: float = 5.0) -> Any:
         """Fetch status from a specific DAQ node."""
         ...
 

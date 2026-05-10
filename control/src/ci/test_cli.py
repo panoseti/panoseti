@@ -6,6 +6,7 @@ Provides subcommands for Linting, Software (Docker CI), and Hardware (HITL) test
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -47,7 +48,7 @@ class GrpcTestLazyGroup(BaseLazyGroup):
         except Exception:
             return []
 
-    def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         import importlib
         root = PanoPaths.software_root_dir()
         grpc_tests = str(root / "grpc")
@@ -58,14 +59,14 @@ class GrpcTestLazyGroup(BaseLazyGroup):
             mod = importlib.import_module("tests.qa")
             test_app = mod.app
             click_group = typer.main.get_command(test_app)
-            cmd = click_group.get_command(ctx, name)  # type: ignore[attr-defined]
+            cmd = click_group.get_command(ctx, cmd_name)  # type: ignore[attr-defined]
             if cmd:
-                cmd.name = name
+                cmd.name = cmd_name
                 return cmd
             return None
         except Exception as e:
             error_console = Console(stderr=True)
-            error_console.print(f"[red]Error loading gRPC test command '{name}': {e}[/red]")
+            error_console.print(f"[red]Error loading gRPC test command '{cmd_name}': {e}[/red]")
             return None
 
 
@@ -84,20 +85,20 @@ class HwTestLazyGroup(BaseLazyGroup):
         except Exception:
             return []
 
-    def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         import importlib
         try:
             mod = importlib.import_module("ci.hardware_software.hw_utils.cli")
             test_app = mod.app
             click_group = typer.main.get_command(test_app)
-            cmd = click_group.get_command(ctx, name)  # type: ignore[attr-defined]
+            cmd = click_group.get_command(ctx, cmd_name)  # type: ignore[attr-defined]
             if cmd:
-                cmd.name = name
+                cmd.name = cmd_name
                 return cmd
             return None
         except Exception as e:
             error_console = Console(stderr=True)
-            error_console.print(f"[red]Error loading HW test command '{name}': {e}[/red]")
+            error_console.print(f"[red]Error loading HW test command '{cmd_name}': {e}[/red]")
             return None
 
 
@@ -149,6 +150,47 @@ def grpc_main(
 # ---------------------------------------------------------------------------
 # Global Setup
 # ---------------------------------------------------------------------------
+
+@app.command()
+def prune(
+    ctx: typer.Context,
+    all: Annotated[bool, typer.Option("--all", "-a", help="Prune all PSETI containers and networks, including 'outer' test-runners.")] = False,
+) -> None:
+    """Aggressively prune PSETI test containers and networks."""
+    import docker
+    client = docker.from_env()
+
+    # Base patterns for v2 testcontainers and shared networks
+    container_patterns = ["pseti-v2-"]
+    network_patterns = ["pseti-v2-tc-", "pseti-v2-shared-net"]
+
+    if all:
+        # Include 'outer' stack patterns used by pseti test sw/lint
+        container_patterns.extend(["ctl-int-", "ci-", "pseti-lint", "pseti-v2-integration"])
+        network_patterns.extend(["pseti-lint", "ctl-int", "ci-", "pseti-v2-integration"])
+
+    console.print(f"[bold cyan]Pruning PSETI containers... (all={all})[/bold cyan]")
+    containers = client.containers.list(all=True)
+    for container in containers:
+        if container is None or container.name is None:
+            continue
+        if any(p in container.name for p in container_patterns):
+            console.print(f"  - Stopping/Removing [bold]{container.name}[/bold]")
+            with contextlib.suppress(Exception):
+                container.stop(timeout=2)
+                container.remove(force=True)
+
+    console.print(f"\n[bold cyan]Pruning PSETI networks...[/bold cyan]")
+    for network in client.networks.list():
+        if network is None or network.name is None:
+            continue
+        if any(p in network.name for p in network_patterns):
+            console.print(f"  - Removing [bold]{network.name}[/bold]")
+            with contextlib.suppress(Exception):
+                network.remove()
+
+    console.print("\n[bold green]Cleanup complete.[/bold green]")
+
 
 @app.callback()
 def main(

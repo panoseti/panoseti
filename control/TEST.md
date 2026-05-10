@@ -91,6 +91,26 @@ spec = (
 *   **Robust Teardown:** All tests utilize a global cleanup fixture that performs a tiered termination (SIGINT → wait → SIGKILL) of remote processes.
 *   **Extended Timeouts:** Integration tests (`pytest-timeout`) are configured for **120 seconds** to accommodate the hardware-mandated 60-second graceful buffer flush period during `StopDaq`.
 
+## 🔐 Docker Permissions & UID Injection
+
+To ensure frictionless development and CI, PANOSETI uses **Build-Time UID Injection**. This strategy aligns the container user with your host user, eliminating the "Permission Denied" errors common with host-mounted volumes.
+
+### How it works
+1.  **Build Phase:** When you run `pseti test build`, the runner detects your host `UID` and `GID` (e.g., `1001:1001`) and passes them as `--build-arg` to Docker.
+2.  **User Creation:** The `Dockerfile.ci` creates a internal `panoseti` user with these exact numeric IDs.
+3.  **Native Access:** Because the container user matches the host user, any directory you mount (like `control/` or `/mnt/panoseti-test/`) is natively readable and writable by the container without needing `root` or `chmod -R` hacks.
+
+### Key Rules
+*   **Avoid Runtime Remapping:** Do not use `gosu` or `usermod` in new entrypoint scripts. Rely on the image being built for the correct user.
+*   **Multi-Node Consistency:** In the physical lab (HITL), images **must be rebuilt** on the specific node if the host UID differs from the development machine. Use `pseti test hw build` to trigger coordinated builds across all nodes.
+*   **Shared Volumes:** For anonymous volumes (like `/data` in Tier 5), the entrypoint automatically handles ownership alignment if it detects it is running as root (e.g., in specialized system containers).
+
+### Troubleshooting
+If you see `Permission denied` inside a container:
+1.  Verify your host UID: `id -u`.
+2.  Check the container UID: `docker exec <id> id -u`.
+3.  If they mismatch, rebuild: `pseti test build`.
+
 ---
 
 ## 🏗️ Architecture Diagrams

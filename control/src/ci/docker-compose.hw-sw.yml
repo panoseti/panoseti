@@ -49,6 +49,9 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: headnode
+      args:
+        LOCAL_UID: "${HOST_UID:-1000}"
+        LOCAL_GID: "${HOST_GID:-1000}"
     profiles: ["headnode"]
     network_mode: host
     user: root
@@ -77,6 +80,9 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: integration-daqnode
+      args:
+        LOCAL_UID: "${HOST_UID:-1000}"
+        LOCAL_GID: "${HOST_GID:-1000}"
     profiles: ["daqnode"]
     network_mode: host
     user: root

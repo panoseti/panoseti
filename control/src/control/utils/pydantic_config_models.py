@@ -349,9 +349,8 @@ class DaqConfig(BaseStrictModel):
         for node in self.daq_nodes:
             if str(node.ip_addr) == target_ip:
                 return node
-            if node.port_forwarding and node.port_forwarding.status:
-                if str(node.port_forwarding.gw_ip) == target_ip:
-                    return node
+            if node.port_forwarding and node.port_forwarding.status and str(node.port_forwarding.gw_ip) == target_ip:
+                return node
         raise ValueError(f"No DAQ node found with IP {target_ip} (original: {ip})")
 
     @model_validator(mode='after')

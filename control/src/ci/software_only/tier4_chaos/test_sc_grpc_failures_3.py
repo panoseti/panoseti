@@ -247,9 +247,8 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
     import unittest.mock
     from ipaddress import IPv4Address
 
-    import grpc
-
     import control.stop as stop
+    import grpc
     from control.utils.pydantic_config_models import DaqConfig, DaqNode
 
     # Setup config with one node

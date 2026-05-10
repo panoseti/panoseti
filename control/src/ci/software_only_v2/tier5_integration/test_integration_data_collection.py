@@ -8,6 +8,7 @@ Transaction invariant:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import pathlib
 import time
@@ -42,21 +43,14 @@ def _prepare_host_dirs(params: dict[str, Any], create_run_dir: bool = True) -> N
             d.mkdir(parents=True, exist_ok=True)
             (d / "data.pff").write_bytes(b"synthetic data")
             for root, dirs, files in os.walk(mod_root):
-                try:
+                with contextlib.suppress(PermissionError):
                     os.chmod(root, 0o777)
-                except PermissionError:
-                    pass
                 for dr in dirs:
-                    try:
+                    with contextlib.suppress(PermissionError):
                         os.chmod(os.path.join(root, dr), 0o777)
-                    except PermissionError:
-                        pass
                 for f in files:
-                    try:
+                    with contextlib.suppress(PermissionError):
                         os.chmod(os.path.join(root, f), 0o777)
-                    except PermissionError:
-                        pass
-
 
 def _wait_for_data(params: dict[str, Any], timeout: float = 10.0) -> bool:
     host_root = pathlib.Path(DAQ_DATA_DIR)

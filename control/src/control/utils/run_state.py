@@ -258,11 +258,8 @@ class RunStateManager:
                  try:
                      target_ip = IPv4Address(node_ip)
                  except ValueError:
-                     try:
+                     with contextlib.suppress(ValueError):
                          target_ip = IPv6Address(node_ip)
-                     except ValueError:
-                         pass
-
             node = next((n for n in state.nodes if n.ip_addr == target_ip), None)
             if node:
                 for key, value in fields.items():

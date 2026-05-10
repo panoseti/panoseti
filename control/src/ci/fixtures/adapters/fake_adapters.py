@@ -45,18 +45,18 @@ class FakeNetworkClient:
     async def ping_node(self, node: Any) -> bool:
         return str(node.ip_addr) in self.reachable_nodes
 
-    async def start_daq_node(self, node: Any, params: dict[str, Any], timeout: float = 10.0) -> bool:
+    async def start_daq_node(self, node: Any, params: dict[str, Any], timeout_s: float = 10.0) -> bool:
         ip = str(node.ip_addr)
         self.start_calls[ip] = self.start_calls.get(ip, 0) + 1
         self.last_params[ip] = params
         return True
 
-    async def stop_daq_node(self, node: Any, timeout: float = 15.0) -> bool:
+    async def stop_daq_node(self, node: Any, timeout_s: float = 15.0) -> bool:
         ip = str(node.ip_addr)
         self.stop_calls[ip] = self.stop_calls.get(ip, 0) + 1
         return True
 
-    async def get_daq_status(self, node: Any, timeout: float = 5.0) -> dict[str, Any]:
+    async def get_daq_status(self, node: Any, timeout_s: float = 5.0) -> dict[str, Any]:
         return self.status_responses.get(str(node.ip_addr), {})
 
 

@@ -1,11 +1,14 @@
+ARG LOCAL_UID=1000
+ARG LOCAL_GID=1000
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: base
 # Python + panoseti-grpc dev dependencies. Inherited by all test stages.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM python:3.14-slim AS base
 
-ARG LOCAL_UID=1000
-ARG LOCAL_GID=1000
+ARG LOCAL_UID
+ARG LOCAL_GID
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -36,8 +39,8 @@ RUN chmod +x /entrypoint.sh /entrypoint-daqnode.sh /entrypoint-headnode-hw.sh
 
 # Create the panoseti user with Build-Time UID/GID injection.
 RUN groupadd -o -g ${LOCAL_GID} panoseti \
- && useradd -u ${LOCAL_UID} -o -g ${LOCAL_GID} -m -s /bin/bash panoseti \
- && (getent group docker || groupadd -g 999 docker || groupadd docker) \
+ && useradd -o -u ${LOCAL_UID} -o -g ${LOCAL_GID} -m -s /bin/bash panoseti \
+ && (getent group docker || groupadd -o -g 999 docker || groupadd docker) \
  && usermod -aG docker panoseti
 
 # Pre-allocate and chown environment/data/grpc dirs.
@@ -58,6 +61,9 @@ RUN --mount=type=cache,uid=${LOCAL_UID},target=/home/panoseti/.cache/uv \
 # Unified runner for lint, unit, structural, and integration tests.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS headnode
+
+ARG LOCAL_UID
+ARG LOCAL_GID
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -116,6 +122,9 @@ RUN make
 # Stage: integration-daqnode
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS integration-daqnode
+
+ARG LOCAL_UID
+ARG LOCAL_GID
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \

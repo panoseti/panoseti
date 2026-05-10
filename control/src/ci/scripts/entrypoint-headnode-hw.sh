@@ -5,8 +5,8 @@ set -e
 
 # Only perform root-level setup (SSH keys, UID dance) if we are currently root.
 if [ "$(id -u)" = "0" ]; then
-    TARGET_UID="${LOCAL_UID:-1000}"
-    TARGET_GID="${LOCAL_GID:-1000}"
+    TARGET_UID=$(id -u panoseti)
+    TARGET_GID=$(id -g panoseti)
 
     # Copy SSH keys from the bind-mounted host .ssh dir into the panoseti home dir.
     mkdir -p /home/panoseti/.ssh
