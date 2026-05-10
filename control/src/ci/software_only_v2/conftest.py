@@ -64,8 +64,8 @@ def pytest_configure(config: Any) -> None:
 
 def pytest_unconfigure(config: Any) -> None:
     """Final cleanup after all tests finish."""
-    # Only prune if we are the master process (or solo)
-    if not hasattr(config, "workerinput"):
+    # Only prune if we are the master process (or solo) and NOT inside a container
+    if not hasattr(config, "workerinput") and not os.path.exists("/.dockerenv"):
         try:
             import docker
             client = docker.from_env()

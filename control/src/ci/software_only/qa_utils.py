@@ -123,7 +123,15 @@ class TestRunner:
                 del self._temp_envs[suite_name]
 
         self.all_results.extend(results)
-        return all(r.ok for r in results)
+        success = all(r.ok for r in results)
+        if not success:
+            from rich.console import Console
+            c = Console()
+            for r in results:
+                if not r.ok:
+                    c.print(f"[red]Suite {suite_name} result {r.name} failed with code {r.code}[/red]")
+                    c.print(f"[dim]Stats: {r.stats}[/dim]")
+        return success
 
     async def build_images(self, suite_name: str | None = None):
         """Pre-build all images used in the suite(s)."""
