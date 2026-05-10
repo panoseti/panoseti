@@ -358,7 +358,8 @@ class TestRunner:
                 if any(p in container.name for p in container_patterns):
                     with contextlib.suppress(Exception):
                         container.stop(timeout=2)
-                        container.remove(force=True)
+                        # Use v=True to remove associated anonymous volumes
+                        container.remove(force=True, v=True)
 
             # 2. Prune networks that match our naming patterns
             network_patterns = [project_name, "pseti-v2-tc-"]

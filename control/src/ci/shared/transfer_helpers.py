@@ -84,7 +84,10 @@ class IntegrationFileSystemManager:
             (daq_data_path / run_name).mkdir(parents=True, exist_ok=True)
             for mid in node.module_ids:
                 (daq_data_path / f"module_{mid}" / run_name).mkdir(parents=True, exist_ok=True)
-            subprocess.run(["chmod", "-R", "777", str(daq_data_path)], check=False)
+            
+            # Best-effort chmod to ensure the panoseti user can write to the volume
+            # We use /bin/sh to avoid shell expansion issues and check=False
+            subprocess.run(["chmod", "-R", "777", str(daq_data_path)], capture_output=True, check=False)
 
     def write_metadata(self, run_name: str, data: dict[str, Any]) -> None:
         pass # Not needed for integration tests, or could write to head_data_dir
@@ -146,8 +149,13 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
         
         for c in daq_containers:
             try:
+                # Use --user root explicitly for system-level operations
                 c.exec_run("ip link set lo promisc on", user="root")
-                c.exec_run(replay_cmd, detach=True, user="root")
+                res = c.exec_run(replay_cmd, detach=True, user="root")
+                if res.exit_code and res.exit_code != 0:
+                    print(f"Warning: tcpreplay start returned exit code {res.exit_code} in {c.name}")
+                else:
+                    print(f"Info: Started tcpreplay in {c.name}")
             except Exception as e:
                 print(f"Warning: failed to start tcpreplay in {c.name}: {e}")
 
@@ -184,10 +192,12 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
         for c in daq_containers:
             with contextlib.suppress(Exception):
                 c.exec_run("pkill -9 tcpreplay", user="root", detach=False)
-            with contextlib.suppress(Exception):
-                c.exec_run("chmod -R 777 /data", user="root", detach=False)
-            with contextlib.suppress(Exception):
-                c.exec_run("chmod -R 777 /data_2", user="root", detach=False)
+            
+            # Explicitly chmod the data directories to ensure rsync (running as panoseti) has access
+            for path in ["/data", "/data_2"]:
+                res = c.exec_run(f"chmod -R 777 {path}", user="root", detach=False)
+                if res.exit_code and res.exit_code != 0:
+                    print(f"Warning: chmod -R 777 {path} failed in {c.name}: {res.output.decode().strip()}")
 
 def verify_integration_transfer_accuracy(head_data_dir: Path, run_name: str, daq_config: DaqConfig) -> None:
     head_run_dir = head_data_dir / run_name

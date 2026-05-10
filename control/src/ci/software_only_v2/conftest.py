@@ -78,7 +78,7 @@ def pytest_unconfigure(config: Any) -> None:
                 if any(p in container.name for p in container_patterns):
                     with contextlib.suppress(Exception):
                         container.stop(timeout=2)
-                        container.remove(force=True)
+                        container.remove(force=True, v=True)
 
             # 2. Prune any pseti-v2 networks left behind
             network_patterns = ["pseti-v2-tc-", "pseti-v2-shared-net"]

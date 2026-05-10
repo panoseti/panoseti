@@ -178,7 +178,7 @@ def prune(
             console.print(f"  - Stopping/Removing [bold]{container.name}[/bold]")
             with contextlib.suppress(Exception):
                 container.stop(timeout=2)
-                container.remove(force=True)
+                container.remove(force=True, v=True)
 
     console.print("\n[bold cyan]Pruning PSETI networks...[/bold cyan]")
     for network in client.networks.list():
@@ -188,6 +188,14 @@ def prune(
             console.print(f"  - Removing [bold]{network.name}[/bold]")
             with contextlib.suppress(Exception):
                 network.remove()
+
+    console.print("\n[bold cyan]Pruning PSETI volumes...[/bold cyan]")
+    volume_patterns = ["daq_data", "mock_quabo_uds", "grafana_data", "ci_panoseti_mnt"]
+    for volume in client.volumes.list():
+        if any(p in volume.name for p in volume_patterns):
+            console.print(f"  - Removing [bold]{volume.name}[/bold]")
+            with contextlib.suppress(Exception):
+                volume.remove(force=True)
 
     console.print("\n[bold green]Cleanup complete.[/bold green]")
 
