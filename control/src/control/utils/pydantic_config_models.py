@@ -340,11 +340,19 @@ class DaqConfig(BaseStrictModel):
     daq_nodes: list[DaqNode]
 
     def get_node_by_ip(self, ip: str) -> DaqNode:
-        """Returns the DaqNode matching the given IP address string."""
+        """Returns the DaqNode matching the given IP address string or its forwarded gateway IP.
+        
+        Handles IP strings with optional port suffix (e.g. '127.0.0.1:50051').
+        """
+        target_ip = ip.split(':')[0] if ":" in ip and not ip.startswith("unix:") else ip
+        
         for node in self.daq_nodes:
-            if str(node.ip_addr) == ip:
+            if str(node.ip_addr) == target_ip:
                 return node
-        raise ValueError(f"No DAQ node found with IP {ip}")
+            if node.port_forwarding and node.port_forwarding.status:
+                if str(node.port_forwarding.gw_ip) == target_ip:
+                    return node
+        raise ValueError(f"No DAQ node found with IP {target_ip} (original: {ip})")
 
     @model_validator(mode='after')
     def check_head_node_data_dir_match(self) -> DaqConfig:

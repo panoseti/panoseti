@@ -67,13 +67,10 @@ def _tcp_reachable(host: str, port: int, timeout: float = 2.0) -> bool:
 
 def _compose_stack_running() -> bool:
     """Return True if both daqnodes are TCP-reachable on their gRPC port."""
-    ok1 = _tcp_reachable(DAQNODE1_HOST, GRPC_PORT)
-    ok2 = _tcp_reachable(DAQNODE2_HOST, GRPC_PORT)
-    if not ok1:
-        print(f"DEBUG: Failed to reach DAQNODE1 at {DAQNODE1_HOST}:{GRPC_PORT}")
-    if not ok2:
-        print(f"DEBUG: Failed to reach DAQNODE2 at {DAQNODE2_HOST}:{GRPC_PORT}")
-    return ok1 and ok2
+    return (
+        _tcp_reachable(DAQNODE1_HOST, GRPC_PORT)
+        and _tcp_reachable(DAQNODE2_HOST, GRPC_PORT)
+    )
 
 
 requires_compose_stack = pytest.mark.skipif(

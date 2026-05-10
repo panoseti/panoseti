@@ -13,6 +13,9 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: test-runner
+      args:
+        LOCAL_UID: "${LOCAL_UID:-1000}"
+        LOCAL_GID: "${LOCAL_GID:-1000}"
     depends_on:
       redis:
         condition: service_started

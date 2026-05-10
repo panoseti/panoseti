@@ -31,24 +31,36 @@ class ProcessManager(typing.Protocol):
 class NetworkClient(typing.Protocol):
     """Abstracts RPC calls to DAQ nodes (e.g. panoseti_grpc)."""
     
-    async def ping_nodes(self) -> list[str]:
-        """Return a list of reachable node hostnames/IPs."""
+    async def ping_node(self, node: Any) -> bool:
+        """Return True if the given DaqNode is reachable."""
+        ...
+
+    async def start_daq_node(self, node: Any, params: dict[str, Any], timeout: float = 10.0) -> bool:
+        """Send the StartDaq command to a specific node."""
         ...
         
-    async def start_daq(self, params: dict[str, Any]) -> bool:
-        """Send the StartDaq command to all nodes."""
+    async def stop_daq_node(self, node: Any, timeout: float = 15.0) -> bool:
+        """Send the StopDaq command to a specific node."""
         ...
         
-    async def stop_daq(self) -> bool:
-        """Send the StopDaq command to all nodes."""
+    async def get_daq_status(self, node: Any, timeout: float = 5.0) -> Any:
+        """Fetch status from a specific DAQ node."""
         ...
 
 
 class FileSystemManager(typing.Protocol):
     """Abstracts local filesystem operations for the orchestrators."""
     
-    def create_run_dirs(self, run_name: str) -> None:
-        """Create the directory structure for a new run."""
+    def create_run_dirs(
+        self,
+        run_name: str,
+        obs_config: Any = None,
+        daq_config: Any = None,
+        quabo_uids: Any = None,
+        data_config: Any = None,
+        network_config: Any = None
+    ) -> None:
+        """Create the directory structure for a new run and snapshot configs."""
         ...
         
     def write_metadata(self, run_name: str, data: dict[str, Any]) -> None:

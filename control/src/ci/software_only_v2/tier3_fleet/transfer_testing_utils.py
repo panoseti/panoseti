@@ -71,17 +71,21 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
     }
     ph_baseline_path.write_text(json.dumps(dummy_data))
 
+    from ci.fixtures.adapters.fake_adapters import FakeFileSystemManager, FakeProcessManager
+    from control.adapters.real_adapters import RealNetworkClient
+    process_mgr = FakeProcessManager()
+    net_client = RealNetworkClient(daq_config)
+    fs_mgr = FakeFileSystemManager()
+
     with patch("control.start.ph_baseline_file_ok", return_value=True), \
-         patch("control.start._check_daq_reachability"), \
          patch("control.start._check_quabo_reachability"), \
-         patch("control.start.start_data_flow"), \
-         patch("control.start.make_run_dirs"), \
-         patch("control.start.util.start_hk_recorder"), \
-         patch("control.start.util.write_run_name"):
+         patch("control.start.start_data_flow"):
          
          actual_run_name = await start_run(
              obs_config, daq_config, quabo_uids, data_config, net_config,
-             run_name=run_name, no_hv=True, no_redis=True, no_data=False, no_check_daq=True
+             no_hv=True, no_redis=True, no_data=False,
+             run_name=run_name, no_check_daq=False,
+             process_mgr=process_mgr, net_client=net_client, fs_mgr=fs_mgr
          )
          assert actual_run_name == run_name
          
@@ -118,7 +122,11 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
 
     with patch("control.stop.util.stop_data_flow"), \
          patch("control.stop.util.kill_hk_recorder"):
-        stop_ok = await stop_run(daq_config, net_config, quabo_uids, run=run_name)
+        stop_ok = await stop_run(
+            daq_config, net_config, quabo_uids,
+            process_mgr, net_client, fs_mgr,
+            run=run_name
+        )
         assert stop_ok
         
     return expected_data

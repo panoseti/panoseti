@@ -37,21 +37,27 @@ class FakeNetworkClient:
     
     def __init__(self, reachable_nodes: list[str] | None = None):
         self.reachable_nodes = reachable_nodes or []
-        self.start_calls = 0
-        self.stop_calls = 0
-        self.last_params: dict[str, Any] = {}
+        self.start_calls: dict[str, int] = {}
+        self.stop_calls: dict[str, int] = {}
+        self.last_params: dict[str, dict[str, Any]] = {}
+        self.status_responses: dict[str, Any] = {}
 
-    async def ping_nodes(self) -> list[str]:
-        return self.reachable_nodes
+    async def ping_node(self, node: Any) -> bool:
+        return str(node.ip_addr) in self.reachable_nodes
 
-    async def start_daq(self, params: dict[str, Any]) -> bool:
-        self.start_calls += 1
-        self.last_params = params
+    async def start_daq_node(self, node: Any, params: dict[str, Any], timeout: float = 10.0) -> bool:
+        ip = str(node.ip_addr)
+        self.start_calls[ip] = self.start_calls.get(ip, 0) + 1
+        self.last_params[ip] = params
         return True
 
-    async def stop_daq(self) -> bool:
-        self.stop_calls += 1
+    async def stop_daq_node(self, node: Any, timeout: float = 15.0) -> bool:
+        ip = str(node.ip_addr)
+        self.stop_calls[ip] = self.stop_calls.get(ip, 0) + 1
         return True
+
+    async def get_daq_status(self, node: Any, timeout: float = 5.0) -> dict[str, Any]:
+        return self.status_responses.get(str(node.ip_addr), {})
 
 
 class FakeFileSystemManager:
@@ -61,7 +67,15 @@ class FakeFileSystemManager:
         self.created_dirs: list[str] = []
         self.metadata_written: dict[str, dict[str, Any]] = {}
 
-    def create_run_dirs(self, run_name: str) -> None:
+    def create_run_dirs(
+        self,
+        run_name: str,
+        obs_config: Any = None,
+        daq_config: Any = None,
+        quabo_uids: Any = None,
+        data_config: Any = None,
+        network_config: Any = None
+    ) -> None:
         self.created_dirs.append(run_name)
 
     def write_metadata(self, run_name: str, data: dict[str, Any]) -> None:

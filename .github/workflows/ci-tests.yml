@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Initialize required submodules
-        run: git submodule update --init grpc grafana
+        run: git submodule update --init grpc grafana pypff
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -45,71 +45,7 @@ jobs:
           PSETI_CONTROL_BUILD: "."
           PSETI_ROOT_BUILD: ".."
 
-  # 2. Software Tests — v1 tiers
-  software-tests:
-    needs: prepare-base
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        tier: ["lint all", "sw unit", "sw logic", "sw fleet", "sw chaos", "sw integration"]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Initialize required submodules
-        run: git submodule update --init grpc grafana
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Prepare Workspace & Socket
-        run: |
-          mkdir -p state .pytest_cache
-        working-directory: control
-
-      - name: Install host dependencies
-        run: uv sync --all-extras
-        working-directory: control
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build/Load Images (Tier-specific)
-        run: |
-          if [[ "${{ matrix.tier }}" == *"unit"* || "${{ matrix.tier }}" == *"logic"* ]]; then
-             compose_file="control/src/ci/docker-compose.unit.yml"
-          else
-             compose_file="control/src/ci/docker-compose.integration.yml"
-          fi
-          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
-            -f $compose_file \
-            --pull=false \
-            --set *.context=. \
-            --set *.cache-from=type=gha,scope=pseti-ci \
-            --load
-        env:
-          PSETI_CONTROL_BUILD: "."
-          PSETI_ROOT_BUILD: ".."
-
-      - name: Run Test Tier
-        run: uv run pseti test --no-build ${{ matrix.tier }}
-        working-directory: control
-        env:
-          COMPOSE_PROJECT_NAME: ctl-int-${{ github.run_id }}-${{ matrix.tier }}
-          BINDHOST: lo
-          GRPC_PORT: 50051
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: results-${{ matrix.tier }}
-          path: control/.pytest_cache/
-          if-no-files-found: ignore
-
-  # 3. Software Tests — v2 tiers (topology-driven, realistic containers)
+  # 2. Software Tests — v2 tiers (topology-driven, realistic containers)
   software-tests-v2:
     needs: prepare-base
     runs-on: ubuntu-24.04
@@ -121,7 +57,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Initialize required submodules
-        run: git submodule update --init grpc grafana
+        run: git submodule update --init grpc grafana pypff
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -174,7 +110,7 @@ jobs:
           path: control/.pytest_cache/
           if-no-files-found: ignore
 
-  # 4. Sunset gate — fails if required v1↔v2 parity scenarios are missing
+  # 3. Sunset gate — fails if required v1↔v2 parity scenarios are missing
   sunset-gate:
     needs: [software-tests-v2]
     runs-on: ubuntu-24.04
@@ -182,7 +118,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Initialize required submodules
-        run: git submodule update --init grpc
+        run: git submodule update --init grpc pypff
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -221,7 +157,7 @@ jobs:
           EOF
         working-directory: control
 
-  # 5. Hardware Tests (HITL) — runs on self-hosted runner with real Quabos
+  # 4. Hardware Tests (HITL) — runs on self-hosted runner with real Quabos
   hardware-software-tests:
     needs: prepare-base
     runs-on: self-hosted
@@ -230,7 +166,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Initialize submodules
-        run: git submodule update --init grpc grafana
+        run: git submodule update --init grpc grafana pypff
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5

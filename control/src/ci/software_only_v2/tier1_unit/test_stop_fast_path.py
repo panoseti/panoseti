@@ -25,7 +25,7 @@ from __future__ import annotations
 import pathlib
 import time
 from contextlib import ExitStack
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -125,29 +125,11 @@ def _stop_patches(state_mgr: RunStateManager):
     """
     stack = ExitStack()
     stack.enter_context(patch("control.stop.util.local_ip", return_value=["127.0.0.1"]))
-    # collect.collect_data is no longer called from stop.py (Phase 2 fast-path:
-    # the TransferWorker daemon owns collection). No patch needed here.
-    stack.enter_context(patch("control.stop.util.kill_hv_updater", return_value=None))
-    stack.enter_context(patch("control.stop.util.kill_hk_recorder", return_value=None))
-    stack.enter_context(patch("control.stop.util.kill_module_temp_monitor", return_value=None))
     stack.enter_context(patch("control.stop.util.stop_data_flow", return_value=None))
     stack.enter_context(patch("control.stop.util.remove_run_name", return_value=None))
     stack.enter_context(patch("control.stop.util.read_run_name", return_value=RUN_NAME))
-    stack.enter_context(patch("control.stop.config_file.get_obs_config", return_value=MagicMock()))
     stack.enter_context(patch("control.stop.config_file.get_data_config", return_value=MagicMock()))
 
-    # Mock AsyncDaqControlClient
-    mock_async_client = MagicMock()
-    mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-    mock_async_client.__aexit__ = AsyncMock(return_value=None)
-    mock_async_client.StopDaq = AsyncMock(return_value=True)
-    mock_async_client.CleanupData = AsyncMock(return_value={"success": True})
-    stack.enter_context(patch(
-        "control.stop.AsyncDaqControlClient",
-        return_value=mock_async_client,
-    ))
-
-    # stack.enter_context(patch("control.stop.make_links", return_value=None))
     # Redirect RunStateManager to our tmp_path-based instance
     stack.enter_context(patch("control.stop.RunStateManager", return_value=state_mgr))
     return stack
@@ -167,12 +149,20 @@ class TestStopFastPath:
         self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids
     ):
         """stop_run() must complete in under 5 s."""
+        from ci.fixtures.adapters.fake_adapters import (
+            FakeFileSystemManager,
+            FakeNetworkClient,
+            FakeProcessManager,
+        )
         with _stop_patches(state_mgr):
             t0 = time.monotonic()
             await stop.stop_run(
                 daq_config,
                 network_config,
                 quabo_uids,
+                FakeProcessManager(),
+                FakeNetworkClient(),
+                FakeFileSystemManager(),
                 run=RUN_NAME,
                 no_collect=True,
                 no_cleanup=True,
@@ -187,11 +177,19 @@ class TestStopFastPath:
         self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids
     ):
         """run_complete marker must NOT be written during the fast stop path."""
+        from ci.fixtures.adapters.fake_adapters import (
+            FakeFileSystemManager,
+            FakeNetworkClient,
+            FakeProcessManager,
+        )
         with _stop_patches(state_mgr):
             await stop.stop_run(
                 daq_config,
                 network_config,
                 quabo_uids,
+                FakeProcessManager(),
+                FakeNetworkClient(),
+                FakeFileSystemManager(),
                 run=RUN_NAME,
                 no_collect=True,
                 no_cleanup=True,
@@ -207,11 +205,19 @@ class TestStopFastPath:
         self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids
     ):
         """After stop_run(), a pending transfer job must exist in TransferQueue."""
+        from ci.fixtures.adapters.fake_adapters import (
+            FakeFileSystemManager,
+            FakeNetworkClient,
+            FakeProcessManager,
+        )
         with _stop_patches(state_mgr):
             await stop.stop_run(
                 daq_config,
                 network_config,
                 quabo_uids,
+                FakeProcessManager(),
+                FakeNetworkClient(),
+                FakeFileSystemManager(),
                 run=RUN_NAME,
                 no_collect=True,
                 no_cleanup=True,
@@ -227,11 +233,19 @@ class TestStopFastPath:
         self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids
     ):
         """Ledger status must be RECORDING_ENDED after the fast stop path."""
+        from ci.fixtures.adapters.fake_adapters import (
+            FakeFileSystemManager,
+            FakeNetworkClient,
+            FakeProcessManager,
+        )
         with _stop_patches(state_mgr):
             await stop.stop_run(
                 daq_config,
                 network_config,
                 quabo_uids,
+                FakeProcessManager(),
+                FakeNetworkClient(),
+                FakeFileSystemManager(),
                 run=RUN_NAME,
                 no_collect=True,
                 no_cleanup=True,

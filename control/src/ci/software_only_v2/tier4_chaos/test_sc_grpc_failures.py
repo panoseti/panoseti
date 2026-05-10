@@ -53,31 +53,23 @@ class TestScGrpcFailures:
         data_config = config_file.get_data_config()
         network_config = config_file.get_network_config()
 
-        node0_pf = daq_config.daq_nodes[0].port_forwarding
-        node0_host = str(node0_pf.gw_ip)
-        node0_port = node0_pf.grpc_port
+        from ci.fixtures.adapters.fake_adapters import FakeFileSystemManager, FakeProcessManager
+        from control.adapters.real_adapters import RealNetworkClient
 
-        from panoseti_grpc.daq_control.client import AsyncDaqControlClient
-        real_factory = AsyncDaqControlClient
+        class ChaosNetworkClient(RealNetworkClient):
+            async def start_daq_node(self, node: Any, params: dict[str, Any], timeout: float = 10.0) -> bool:
+                if str(node.ip_addr) == str(daq_config.daq_nodes[0].ip_addr):
+                    raise grpc.RpcError("Injected timeout")
+                return await super().start_daq_node(node, params, timeout)
 
-        def factory(host: str, port: int = 50051) -> Any:
-            client = real_factory(host=host, port=port)
-            if host == node0_host and port == node0_port:
-                proxy = chaos.grpc.proxy(client)
-                proxy.set_mode("StartDaq", "timeout", timeout_s=5.0)
-                proxy.apply(client)
-            return client
+        net_client = ChaosNetworkClient(daq_config)
+        process_mgr = FakeProcessManager()
+        fs_mgr = FakeFileSystemManager()
 
         with (
-            patch("control.start.AsyncDaqControlClient", side_effect=factory),
             patch("control.start.ph_baseline_file_ok", return_value=True),
-            patch("control.start._check_daq_reachability"),
             patch("control.start._check_quabo_reachability"),
-            patch("control.start.make_run_dirs"),
             patch("control.start.start_data_flow"),
-            patch("control.start.util.is_hk_recorder_running", return_value=False),
-            patch("control.start.util.kill_hk_recorder"),
-            patch("control.start.util.stop_data_flow"),
             patch(
                 "control.utils.util.local_ip",
                 return_value=["127.0.0.1", str(daq_config.head_node_ip_addr)],
@@ -87,6 +79,7 @@ class TestScGrpcFailures:
                 success = await start.start_run(
                     obs_config, daq_config, quabo_uids, data_config, network_config,
                     no_hv=True, no_redis=True, no_data=False, run_name="sc001_run",
+                    process_mgr=process_mgr, net_client=net_client, fs_mgr=fs_mgr
                 )
                 assert not success, "start_run should have failed due to StartDaq timeout"
 
@@ -98,40 +91,38 @@ class TestScGrpcFailures:
     ) -> None:
         """SC-006: StopDaq failure on one node must NOT skip other nodes."""
         import control.stop as stop_module
+        from control.utils import config_file
 
         fleet = session_fleet
         daq_config = fleet.live_daq_config
-
-        node0_pf = daq_config.daq_nodes[0].port_forwarding
-        node0_host = str(node0_pf.gw_ip)
-        node0_port = node0_pf.grpc_port
-
-        node1_pf = daq_config.daq_nodes[1].port_forwarding
-        node1_host = str(node1_pf.gw_ip)
-
-        from panoseti_grpc.daq_control.client import AsyncDaqControlClient
-        real_factory = AsyncDaqControlClient
+        network_config = config_file.get_network_config()
+        quabo_uids = config_file.get_quabo_uids()
 
         stop_called_ips: set[str] = set()
 
-        def factory(host: str, port: int = 50051) -> Any:
-            client = real_factory(host=host, port=port)
+        from ci.fixtures.adapters.fake_adapters import FakeFileSystemManager, FakeProcessManager
+        from control.adapters.real_adapters import RealNetworkClient
 
-            original_stop = client.StopDaq
-
-            async def tracked_stop(*args: Any, **kwargs: Any) -> Any:
-                stop_called_ips.add(host)
-                if host == node0_host and port == node0_port:
+        class ChaosNetworkClient(RealNetworkClient):
+            async def stop_daq_node(self, node: Any, timeout: float = 15.0) -> bool:
+                ip = str(node.ip_addr)
+                stop_called_ips.add(ip)
+                if ip == str(daq_config.daq_nodes[0].ip_addr):
                     raise grpc.RpcError("Injected failure")
-                return await original_stop(*args, **kwargs)
+                return await super().stop_daq_node(node, timeout)
 
-            client.StopDaq = tracked_stop
-            return client
+        net_client = ChaosNetworkClient(daq_config)
+        process_mgr = FakeProcessManager()
+        fs_mgr = FakeFileSystemManager()
 
-        with patch("control.stop.AsyncDaqControlClient", side_effect=factory), \
-             patch("subprocess.run", return_value=MagicMock(returncode=0)):
-            await stop_module.stop_recording(daq_config, "sc006_run", verbose=False)
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+            await stop_module.stop_run(
+                daq_config, network_config, quabo_uids,
+                process_mgr=process_mgr, net_client=net_client, fs_mgr=fs_mgr,
+                run="sc006_run"
+            )
 
+        node1_host = str(daq_config.daq_nodes[1].ip_addr)
         assert node1_host in stop_called_ips, (
             "Node 1 was never told to stop because node 0 failed first"
         )

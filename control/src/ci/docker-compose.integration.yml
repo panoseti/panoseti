@@ -94,8 +94,10 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: test-runner
+      args:
+        LOCAL_UID: "${LOCAL_UID:-1000}"
+        LOCAL_GID: "${LOCAL_GID:-1000}"
     restart: always
-    user: root
     network_mode: "service:influxdb"
     volumes: []
     environment:
@@ -126,7 +128,9 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: integration-daqnode
-    user: root
+      args:
+        LOCAL_UID: "${LOCAL_UID:-1000}"
+        LOCAL_GID: "${LOCAL_GID:-1000}"
     networks:
       headnode_net:
         ipv4_address: ${HEAD_NET_DAQNODE_1:-10.0.1.10}
@@ -158,7 +162,9 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: integration-daqnode
-    user: root
+      args:
+        LOCAL_UID: "${LOCAL_UID:-1000}"
+        LOCAL_GID: "${LOCAL_GID:-1000}"
     networks:
       headnode_net:
         ipv4_address: ${HEAD_NET_DAQNODE_2:-10.0.1.11}
@@ -213,7 +219,9 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: test-runner
-    user: root
+      args:
+        LOCAL_UID: "${LOCAL_UID:-1000}"
+        LOCAL_GID: "${LOCAL_GID:-1000}"
     networks:
       headnode_net:
         ipv4_address: ${HEAD_NET_TESTER:-10.0.1.5}

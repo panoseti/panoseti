@@ -152,9 +152,16 @@ class TestRunner:
             c.print(f"[dim]Processing compose file for build: {compose_file}[/dim]")
             project_name = f"{self.project_prefix}-build"
             
+            # Inject host UID/GID for build-time injection
+            build_env = {
+                "COMPOSE_PROJECT_NAME": project_name,
+                "LOCAL_UID": str(os.getuid()),
+                "LOCAL_GID": str(os.getgid())
+            }
+            
             # Use 'compose config' to find all services in this file
             config_cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CI_ROOT}/{compose_file} config --services"
-            res = await self._run_cmd(config_cmd, env={"COMPOSE_PROJECT_NAME": project_name}, capture=True)
+            res = await self._run_cmd(config_cmd, env=build_env, capture=True)
             
             if res.ok and res.stdout:
                 services = res.stdout.strip().split("\n")
@@ -162,11 +169,11 @@ class TestRunner:
                     from rich.console import Console
                     Console().print(f"[cyan]Building service: {service} (from {compose_file})...[/cyan]")
                     cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CI_ROOT}/{compose_file} build {service}"
-                    await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
+                    await self._run_cmd(cmd, env=build_env)
             else:
                 # Fallback to full build if services couldn't be parsed
                 cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CI_ROOT}/{compose_file} build"
-                await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
+                await self._run_cmd(cmd, env=build_env)
                 
             processed_files.add(compose_file)
 
@@ -220,6 +227,11 @@ class TestRunner:
         for k, v in suite.env.items():
             val = v.replace("${HEAD_NET_PREFIX}", head_prefix).replace("${DAQ_NET_PREFIX}", daq_prefix).replace("${QUABO_NET_PREFIX}", quabo_prefix)
             expanded_env[k] = val
+
+        # Include LOCAL_UID/GID in the env file for dev mode so 'exec' and 'up' are consistent
+        if self.dev_mode:
+            expanded_env.setdefault("LOCAL_UID", str(os.getuid()))
+            expanded_env.setdefault("LOCAL_GID", str(os.getgid()))
 
         env_content = [f"{k}={v}" for k, v in expanded_env.items()]
 
@@ -286,7 +298,7 @@ class TestRunner:
             from rich.console import Console
             Console().print(f"[dim]Running pre-run command for {suite.name}...[/dim]")
             # Use dynamic env file for pre-run too
-            pre_cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file} {profile_str} exec -T {suite.service} /bin/sh -c '{suite.pre_run}'"
+            pre_cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file} {profile_str} exec -T --user panoseti {suite.service} /bin/sh -c '{suite.pre_run}'"
             await self._run_cmd(pre_cmd, env={"COMPOSE_PROJECT_NAME": project_name})
 
     async def _teardown_docker(self, suite: SuiteConfig, project_name: str, quiet: bool = False):
@@ -420,14 +432,15 @@ class TestRunner:
 
         lock = asyncio.Lock()
         if suite.name in self._temp_envs:
-            env_file, _ = self._temp_envs[suite.name]
+            env_file, expanded_env = self._temp_envs[suite.name]
         else:
-            env_file, _ = ENV_CI_PATH, suite.env
+            env_file, expanded_env = ENV_CI_PATH, suite.env
 
         dev_flag = self._dev_overlay_flag(compose_file)
+        env_str = " ".join([f"-e {k}={v}" for k, v in expanded_env.items()])
 
         async def run_task(name: str, task_cmd: str):
-            cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
+            cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} exec -T --user panoseti {env_str} {suite.service} {task_cmd} {extra_str}"
             print(f"lint {cmd=}")
             tag_text = f"[{name}] "
             return await self._stream(f"lint.{name}", cmd, lock, tag=tag_text, env={"COMPOSE_PROJECT_NAME": project_name})

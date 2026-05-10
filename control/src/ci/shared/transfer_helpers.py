@@ -59,30 +59,34 @@ def setup_isolated_integration_transfer_env(tmp_path: Path, monkeypatch: Any) ->
     daq_config.head_node_data_dir = str(head_data_dir)
     return head_data_dir, daq_config
 
-def mocked_make_run_dirs_factory(daqnode_container: Any):
-    def mocked_make_run_dirs(rn, oc, dc, quids, dtc, nc):
+class IntegrationFileSystemManager:
+    def __init__(self, daq_config):
+        self.daq_config = daq_config
+        
+    def create_run_dirs(
+        self,
+        run_name: str,
+        obs_config: Any = None,
+        daq_config: Any = None,
+        quabo_uids: Any = None,
+        data_config: Any = None,
+        network_config: Any = None
+    ) -> None:
         # Create head node run dir locally
-        head_run_dir = Path(dc.head_node_data_dir) / rn
+        head_run_dir = Path(self.daq_config.head_node_data_dir) / run_name
         head_run_dir.mkdir(parents=True, exist_ok=True)
         
         # Create the directories on the DAQ node shared volume directly
-        for node in dc.daq_nodes:
-            # DAQ node data_dir is usually /data
-            daq_data_path = Path(node.data_dir)
-            
-            # Root run dir
-            (daq_data_path / rn).mkdir(parents=True, exist_ok=True)
-            
-            # Module subdirs
+        for node in self.daq_config.daq_nodes:
+            ip_str = str(node.ip_addr)
+            daq_data_path = Path("/data_2") if (".20" in ip_str or "daqnode-2" in ip_str) else Path("/data")
+            (daq_data_path / run_name).mkdir(parents=True, exist_ok=True)
             for mid in node.module_ids:
-                (daq_data_path / f"module_{mid}" / rn).mkdir(parents=True, exist_ok=True)
-                
-            # Ensure permissions allow both containers to read/write
-            # (In Docker volumes, this is usually 777 or shared group)
-            import subprocess
+                (daq_data_path / f"module_{mid}" / run_name).mkdir(parents=True, exist_ok=True)
             subprocess.run(["chmod", "-R", "777", str(daq_data_path)], check=False)
-            
-    return mocked_make_run_dirs
+
+    def write_metadata(self, run_name: str, data: dict[str, Any]) -> None:
+        pass # Not needed for integration tests, or could write to head_data_dir
 
 def mocked_build_rsync_cmd(node, run_name, head_run_dir, bwlimit):
     # We simulate the per-node rsync by copying everything from the appropriate local mount
@@ -94,6 +98,7 @@ def mocked_build_rsync_cmd(node, run_name, head_run_dir, bwlimit):
     cmd.append(f"{daq_base}/{run_name}/")
     cmd.append(str(head_run_dir) + "/")
     return cmd
+
 async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode_container: Any) -> None:
     """Start run, generate real data via tcpreplay, simulate metadata, and stop run."""
     from control.start import start_run
@@ -103,7 +108,6 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
     data_config = config_file.get_data_config()
     net_config = config_file.get_network_config()
     
-    import subprocess
     
     data_config.run_type = "modified" # avoid strict checks
 
@@ -111,18 +115,21 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
 
     from control.utils import util
     util.kill_hk_recorder()
+    
+    from control.adapters.real_adapters import RealNetworkClient, RealProcessManager
+    process_mgr = RealProcessManager()
+    net_client = RealNetworkClient(daq_config)
+    fs_mgr = IntegrationFileSystemManager(daq_config)
 
-    with patch("control.start.make_run_dirs", side_effect=mocked_make_run_dirs_factory(daqnode_container)), \
-         patch("control.start.start_data_flow"), \
+    with patch("control.start.start_data_flow"), \
          patch("control.start._check_quabo_reachability"), \
-         patch("control.start.util.is_hk_recorder_running", return_value=False), \
-         patch("control.start.util.write_run_name"), \
          patch("control.transfer.daemon.build_rsync_cmd", side_effect=mocked_build_rsync_cmd):
 
         actual_run_name = await start_run(
             obs_config, daq_config, quabo_uids, data_config, net_config,
             no_hv=True, no_redis=True, no_data=False,
-            run_name=run_name, no_check_daq=True
+            run_name=run_name, no_check_daq=True,
+            process_mgr=process_mgr, net_client=net_client, fs_mgr=fs_mgr
         )
         assert actual_run_name == run_name
 
@@ -167,6 +174,7 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
         # --- Step 2: Stop Run (Enqueue Job) ---
         stop_ok = await stop_run(
             daq_config, net_config, quabo_uids,
+            process_mgr, net_client, fs_mgr,
             run=run_name, no_collect=False, no_cleanup=False
         )
         assert stop_ok

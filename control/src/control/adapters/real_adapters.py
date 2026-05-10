@@ -16,7 +16,7 @@ from typing import Any
 import psutil
 
 from control.interfaces import FileSystemManager, NetworkClient, ProcessManager
-from control.utils.pydantic_config_models import DaqConfig
+from control.utils.pydantic_config_models import DaqConfig, DaqNode
 
 logger = logging.getLogger(__name__)
 
@@ -58,23 +58,43 @@ class RealNetworkClient(NetworkClient):
     def __init__(self, daq_config: DaqConfig):
         self.daq_config = daq_config
 
-    async def ping_nodes(self) -> list[str]:
-        # Utilizing the existing check logic, but abstracted.
-        # This will be refined as we port more of start.py
-        reachable = []
-        for node in self.daq_config.daq_nodes:
-            # Simplified mock logic for now, relies on start.py's internal checks
-            # Ideally this calls AsyncDaqControlClient directly
-            reachable.append(str(node.ip_addr))
-        return reachable
+    async def ping_node(self, node: DaqNode) -> bool:
+        from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
-    async def start_daq(self, params: dict[str, Any]) -> bool:
-        # This will wrap the AsyncDaqControlClient StartDaq call
-        return True
+        from control.utils import util
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node, self.daq_config)
+        try:
+            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                # We reuse StatusDaq as a ping
+                await client.StatusDaq({"data_dir": node.data_dir}, timeout=2.0)
+                return True
+        except Exception:
+            return False
 
-    async def stop_daq(self) -> bool:
-        # This will wrap the AsyncDaqControlClient StopDaq call
-        return True
+    async def start_daq_node(self, node: DaqNode, params: dict[str, Any], timeout_s: float = 10.0) -> bool:
+        from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
+        from control.utils import util
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node, self.daq_config)
+        async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+            return await client.StartDaq(params, timeout=timeout_s)
+
+    async def stop_daq_node(self, node: DaqNode, timeout_s: float = 15.0) -> bool:
+        from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
+        from control.utils import util
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node, self.daq_config)
+        async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+            return await client.StopDaq({'data_dir': node.data_dir}, timeout=timeout_s)
+
+    async def get_daq_status(self, node: DaqNode, timeout_s: float = 5.0) -> dict[str, Any]:
+        from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
+        from control.utils import util
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node, self.daq_config)
+        async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+            _, status_dict = await client.StatusDaq({"data_dir": node.data_dir}, timeout=timeout_s)
+            return status_dict
 
 
 class RealFileSystemManager(FileSystemManager):
@@ -83,13 +103,24 @@ class RealFileSystemManager(FileSystemManager):
     def __init__(self, daq_config: DaqConfig):
         self.daq_config = daq_config
 
-    def create_run_dirs(self, run_name: str) -> None:
-        # Create head node dir
-        head_run_dir = Path(self.daq_config.head_node_data_dir) / run_name
-        head_run_dir.mkdir(parents=True, exist_ok=True)
-        # Note: DAQ node dirs are created via the RPC StartDaq call in the real system,
-        # but the orchestrator might need local state dirs.
-        pass
+    def create_run_dirs(
+        self,
+        run_name: str,
+        obs_config: Any = None,
+        daq_config: Any = None,
+        quabo_uids: Any = None,
+        data_config: Any = None,
+        network_config: Any = None
+    ) -> None:
+        from control.start import make_run_dirs
+        make_run_dirs(
+            run_name,
+            obs_config,
+            daq_config or self.daq_config,
+            quabo_uids,
+            data_config,
+            network_config
+        )
 
     def write_metadata(self, run_name: str, data: dict[str, Any]) -> None:
         head_run_dir = Path(self.daq_config.head_node_data_dir) / run_name

@@ -17,7 +17,7 @@ requires_docker = true
 compose_file = "docker-compose.unit.yml"
 profiles = ["unit"]
 service = "unit-test-runner"
-tasks = { ruff = "uv run ruff check . --fix --color=always", mypy = "uv run mypy . --explicit-package-bases --color-output" }
+tasks = { ruff = "/usr/bin/env UV_FROZEN=1 uv run ruff check . --fix --color=always", mypy = "/usr/bin/env UV_FROZEN=1 uv run mypy . --explicit-package-bases --color-output" }
 
 [suites.unit]
 description = "Tier 1: Parallel unit tests (Logic & Parsing)"

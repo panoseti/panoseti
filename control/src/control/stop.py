@@ -25,14 +25,11 @@ from glob import glob
 from typing import Any
 
 import typer
+
+from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
-try:
-    from panoseti_grpc.telemetry.logger import get_logger
-except ImportError:
-    # fallback for development/CI environments
-    from panoseti_grpc.telemetry.logger import get_logger
-
+from control.interfaces import FileSystemManager, NetworkClient, ProcessManager
 from control.tools.interleave import INTERLEAVE_LOCK_PATH
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
@@ -98,7 +95,10 @@ class StopTransaction:
         force_cleanup: bool,
         force_stop: bool,
         verbose: bool,
-        cancel_event: asyncio.Event
+        cancel_event: asyncio.Event,
+        process_mgr: ProcessManager,
+        net_client: NetworkClient,
+        fs_mgr: FileSystemManager,
     ) -> None:
         self.state_mgr = state_mgr
         self.daq_config = daq_config
@@ -114,6 +114,9 @@ class StopTransaction:
         self.force_stop = force_stop
         self.verbose = verbose
         self.cancel_event = cancel_event
+        self.process_mgr = process_mgr
+        self.net_client = net_client
+        self.fs_mgr = fs_mgr
         self.all_errors: list[str] = []
         self.success = False
 
@@ -151,20 +154,30 @@ class StopTransaction:
 
             # 1. Stop recording on DAQ nodes
             try:
-                recording_errors = await stop_recording(self.daq_config, self.run, self.verbose)
-                self.all_errors.extend(recording_errors)
+                async def stop_node_task(node: DaqNode) -> None:
+                    try:
+                        ok = await self.net_client.stop_daq_node(node, timeout=15.0)
+                        if not ok:
+                            self.all_errors.append(f"StopDaq failed for {node.ip_addr}")
+                    except Exception as e:
+                        self.all_errors.append(f"StopDaq error for {node.ip_addr}: {e}")
+
+                async with asyncio.TaskGroup() as tg:
+                    for node in self.daq_config.daq_nodes:
+                        if node.module_ids:
+                            tg.create_task(stop_node_task(node))
             except Exception as e:
-                self.all_errors.append(f"stop_recording failed: {e}")
+                self.all_errors.append(f"stop_recording (parallel) failed: {e}")
 
             # 2. Kill local daemons
-            for daemon_name, killer in [
-                ("HV updater", util.kill_hv_updater),
-                ("HK recording", util.kill_hk_recorder),
-                ("Temperature monitor", util.kill_module_temp_monitor)
+            for daemon_name, process_id in [
+                ("HV updater", util.hv_updater_name),
+                ("HK recording", util.hk_recorder_name),
+                ("Temperature monitor", util.module_temp_monitor_name)
             ]:
                 try:
                     logger.info(f"stopping {daemon_name}")
-                    await asyncio.to_thread(killer)
+                    await asyncio.to_thread(self.process_mgr.kill, process_id)
                 except Exception as e:
                     self.all_errors.append(f"{daemon_name} shutdown failed: {e}")
 
@@ -226,7 +239,7 @@ class StopTransaction:
             # Finalize ledger
             final_status = RunStatus.STOPPED_WITH_ERRORS if exc_type is not None else RunStatus.RECORDING_ENDED
             extra_fields = {}
-            if exc_type is not None and self.last_exception:
+            if exc_type is not None and getattr(self, 'last_exception', None):
                 extra_fields["last_transfer_error"] = self.last_exception
             self.state_mgr.transition(final_status, **extra_fields)
             self.success = True
@@ -238,30 +251,7 @@ class StopTransaction:
         finally:
             await asyncio.to_thread(self.state_mgr.release_lock)
 
-
-async def stop_recording(daq_config: DaqConfig, run: str, verbose: bool) -> list[str]:
-    """Tell DAQ nodes to stop recording."""
-    errors: list[str] = []
-
-    async def stop_node(node: DaqNode) -> None:
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
-        if verbose:
-            logger.info(f'StopDaq via gRPC: {grpc_host}:{grpc_port} run={run}')
-        
-        try:
-            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                ok = await client.StopDaq({'data_dir': node.data_dir}, timeout=15.0)
-                if not ok:
-                    errors.append(f"StopDaq failed for {node.ip_addr}")
-        except Exception as e:
-            errors.append(f"StopDaq error for {node.ip_addr}: {e}")
-
-    async with asyncio.TaskGroup() as tg:
-        for node in daq_config.daq_nodes:
-            if node.module_ids:
-                tg.create_task(stop_node(node))
-    
-    return errors
+# stop_recording removed in favor of NetworkClient.stop_daq()
 
 
 def write_complete_file(run_dir: str, filename: str) -> None:
@@ -368,6 +358,9 @@ async def stop_run(
     daq_config: DaqConfig,
     network_config: NetworkConfig,
     quabo_uids: QuaboUids,
+    process_mgr: ProcessManager | None = None,
+    net_client: NetworkClient | None = None,
+    fs_mgr: FileSystemManager | None = None,
     verbose: bool = False,
     no_cleanup: bool = False,
     no_collect: bool = False,
@@ -387,6 +380,9 @@ async def stop_run(
         daq_config: Validated DAQ node configuration.
         network_config: Network routing configuration.
         quabo_uids: Known Quabo UIDs.
+        process_mgr: Dependency-injected process manager.
+        net_client: Dependency-injected network client.
+        fs_mgr: Dependency-injected filesystem manager.
         verbose: Log extra details.
         no_cleanup: Keep DAQ ``.pff`` files after transfer (sets job flag).
         no_collect: Skip rsync to head node (sets job flag).
@@ -396,6 +392,16 @@ async def stop_run(
         skip_verify: Skip manifest digest verification (job flag).
         force_stop: Force teardown ladder regardless of ledger state.
     """
+
+    if process_mgr is None:
+        from control.adapters.real_adapters import RealProcessManager
+        process_mgr = RealProcessManager()
+    if net_client is None:
+        from control.adapters.real_adapters import RealNetworkClient
+        net_client = RealNetworkClient(daq_config)
+    if fs_mgr is None:
+        from control.adapters.real_adapters import RealFileSystemManager
+        fs_mgr = RealFileSystemManager(daq_config)
 
     # Prepare configs
     data_config = config_file.get_data_config()
@@ -412,7 +418,8 @@ async def stop_run(
         async with StopTransaction(
             state_mgr, daq_config, network_config, quabo_uids, data_config,
             run, no_collect, no_cleanup, no_transfer, skip_verify,
-            force_cleanup, force_stop, verbose, cancel_event
+            force_cleanup, force_stop, verbose, cancel_event,
+            process_mgr, net_client, fs_mgr
         ) as tx:
             # Pre-flight Validation
             if not util.is_local(daq_config.head_node_ip_addr, daq_config):
@@ -524,10 +531,21 @@ def main(
     except Exception as e:
         logger.critical(f'Failed to stop interleave: {e}')
 
+    from control.adapters.real_adapters import (
+        RealFileSystemManager,
+        RealNetworkClient,
+        RealProcessManager,
+    )
+    
+    process_mgr = RealProcessManager()
+    net_client = RealNetworkClient(daq_config)
+    fs_mgr = RealFileSystemManager(daq_config)
+
     # Execute async stop_run
     assert quabo_uids is not None, "QuaboUids cannot be None at this stage"
     success = asyncio.run(stop_run(
         daq_config, network_config, quabo_uids,
+        process_mgr, net_client, fs_mgr,
         verbose, effective_no_cleanup, no_collect, run, force_cleanup,
         no_transfer=no_transfer,
         skip_verify=skip_verify,

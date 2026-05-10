@@ -30,24 +30,24 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 import traceback
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-import grpc
 import typer
 
 # ---------------------------------------------------
 # panoseti-grpc imports
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 from panoseti_grpc.daq_data.client import AioDaqDataClient
-from panoseti_grpc.grpc_utils.exceptions import PanosetiRpcError, UnavailableError
 from panoseti_grpc.telemetry.logger import get_logger
 
 # control imports
 import control.session_stop as session_stop
+from control.adapters.real_adapters import NetworkClient
 from control.driver import quabo_driver
 from control.tools.sw_info import get_sw_info
 from control.utils import config_file, file_xfer, pff, util
@@ -97,13 +97,19 @@ class StartTransaction:
         run_name: str,
         daq_config: DaqConfig,
         quabo_uids: QuaboUids,
-        network_config: NetworkConfig
+        network_config: NetworkConfig,
+        process_mgr: Any = None,
+        net_client: Any = None,
+        fs_mgr: Any = None,
     ) -> None:
         self.state_mgr = state_mgr
         self.run_name = run_name
         self.daq_config = daq_config
         self.quabo_uids = quabo_uids
         self.network_config = network_config
+        self.process_mgr = process_mgr
+        self.net_client = net_client
+        self.fs_mgr = fs_mgr
         self.success = False
         # Set to True in start_run immediately before start_data_flow() is called.
         # Only this transaction may undo data flow that it started — calling
@@ -225,9 +231,14 @@ class StartTransaction:
                 # Ladder Step 4: Kill local daemons
                 logger.info("Stopping local daemons...")
                 try:
-                    await asyncio.to_thread(util.kill_hk_recorder)
-                    await asyncio.to_thread(util.kill_hv_updater)
-                    await asyncio.to_thread(util.kill_module_temp_monitor)
+                    if self.process_mgr:
+                        await asyncio.to_thread(self.process_mgr.kill, util.hk_recorder_name)
+                        await asyncio.to_thread(self.process_mgr.kill, util.hv_updater_name)
+                        await asyncio.to_thread(self.process_mgr.kill, util.module_temp_monitor_name)
+                    else:
+                        await asyncio.to_thread(util.kill_hk_recorder)
+                        await asyncio.to_thread(util.kill_hv_updater)
+                        await asyncio.to_thread(util.kill_module_temp_monitor)
                 except Exception as e3:
                     logger.error(f"Failed to kill local daemons: {e3}")
 
@@ -496,6 +507,7 @@ async def start_recording(
     state_mgr: RunStateManager,
     cancel_event: asyncio.Event,
     tx: StartTransaction,
+    net_client: NetworkClient,
     startdaq_timeout: float = 10.0,
     startdaq_retries: int = 3
 ) -> None:
@@ -509,14 +521,17 @@ async def start_recording(
     - Upgrades to START_SUCCESS after heartbeat.
     - Raises Exception on ANY failure or cancellation to trigger the parent rollback ladder.
     """
-    # logger = logging.getLogger('PSETI.Start.start_recording')
-    # loop = asyncio.get_running_loop()
-
     # 1. Start local daemons
-    util.start_hk_recorder(daq_config, run_name)
-    if not no_hv:
-        util.start_hv_updater()
-        util.start_module_temp_monitor()
+    if tx.process_mgr:
+         await asyncio.to_thread(tx.process_mgr.start, [sys.executable, util.hk_recorder_name, str(PanoPaths.logs_dir())])
+         if not no_hv:
+             await asyncio.to_thread(tx.process_mgr.start, [sys.executable, util.hv_updater_name])
+             await asyncio.to_thread(tx.process_mgr.start, [sys.executable, util.module_temp_monitor_name])
+    else:
+        util.start_hk_recorder(daq_config, run_name)
+        if not no_hv:
+            util.start_hv_updater()
+            util.start_module_temp_monitor()
 
     # 2. Concurrent StartDaq
     max_file_size_mb = data_config.max_file_size_mb or util.default_max_file_size_mb
@@ -538,8 +553,7 @@ async def start_recording(
         if not node_validator.module_ids:
             return
         
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator, daq_config)
-        logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port} modules={node_validator.module_ids}')
+        logger.info(f'StartDaq via NetworkClient: {node_validator.ip_addr} modules={node_validator.module_ids}')
         
         start_args = {
             'data_dir':         node_validator.data_dir,
@@ -556,11 +570,10 @@ async def start_recording(
         
         for attempt in range(1, startdaq_retries + 1):
             try:
-                async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                    ok = await asyncio.wait_for(
-                        client.StartDaq(start_args, timeout=startdaq_timeout),
-                        timeout=startdaq_timeout + 5
-                    )
+                ok = await asyncio.wait_for(
+                    net_client.start_daq_node(node_validator, start_args, timeout=startdaq_timeout),
+                    timeout=startdaq_timeout + 5
+                )
                 if ok:
                     return # Success
                 else:
@@ -569,25 +582,10 @@ async def start_recording(
             except TimeoutError:
                 last_err = f"StartDaq TIMEOUT ({startdaq_timeout})"
                 break # Timeout usually means non-transient or black hole
-            except (grpc.RpcError, ConnectionError, PanosetiRpcError) as e:
-                rpc_code: grpc.StatusCode | None = None
-                if isinstance(e, UnavailableError):
-                    rpc_code = grpc.StatusCode.UNAVAILABLE
-                    last_err = f"gRPC UNAVAILABLE: {e.details}"
-                elif isinstance(e, PanosetiRpcError):
-                    rpc_code = e.code
-                    last_err = f"gRPC {e.code.name}: {e.details}"
-                elif isinstance(e, ConnectionError):
-                    cause = e.__cause__
-                    if isinstance(cause, grpc.RpcError):
-                        rpc_code = cause.code()
-                        last_err = f"gRPC {rpc_code}: {cause.details() or ''}"
-                    else:
-                        last_err = f"StartDaq Error: {e}"
-                else:  # grpc.RpcError
-                    rpc_code = e.code()  # type: ignore[union-attr]
-                    last_err = f"gRPC {rpc_code}: {e.details() or ''}"  # type: ignore[union-attr]
-                if rpc_code == grpc.StatusCode.UNAVAILABLE and attempt < startdaq_retries:
+            except Exception as e:
+                last_err = str(e)
+                # Simple check for UNAVAILABLE
+                if "UNAVAILABLE" in last_err and attempt < startdaq_retries:
                     logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{startdaq_retries})...")
                     await asyncio.sleep(1.0)
                     continue
@@ -622,8 +620,6 @@ async def start_recording(
         if not node_validator.module_ids:
             return
         
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator, daq_config)
-        
         # Retry loop: N attempts, 1s backoff
         last_err = ""
         for attempt in range(1, startdaq_retries + 1):
@@ -633,83 +629,76 @@ async def start_recording(
             await asyncio.sleep(1.0) # 1s between attempts
             
             try:
-                async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                    ok, status = await client.StatusDaq({
-                        'data_dir': node_validator.data_dir,
-                        'check_hashpipe_running': True,
-                        'check_disk_usage': False,
-                        'check_run_dirs': False
-                    })
-                
-                if ok:
-                    if status.get('hashpipe_running'):
-                        # Success: Update ledger with START_SUCCESS
-                        receipt = NodeReceipt(
-                            ip_addr=node_validator.ip_addr,
-                            status=NodeStatus.START_SUCCESS,
-                            hashpipe_pid=status.get('hashpipe_pid'),
-                            data_dir=node_validator.data_dir
-                        )
-                        await state_mgr.update_node_receipt(receipt)
-                        logger.info(f"Node {node_validator.ip_addr} heartbeat OK on attempt {attempt} (PID {receipt.hashpipe_pid})")
-                        return
-                    else:
-                        last_err = "hashpipe not running"
+                status = await net_client.get_daq_status(node_validator, timeout=5.0)
+                if hasattr(status, 'hashpipe_running'):
+                    running = status.hashpipe_running
+                    pid = status.hashpipe_pid
+                    msg = status.message
                 else:
-                    last_err = "StatusDaq RPC returned False"
+                    running = status.get('hashpipe_running')
+                    pid = status.get('hashpipe_pid')
+                    msg = status.get('message', 'hashpipe exited during stabilization')
+                
+                if running:
+                    logger.info(f"Node {node_validator.ip_addr} heartbeat OK on attempt {attempt} (PID {pid})")
+                    await state_mgr.update_node_receipt(NodeReceipt(
+                        ip_addr=node_validator.ip_addr,
+                        status=NodeStatus.START_SUCCESS,
+                        hashpipe_pid=pid
+                    ))
+                    return
+                else:
+                    last_err = msg
             except Exception as e:
                 last_err = str(e)
-            
-            logger.warning(f"Heartbeat attempt {attempt}/{startdaq_retries} failed for {node_validator.ip_addr}: {last_err}")
-
-        # If we reach here, all retries failed
+                if attempt == startdaq_retries:
+                    break
+                continue
+        
+        # If we reached here, heartbeat failed
         await state_mgr.update_node_receipt(NodeReceipt(
             ip_addr=node_validator.ip_addr,
             status=NodeStatus.START_FAILED,
-            message=f"Heartbeat failed after {startdaq_retries} attempts: {last_err}"
+            message=f"Heartbeat timeout after {startdaq_retries} attempts: {last_err}"
         ))
-        raise RuntimeError(f"Hashpipe heartbeat check failed on node {node_validator.ip_addr}: {last_err}")
+        raise RuntimeError(f"Node {node_validator.ip_addr} heartbeat failed: {last_err}")
 
-    # Parallel heartbeat verification with TaskGroup
+    # Phase 4: Wait for heartbeats
     async with asyncio.TaskGroup() as tg:
         for n in daq_config.daq_nodes:
             tg.create_task(probe_node(n))
 
-    # Phase 5: Post-stabilization Liveness Probe (Early Exit Guard)
+    # Phase 5: Stabilization liveness probe
     logger.info("Phase 5: Performing 2s stabilization liveness probe...")
     await asyncio.sleep(2.0)
-    
     async with asyncio.TaskGroup() as tg:
-        for n in daq_config.daq_nodes:
-            if not n.module_ids:
-                continue
+        async def verify_liveness_final(node_validator: DaqNode) -> None:
+            if not node_validator.module_ids:
+                return
             
-            async def verify_liveness(node_validator: DaqNode) -> None:
-                grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator, daq_config)
+            try:
+                status = await net_client.get_daq_status(node_validator, timeout=5.0)
+                if hasattr(status, 'hashpipe_running'):
+                    running = status.hashpipe_running
+                    msg = status.message
+                else:
+                    running = status.get('hashpipe_running')
+                    msg = status.get('message', 'hashpipe exited during stabilization')
                 
-                try:
-                    async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                        ok, status = await client.StatusDaq({
-                            'data_dir': node_validator.data_dir,
-                            'check_hashpipe_running': True,
-                            'check_disk_usage': False,
-                            'check_run_dirs': False
-                        })
-                    
-                    if not ok or not status.get('hashpipe_running'):
-                        err = status.get('message', 'hashpipe exited during stabilization')
-                        raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {err}")
-                    
-                    logger.info(f"Node {node_validator.ip_addr} Phase 5 Liveness OK")
-                except Exception as e:
-                    await state_mgr.update_node_receipt(NodeReceipt(
-                        ip_addr=node_validator.ip_addr,
-                        status=NodeStatus.START_FAILED,
-                        message=f"Liveness Check Failed: {e}"
-                    ))
-                    raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {e}") from e
+                if not running:
+                    raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {msg}")
+                
+                logger.info(f"Node {node_validator.ip_addr} Phase 5 Liveness OK")
+            except Exception as e:
+                await state_mgr.update_node_receipt(NodeReceipt(
+                    ip_addr=node_validator.ip_addr,
+                    status=NodeStatus.START_FAILED,
+                    message=f"Liveness Check Failed: {e}"
+                ))
+                raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {e}") from e
 
-            tg.create_task(verify_liveness(n))
+        for n in daq_config.daq_nodes:
+            tg.create_task(verify_liveness_final(n))
 
 
 @dataclass(frozen=True)
@@ -782,18 +771,16 @@ async def _check_quabo_reachability(
         raise ValidationError(f"One or more Quabos are unreachable:\n{summary}")
 
 
-async def _check_daq_reachability(daq_config: DaqConfig) -> None:
+async def _check_daq_reachability(daq_config: DaqConfig, net_client: NetworkClient) -> None:
     """Verify that all configured DAQ nodes are responding via gRPC."""
     logger.info("Performing DAQ node gRPC reachability sweep...")
     async def check_node_grpc(node: DaqNode) -> None:
         if not node.module_ids:
             return
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
         try:
-            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                await client.StatusDaq({"data_dir": node.data_dir}, timeout=5.0)
+            await net_client.get_daq_status(node, timeout=5.0)
         except Exception as e:
-            raise ValidationError(f"DAQ node {node.ip_addr} gRPC is unreachable at {grpc_host}:{grpc_port}: {e}") from e
+            raise ValidationError(f"DAQ node {node.ip_addr} gRPC is unreachable: {e}") from e
 
     try:
         async with asyncio.TaskGroup() as tg:
@@ -836,7 +823,7 @@ def _resolve_strict_mode(strict_flag: bool | None, daq_config: DaqConfig) -> boo
     return not (daq_config.head_node_container and in_sw_tier)
 
 
-async def _check_no_remote_hashpipe(daq_config: DaqConfig, force_restart: bool = False) -> None:
+async def _check_no_remote_hashpipe(daq_config: DaqConfig, net_client: NetworkClient, force_restart: bool = False) -> None:
     """Verify that no DAQ node is already running Hashpipe.
 
     Prevents a new start transaction from issuing UDP configuration to Quabos
@@ -845,6 +832,7 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, force_restart: bool =
 
     Args:
         daq_config: Validated DAQ configuration model.
+        net_client: Dependency-injected network client.
         force_restart: If True, call StopDaq on each node that reports a
             running Hashpipe instead of raising.
 
@@ -857,28 +845,26 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, force_restart: bool =
     async def check_node(node: DaqNode) -> None:
         if not node.module_ids:
             return
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
         try:
-            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                ok, status = await client.StatusDaq({
-                    "data_dir": node.data_dir,
-                    "check_hashpipe_running": True,
-                    "check_disk_usage": False,
-                    "check_run_dirs": False,
-                }, timeout=5.0)
+            status = await net_client.get_daq_status(node, timeout=5.0)
+            if hasattr(status, 'hashpipe_running'):
+                running = status.hashpipe_running
+                pid = status.hashpipe_pid
+            else:
+                running = status.get("hashpipe_running")
+                pid = status.get("hashpipe_pid")
         except Exception as e:
             logger.warning("StatusDaq failed for %s during hashpipe pre-flight: %s", node.ip_addr, e)
             return
 
-        if ok and status.get("hashpipe_running"):
+        if running:
             if force_restart:
                 logger.warning(
                     "Hashpipe running on %s (pid=%s) — stopping per --force-restart.",
-                    node.ip_addr, status.get("hashpipe_pid"),
+                    node.ip_addr, pid,
                 )
                 try:
-                    async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                        await client.StopDaq({"data_dir": node.data_dir}, timeout=15.0)
+                    await net_client.stop_daq_node(node, timeout=15.0)
                 except Exception as stop_err:
                     raise ValidationError(
                         f"--force-restart: StopDaq failed for {node.ip_addr}: {stop_err}"
@@ -886,7 +872,7 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, force_restart: bool =
             else:
                 raise ValidationError(
                     f"Hashpipe already running on {node.ip_addr} "
-                    f"(pid={status.get('hashpipe_pid')}). "
+                    f"(pid={pid}). "
                     "Run `pseti stop` first, or pass --force-restart."
                 )
 
@@ -981,6 +967,9 @@ async def start_run(
     force_restart: bool = False,
     init_snapshot: bool = True,
     heartbeat_timeout: int | None = None,
+    process_mgr: Any = None,
+    net_client: Any = None,
+    fs_mgr: Any = None,
 ) -> str | None:
     """Main transactional run coordinator.
 
@@ -1015,9 +1004,19 @@ async def start_run(
     strict_mode = _resolve_strict_mode(strict, daq_config)
     logger.info("Strict mode: %s", strict_mode)
 
+    if process_mgr is None:
+        from control.adapters.real_adapters import RealProcessManager
+        process_mgr = RealProcessManager()
+    if net_client is None:
+        from control.adapters.real_adapters import RealNetworkClient
+        net_client = RealNetworkClient(daq_config)
+    if fs_mgr is None:
+        from control.adapters.real_adapters import RealFileSystemManager
+        fs_mgr = RealFileSystemManager(daq_config)
+
     # --- Pre-flight: DAQ gRPC reachability sweep ---
     if not no_check_daq:
-        await _check_daq_reachability(daq_config)
+        await _check_daq_reachability(daq_config, net_client)
 
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -1037,7 +1036,10 @@ async def start_run(
 
     tx = None
     try:
-        async with StartTransaction(state_mgr, run_name, daq_config, quabo_uids, network_config) as tx:
+        async with StartTransaction(
+            state_mgr, run_name, daq_config, quabo_uids, network_config,
+            process_mgr=process_mgr, net_client=net_client, fs_mgr=fs_mgr
+        ) as tx:
             # Pre-flight Validation
             if not config_file.validate_all(check_network=False):
                 msg = "Pre-flight configuration validation failed."
@@ -1084,7 +1086,7 @@ async def start_run(
                 else:
                     raise ValidationError(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status}). Run stop.py, then try again, or use --force-reset.")
 
-            if await asyncio.to_thread(util.is_hk_recorder_running):
+            if await asyncio.to_thread(process_mgr.is_running, util.hk_recorder_name):
                 msg = 'The HK recorder is running. Run stop.py, then try again.'
                 if not strict_mode:
                     logger.warning(f"{msg} (Non-fatal in lenient mode)")
@@ -1130,9 +1132,12 @@ async def start_run(
             # This ensures we archive the ORIGINAL files even if they change on disk mid-setup
             if not no_data:
                 logger.info(f'setting up run directories for {run_name}')
-                await asyncio.to_thread(
-                    make_run_dirs, run_name, obs_config, daq_config, quabo_uids, data_config, network_config
-                )
+                if fs_mgr:
+                    await asyncio.to_thread(fs_mgr.create_run_dirs, run_name, obs_config, daq_config, quabo_uids, data_config, network_config)
+                else:
+                    await asyncio.to_thread(
+                        make_run_dirs, run_name, obs_config, daq_config, quabo_uids, data_config, network_config
+                    )
 
             # Validation checks
             get_sw_info()
@@ -1157,7 +1162,7 @@ async def start_run(
                 # live observation.  In strict mode this is a hard error; lenient
                 # mode logs a warning and continues.
                 try:
-                    await _check_no_remote_hashpipe(daq_config, force_restart=force_restart)
+                    await _check_no_remote_hashpipe(daq_config, net_client, force_restart=force_restart)
                 except ValidationError as e:
                     if not strict_mode:
                         logger.warning(f"Remote Hashpipe check: {e} (Non-fatal in lenient mode)")
@@ -1170,7 +1175,7 @@ async def start_run(
                 
                 logger.info('starting recording (Phase 3: Transactional)')
                 await start_recording(
-                    obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx,
+                    obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx, net_client,
                     startdaq_timeout=10.0, startdaq_retries=heartbeat_timeout if heartbeat_timeout is not None else 15
                 )
                 # Init & check daq_data servers
@@ -1186,7 +1191,10 @@ async def start_run(
                 state_mgr.save_state(ledger)
                 
             # Write legacy current_run file for compatibility
-            util.write_run_name(daq_config, run_name)
+            if fs_mgr:
+                await asyncio.to_thread(fs_mgr.write_metadata, run_name, {"run_name": run_name})
+            else:
+                util.write_run_name(daq_config, run_name)
             
             logger.info(f'started run {run_name}')
             tx.success = True
@@ -1282,12 +1290,25 @@ async def async_main_logic(
     network_config = config_file.get_network_config()
     util.attach_daq_config(daq_config, network_config)
 
+    from control.adapters.real_adapters import (
+        RealFileSystemManager,
+        RealNetworkClient,
+        RealProcessManager,
+    )
+    
+    process_mgr = RealProcessManager()
+    net_client = RealNetworkClient(daq_config)
+    fs_mgr = RealFileSystemManager(daq_config)
+
     assert quabo_uids is not None, "QuaboUids cannot be None at this stage"
     success_run_name = await start_run(
         obs_config, daq_config, quabo_uids, data_config,
         network_config, no_hv, no_redis, no_data, force_reset,
         no_check_daq=no_check_daq, strict=strict, force_restart=force_restart,
         init_snapshot=init_snapshot,
+        process_mgr=process_mgr,
+        net_client=net_client,
+        fs_mgr=fs_mgr
     )
     
     if not success_run_name:
@@ -1300,6 +1321,9 @@ async def async_main_logic(
             daq_config, 
             network_config, 
             quabo_uids,
+            process_mgr,
+            net_client,
+            fs_mgr,
             verbose=verbose
         )
         if stop_session:

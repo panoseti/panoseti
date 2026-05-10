@@ -6,7 +6,7 @@ Ported from ci/software_only/tier2_logic/test_start_strict_mode.py.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -85,50 +85,39 @@ class TestCheckNoRemoteHashpipe:
     async def test_raises_if_hashpipe_running(self, pseti_workspace: Workspace) -> None:
         """_check_no_remote_hashpipe raises ValidationError when hashpipe is active."""
         cfg = pseti_workspace.topology.daq
-        ok_resp = (True, {"hashpipe_running": True, "hashpipe_pid": 999})
+        ip = str(cfg.daq_nodes[0].ip_addr)
 
-        with patch("control.start.AsyncDaqControlClient") as MockClient:
-            instance = AsyncMock()
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            instance.StatusDaq = AsyncMock(return_value=ok_resp)
-            MockClient.return_value = instance
+        from ci.fixtures.adapters.fake_adapters import FakeNetworkClient
+        net_client = FakeNetworkClient(reachable_nodes=[ip])
+        net_client.status_responses[ip] = {"hashpipe_running": True, "hashpipe_pid": 999}
 
-            with pytest.raises(ValidationError, match="Hashpipe already running"):
-                await _check_no_remote_hashpipe(cfg, force_restart=False)
+        with pytest.raises(ValidationError, match="Hashpipe already running"):
+            await _check_no_remote_hashpipe(cfg, net_client, force_restart=False)
 
     @pytest.mark.asyncio
     async def test_passes_if_hashpipe_not_running(self, pseti_workspace: Workspace) -> None:
         """_check_no_remote_hashpipe does not raise when hashpipe is idle."""
         cfg = pseti_workspace.topology.daq
-        ok_resp = (True, {"hashpipe_running": False})
+        ip = str(cfg.daq_nodes[0].ip_addr)
 
-        with patch("control.start.AsyncDaqControlClient") as MockClient:
-            instance = AsyncMock()
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            instance.StatusDaq = AsyncMock(return_value=ok_resp)
-            MockClient.return_value = instance
+        from ci.fixtures.adapters.fake_adapters import FakeNetworkClient
+        net_client = FakeNetworkClient(reachable_nodes=[ip])
+        net_client.status_responses[ip] = {"hashpipe_running": False}
 
-            await _check_no_remote_hashpipe(cfg, force_restart=False)  # must not raise
+        await _check_no_remote_hashpipe(cfg, net_client, force_restart=False)  # must not raise
 
     @pytest.mark.asyncio
     async def test_force_restart_calls_stopdaq(self, pseti_workspace: Workspace) -> None:
         """force_restart=True issues StopDaq when hashpipe is running."""
         cfg = pseti_workspace.topology.daq
-        status_resp = (True, {"hashpipe_running": True, "hashpipe_pid": 42})
-        stop_resp = True
+        ip = str(cfg.daq_nodes[0].ip_addr)
 
-        with patch("control.start.AsyncDaqControlClient") as MockClient:
-            instance = AsyncMock()
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            instance.StatusDaq = AsyncMock(return_value=status_resp)
-            instance.StopDaq = AsyncMock(return_value=stop_resp)
-            MockClient.return_value = instance
+        from ci.fixtures.adapters.fake_adapters import FakeNetworkClient
+        net_client = FakeNetworkClient(reachable_nodes=[ip])
+        net_client.status_responses[ip] = {"hashpipe_running": True, "hashpipe_pid": 42}
 
-            await _check_no_remote_hashpipe(cfg, force_restart=True)
-            instance.StopDaq.assert_awaited_once()
+        await _check_no_remote_hashpipe(cfg, net_client, force_restart=True)
+        assert net_client.stop_calls.get(ip, 0) == 1
 
 
 # ---------------------------------------------------------------------------

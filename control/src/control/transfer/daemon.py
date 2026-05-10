@@ -59,7 +59,7 @@ logger = get_logger("transfer_daemon", log_dir=_log_dir, grpc_enabled=False)
 try:
     import panoseti_grpc.daq_control.client as daq_client
 except ImportError:
-    daq_client = None  # type: ignore
+    daq_client = None 
 
 
 def _safe_ledger_update(state_mgr: RunStateManager, *, status: RunStatus, **fields: Any) -> None:
