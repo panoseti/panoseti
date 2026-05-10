@@ -13,6 +13,20 @@ if [ "$(id -u)" = "0" ]; then
         groupmod -o -g "$DOCKER_GID" docker 2>/dev/null || true
         usermod -aG docker panoseti 2>/dev/null || true
     fi
+
+    # Always align ownership of application-critical directories to the
+    # (potentially remapped) panoseti user.
+    echo "Syncing ownership of /app /grpc /pypff /opt/venv /tmp..."
+    chown -R panoseti:panoseti /app /grpc /pypff /opt/venv /tmp 2>/dev/null || true
+
+    # Recursively claim the entire data mount point if it exists
+    # This aligns files created by rsync (root) to the runtime user.
+    DATA_DIR="${DAQ_DATA_DIR:-/mnt/panoseti-test}"
+    if [ -d "$DATA_DIR" ]; then
+        echo "Syncing ownership of $DATA_DIR..."
+        chown -R panoseti:panoseti "$DATA_DIR" 2>/dev/null || true
+    fi
+
     exec gosu panoseti "$@"
 else
     # Correctly booting as panoseti (standard build-time UID injection path)

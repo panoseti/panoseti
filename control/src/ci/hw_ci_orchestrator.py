@@ -74,7 +74,8 @@ def main():
     run_cmd(["docker", "compose", "-f", "src/ci/docker-compose.hw-sw.yml", "exec", "-T", "headnode-server", "pseti", "power", "off"])
     run_cmd(["uv", "run", "pseti", "test", "hw", "down", "-v"])
     
-    if failed and not args_parsed.no_fail_fast:
+    if failed:
+        print("\n>>> HITL Sequence FINISHED WITH ERRORS.")
         sys.exit(1)
     
     print("\nDONE.")

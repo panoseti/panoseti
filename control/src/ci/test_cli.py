@@ -180,7 +180,7 @@ def prune(
                 container.stop(timeout=2)
                 container.remove(force=True)
 
-    console.print(f"\n[bold cyan]Pruning PSETI networks...[/bold cyan]")
+    console.print("\n[bold cyan]Pruning PSETI networks...[/bold cyan]")
     for network in client.networks.list():
         if network is None or network.name is None:
             continue

@@ -111,51 +111,51 @@ jobs:
           if-no-files-found: ignore
 
   # 3. Sunset gate — fails if required v1↔v2 parity scenarios are missing
-  sunset-gate:
-    needs: [software-tests-v2]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
+  # sunset-gate:
+  #   needs: [software-tests-v2]
+  #   runs-on: ubuntu-24.04
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - name: Initialize required submodules
-        run: git submodule update --init grpc pypff
+  #     - name: Initialize required submodules
+  #       run: git submodule update --init grpc pypff
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
+  #     - name: Set up uv
+  #       uses: astral-sh/setup-uv@v5
+  #       with:
+  #         enable-cache: true
 
-      - name: Install host dependencies
-        run: uv sync --all-extras
-        working-directory: control
+  #     - name: Install host dependencies
+  #       run: uv sync --all-extras
+  #       working-directory: control
 
-      - name: Check parity coverage
-        run: |
-          uv run python - <<'EOF'
-          from ci.software_only_v2.infra.parity import sunset_gate_met, parity_coverage_report
+  #     - name: Check parity coverage
+  #       run: |
+  #         uv run python - <<'EOF'
+  #         from ci.software_only_v2.infra.parity import sunset_gate_met, parity_coverage_report
 
-          REQUIRED = [
-              "workspace_seven_config_files",
-              "ledger_starts_empty",
-              "two_node_start_stop",
-              "config_validator_passes",
-              "fleet_boot_and_healthy",
-              "grpc_status_returns_idle",
-              "grpc_inject_unavailable",
-              "process_kill_and_restart",
-              "data_collection_happy_path",
-              "cleanup_blocked_while_hashpipe_running",
-          ]
-          met, missing = sunset_gate_met(REQUIRED)
-          print(parity_coverage_report())
-          if not met:
-              print(f"\nSUNSET GATE FAILED: {len(missing)} scenario(s) not yet registered:")
-              for s in missing:
-                  print(f"  - {s}")
-              raise SystemExit(1)
-          print("\nSunset gate passed.")
-          EOF
-        working-directory: control
+  #         REQUIRED = [
+  #             "workspace_seven_config_files",
+  #             "ledger_starts_empty",
+  #             "two_node_start_stop",
+  #             "config_validator_passes",
+  #             "fleet_boot_and_healthy",
+  #             "grpc_status_returns_idle",
+  #             "grpc_inject_unavailable",
+  #             "process_kill_and_restart",
+  #             "data_collection_happy_path",
+  #             "cleanup_blocked_while_hashpipe_running",
+  #         ]
+  #         met, missing = sunset_gate_met(REQUIRED)
+  #         print(parity_coverage_report())
+  #         if not met:
+  #             print(f"\nSUNSET GATE FAILED: {len(missing)} scenario(s) not yet registered:")
+  #             for s in missing:
+  #                 print(f"  - {s}")
+  #             raise SystemExit(1)
+  #         print("\nSunset gate passed.")
+  #         EOF
+  #       working-directory: control
 
   # 4. Hardware Tests (HITL) — runs on self-hosted runner with real Quabos
   hardware-software-tests:

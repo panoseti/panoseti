@@ -15,6 +15,7 @@
 #   --run X             clean up run X (default: read from current_run)
 
 import asyncio
+import contextlib
 import os
 import shutil
 import signal
@@ -36,7 +37,7 @@ from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
 from control.interfaces import FileSystemManager, NetworkClient, ProcessManager
 from control.tools.interleave import INTERLEAVE_LOCK_PATH
-from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.models import TransferJob, TransferNodeSpec, TransferStatus
 from control.transfer.queue import TransferQueue
 from control.utils import config_file, util
 from control.utils.paths import PanoPaths
@@ -240,6 +241,17 @@ class StopTransaction:
                     tq = TransferQueue()
                     await asyncio.to_thread(tq.enqueue, job)
                     logger.info(f"Enqueued run {self.run} for transfer")
+
+                    # Snapshot the transfer job and the finalized ledger into the run directory.
+                    # This ensures the .pffd contains a complete record of the run lifecycle.
+                    with contextlib.suppress(Exception):
+                        job_path = tq._job_path(TransferStatus.PENDING, self.run)
+                        if job_path.exists():
+                            shutil.copy2(job_path, f"{run_dir}/transfer_job.toml")
+                        
+                        ledger_path = PanoPaths.runs_dir() / "ledger.toml"
+                        if ledger_path.exists():
+                            shutil.copy2(ledger_path, f"{run_dir}/run_ledger.toml")
 
             # Finalize ledger
             final_status = RunStatus.STOPPED_WITH_ERRORS if exc_type is not None else RunStatus.RECORDING_ENDED

@@ -35,6 +35,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -442,19 +443,26 @@ def make_run_dirs(
             data = model.model_dump(exclude={'modules', 'daq_node'})
             json.dump(data, f, indent=4, default=str)
             
-    # Copy other transient artifacts (sw_info.json, ph_baseline.json) from their respective locations
-    # to the head node run dir.
+    # 2. Snapshot additional transient artifacts into the head node run dir.
+    # We copy EVERYTHING from state/calibration to ensure full context is archived.
+    calib_dir = PanoPaths.calibration_dir()
+    if calib_dir.exists():
+        for item in calib_dir.iterdir():
+            if item.is_file():
+                shutil.copy2(item, Path(run_dir) / item.name)
+
+    # Explicitly ensure sw_info.json and ph_baseline.json are captured from their primary locations
     artifact_map = {
-        config_file.quabo_ph_baseline_filename: PanoPaths.tmp_dir() / config_file.quabo_ph_baseline_filename,
+        config_file.quabo_ph_baseline_filename: calib_dir / config_file.quabo_ph_baseline_filename,
         config_file.sw_info_filename: PanoPaths.software_root_dir() / config_file.sw_info_filename,
     }
     for base_name, src_path in artifact_map.items():
         if src_path.exists():
-             shutil.copyfile(src_path, f'{run_dir}/{base_name}')
+             shutil.copy2(src_path, f'{run_dir}/{base_name}')
         else:
              logger.debug(f"Artifact {src_path} not found; skipping snapshot.")
 
-    # 2. make module and run directories on DAQ nodes
+    # 3. make module and run directories on DAQ nodes
     for node in daq_config.daq_nodes:
         # Check if this node has any modules assigned
         # DaqNode has module_ids
