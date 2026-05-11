@@ -4,12 +4,12 @@
     "max_file_size_mb": 2000,
     "gain": 60,
     "stim_params": {
-        "rate": 0,
-        "level": 255,
-        "mask": [0, 1, 0, 0]
+        "rate": 2,
+        "level": 128,
+        "mask": [1, 1, 1, 1]
     },
     "pulse_height": {
-        "pe_threshold": 20.5,
+        "pe_threshold": 40.5,
         "any_trigger": {
             "group_ph_frames": 1
         },
