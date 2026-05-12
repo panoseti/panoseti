@@ -17,6 +17,7 @@ via a Docker volume — no container changes needed.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import signal
 import sys
@@ -24,24 +25,27 @@ import time
 from typing import Any
 
 
-def _read_module_ids(cwd: pathlib.Path) -> list[int]:
+def _read_module_ids(config_path: pathlib.Path) -> list[int]:
     """Read module IDs from module.config written by the daq_control server."""
-    mconfig = cwd / "module.config"
-    if not mconfig.exists():
+    if not config_path.exists():
         return []
     try:
-        return [int(x) for x in mconfig.read_text().split() if x.strip()]
+        return [int(x) for x in config_path.read_text().split() if x.strip()]
     except (ValueError, OSError):
         return []
 
 
-def _create_stub_data(cwd: pathlib.Path, run_dir: str, module_ids: list[int]) -> None:
-    """Create stub .pff files so rsync tests have something to copy."""
+def _create_stub_data(cwd: pathlib.Path, run_dir: str, module_ids: list[int], args_data: dict[str, Any]) -> None:
+    """Create stub .pff files and record arguments for verification."""
     for mid in module_ids:
         data_dir = cwd / f"module_{mid}" / run_dir
         data_dir.mkdir(parents=True, exist_ok=True)
         stub = data_dir / f"data.module_{mid}.pff"
         stub.write_bytes(b"PFFSTUB\n" * 16)  # minimal content for rsync tests
+
+        # Record arguments for verification
+        args_file = data_dir / "fake_hashpipe_args.json"
+        args_file.write_text(json.dumps(args_data, indent=2))
 
 
 def main() -> None:
@@ -60,10 +64,24 @@ def main() -> None:
 
     cwd = pathlib.Path.cwd()
     run_dir = options.get("RUNDIR", "")
-    module_ids = _read_module_ids(cwd)
+    config_fn = options.get("CONFIG", "module.config")
+    
+    # Handle both absolute and relative paths for CONFIG
+    config_path = pathlib.Path(config_fn)
+    if not config_path.is_absolute():
+        config_path = cwd / config_path
+
+    module_ids = _read_module_ids(config_path)
+
+    args_data = {
+        "plugin": args.plugin,
+        "instance": args.instance,
+        "options": options,
+        "threads": args.threads,
+    }
 
     if run_dir and module_ids:
-        _create_stub_data(cwd, run_dir, module_ids)
+        _create_stub_data(cwd, run_dir, module_ids, args_data)
 
     # Stay alive until SIGINT / SIGTERM
     running = True

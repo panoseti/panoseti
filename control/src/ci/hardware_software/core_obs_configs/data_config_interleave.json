@@ -1,7 +1,7 @@
 {
     "run_type": "hw-sw-eng",
     "detector_overvoltage": 2,
-    "max_file_size_mb": 2000,
+    "max_file_size_mb": 5,
     "gain": 60,
     "stim_params": {
         "rate": 2,
