@@ -9,16 +9,17 @@
 # As pertained in the panoseti metdata json format specifications.
 ##############################################################
 import json
+import signal
 import sys
 import time
 from typing import TextIO
 
 from control.utils.redis_utils import get_updated_redis_keys, redis_init
 
-file_ptr = None
 r = redis_init()
 #List of keys with the time stamp values
 key_timestamps: dict[str, str] = {}    
+running = True
 
 def write_redis_keys(file_ptr: TextIO, redis_keys: list[str], key_timestamps: dict[str, str]) -> None:
     for rkey in redis_keys:
@@ -30,6 +31,11 @@ def write_redis_keys(file_ptr: TextIO, redis_keys: list[str], key_timestamps: di
         file_ptr.write("\n\n")
         key_timestamps[rkey] = value_dict.get('Computer_UTC', '')
 
+def signal_handler(sig, frame):
+    global running
+    print(f"\nSignal {sig} received. Flushing and exiting...")
+    running = False
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Please provide a file for output")
@@ -37,7 +43,19 @@ if __name__ == "__main__":
     elif len(sys.argv) > 2:
         print("Too many command line arguments")
         exit(0)
-    with open(sys.argv[1], "w+") as file_ptr:
-        while True:
+
+    # Register for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    output_path = sys.argv[1]
+    with open(output_path, "w+") as file_ptr:
+        while running:
             write_redis_keys(file_ptr, get_updated_redis_keys(r, key_timestamps), key_timestamps)
+            # Flush periodically to support real-time tailing
+            file_ptr.flush()
             time.sleep(1)
+        
+        # Final flush on exit
+        file_ptr.flush()
+    print("Exited cleanly.")

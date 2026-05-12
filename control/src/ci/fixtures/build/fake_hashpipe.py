@@ -84,19 +84,18 @@ def main() -> None:
         _create_stub_data(cwd, run_dir, module_ids, args_data)
 
     # Stay alive until SIGINT / SIGTERM
-    running = True
-
     def _stop(signum: int, frame: Any) -> None:
-        nonlocal running
-        running = False
+        print(f"fake_hashpipe: received signal {signum}, exiting...")
+        sys.exit(0)
 
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
 
-    while running:
-        time.sleep(0.5)
-
-    sys.exit(0)
+    try:
+        while True:
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 
 if __name__ == "__main__":

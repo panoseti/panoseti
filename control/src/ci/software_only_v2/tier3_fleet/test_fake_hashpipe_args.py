@@ -105,10 +105,8 @@ class TestFakeHashpipeArgs:
         options = args["options"]
         assert options["BINDHOST"] == start_params["bindhost"]
         assert float(options["MAXFILESIZE"]) == float(start_params["max_file_size_mb"])
-        # bool is stringified in cmd line: "True" or "False" (actually Python's str(True) == 'True')
-        # Wait, server.py uses f"GROUPPHFRAMES={group_ph_frames}"
-        # For bool True, it's 'True', for False it's 'False'.
-        assert options["GROUPPHFRAMES"] == str(start_params["group_ph_frames"])
+        # bool is stringified in cmd line as integer: "1" or "0"
+        assert options["GROUPPHFRAMES"] == str(int(start_params["group_ph_frames"]))
         assert options["RUNDIR"] == start_params["run_dir"]
         assert options["OBS"] == start_params["obs"]
         assert "module.config" in options["CONFIG"]

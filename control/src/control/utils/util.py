@@ -561,7 +561,7 @@ def kill_hk_recorder() -> None:
     for p in psutil.process_iter():
         try:
             if hk_recorder_name in p.cmdline():
-                os.kill(p.pid, signal.SIGKILL)
+                os.kill(p.pid, signal.SIGTERM)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
 
