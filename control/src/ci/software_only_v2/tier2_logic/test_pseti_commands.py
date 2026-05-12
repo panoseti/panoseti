@@ -66,14 +66,14 @@ class TestPsetiVal:
             assert result.exit_code == 0
 
 
-class TestPsetiShow:
-    """Smoke tests for the 'pseti show' command group."""
+class TestPsetiSystemInfo:
+    """Smoke tests for root-level system information commands."""
 
-    def test_when_pseti_show_paths_runs_then_env_keys_are_displayed(
+    def test_when_pseti_paths_runs_then_env_keys_are_displayed(
         self, pseti_workspace: Workspace, runner: CliRunner
     ) -> None:
-        """pseti show paths: PSETI_CONFIG and PSETI_STATE keys appear in output."""
-        result = runner.invoke(app, ["show", "paths"])
+        """pseti paths: PSETI_CONFIG and PSETI_STATE keys appear in output."""
+        result = runner.invoke(app, ["paths"])
         assert result.exit_code == 0
         # Check for env var key names — stable regardless of Rich line-wrapping
         assert "PSETI_CONFIG" in result.output

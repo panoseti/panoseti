@@ -70,6 +70,47 @@ class GrpcTestLazyGroup(BaseLazyGroup):
             return None
 
 
+class PypffTestLazyGroup(BaseLazyGroup):
+    """
+    Lazy-loading group for pypff tests.
+    Unwraps the pypff._cli.test app.
+    """
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        import importlib
+        root = PanoPaths.software_root_dir()
+        pypff_src = str(root / "pypff" / "src")
+        if Path(pypff_src).exists() and pypff_src not in sys.path:
+            sys.path.insert(0, pypff_src)
+        try:
+            mod = importlib.import_module("pypff._cli.test")
+            test_app = mod.app
+            click_group = typer.main.get_command(test_app)
+            return click_group.list_commands(ctx)  # type: ignore[attr-defined]
+        except Exception:
+            return []
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        import importlib
+        root = PanoPaths.software_root_dir()
+        pypff_src = str(root / "pypff" / "src")
+        if Path(pypff_src).exists() and pypff_src not in sys.path:
+            sys.path.insert(0, pypff_src)
+            
+        try:
+            mod = importlib.import_module("pypff._cli.test")
+            test_app = mod.app
+            click_group = typer.main.get_command(test_app)
+            cmd = click_group.get_command(ctx, cmd_name)  # type: ignore[attr-defined]
+            if cmd:
+                cmd.name = cmd_name
+                return cmd
+            return None
+        except Exception as e:
+            error_console = Console(stderr=True)
+            error_console.print(f"[red]Error loading pypff test command '{cmd_name}': {e}[/red]")
+            return None
+
+
 class HwTestLazyGroup(BaseLazyGroup):
     """
     Lazy-loading group for hardware_software (HITL) tests.
@@ -114,12 +155,28 @@ sw2_app = typer.Typer(help="v2 Software QA — topology-driven, realistic contai
 hw_app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True, cls=HwTestLazyGroup)
 grpc_app = typer.Typer(help="gRPC service layer tests", no_args_is_help=True, cls=GrpcTestLazyGroup)
 v2_app = typer.Typer(help="v2 Software QA (topology-driven, realistic containers)", no_args_is_help=True)
+pff_app = typer.Typer(help="Pypff I/O tests", no_args_is_help=True, cls=PypffTestLazyGroup)
 
 app.add_typer(sw_app, name="sw")
 app.add_typer(sw2_app, name="sw2")
 app.add_typer(hw_app, name="hw")
 app.add_typer(grpc_app, name="grpc")
+app.add_typer(pff_app, name="pff")
 sw_app.add_typer(v2_app, name="v2")
+
+@pff_app.callback()
+def pff_test_main(
+    ctx: typer.Context,
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for pypff tests.", callback=display_tree_callback)] = False
+) -> None:
+    """Pypff I/O tests"""
+    if tree:
+        return
+    # Ensure we are running from pypff so that pytest finds the right config
+    root = PanoPaths.software_root_dir()
+    pypff_root = root / "pypff"
+    if pypff_root.exists():
+        os.chdir(pypff_root)
 
 @grpc_app.callback()
 def grpc_main(

@@ -19,14 +19,15 @@ class PanoLazyGroup(BaseLazyGroup):
             "session-start": ("control.session_start", "app", "Initialize hardware/power for an observing session."),
             "session-stop": ("control.session_stop", "app", "Gracefully power down and terminate a session."),
             # System commands
-            "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (paths, commands)."),
-            "test": ("ci.test_cli", "app", "Unified PSETI testing suite (lint, sw, hw)."),
+            "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (sci data, pff)."),
+            "paths": ("control.tools.show_cli", "show_paths", "Display resolved system paths and environment overrides."),
+            "test": ("ci.test_cli", "app", "Unified PSETI testing suite (lint, sw, hw, pff)."),
             "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
         }
         # Explicit order to ensure consistent UX regardless of mapping insertion order
         command_order = [
             "power", "uids", "cfg", "val", "start", "stat", "stop", "xfr",
-            "session-start", "session-stop", "show", "test", "grpc"
+            "session-start", "session-stop", "show", "paths", "test", "grpc"
         ]
         super().__init__(
             *args, 

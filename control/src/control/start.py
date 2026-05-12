@@ -452,15 +452,25 @@ def make_run_dirs(
                 shutil.copy2(item, Path(run_dir) / item.name)
 
     # Explicitly ensure sw_info.json and ph_baseline.json are captured from their primary locations
+    # We check multiple likely paths for sw_info.json to ensure it's captured in both host and Docker environments.
+    sw_info_paths = [
+        PanoPaths.software_root_dir() / config_file.sw_info_filename,
+        PanoPaths.base_dir() / config_file.sw_info_filename,
+        Path("/") / config_file.sw_info_filename,
+        Path("/app") / config_file.sw_info_filename,
+    ]
+    
+    sw_info_src = next((p for p in sw_info_paths if p.exists()), None)
+
     artifact_map = {
         config_file.quabo_ph_baseline_filename: calib_dir / config_file.quabo_ph_baseline_filename,
-        config_file.sw_info_filename: PanoPaths.software_root_dir() / config_file.sw_info_filename,
+        config_file.sw_info_filename: sw_info_src,
     }
     for base_name, src_path in artifact_map.items():
-        if src_path.exists():
+        if src_path and src_path.exists():
              shutil.copy2(src_path, f'{run_dir}/{base_name}')
         else:
-             logger.debug(f"Artifact {src_path} not found; skipping snapshot.")
+             logger.debug(f"Artifact {base_name} not found in expected locations; skipping snapshot.")
 
     # 3. make module and run directories on DAQ nodes
     for node in daq_config.daq_nodes:

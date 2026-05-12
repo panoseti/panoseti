@@ -32,11 +32,10 @@ def show_callback(
     ctx: typer.Context,
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for system inspection.", callback=display_tree_callback)] = False
 ) -> None:
-    """Inspect and visualize system state."""
+    """Inspect and visualize system state (sci data)."""
     pass
 
 
-@app.command(name="paths")
 def show_paths(
     tree_opt: Annotated[bool, typer.Option("--tree", "-t", help="Display paths as a file tree.")] = False
 ) -> None:
@@ -46,8 +45,8 @@ def show_paths(
     To override any of these paths, set the corresponding environment variable.
     
     Examples:
-      $ pseti show paths
-      $ pseti show paths --tree
+      $ pseti paths
+      $ pseti paths --tree
       $ export PSETI_CONFIG=/tmp/custom_configs
     """
     console = Console()
@@ -404,15 +403,29 @@ def show_sci(
         asyncio.run(stream_sci_data(interval, module_ids, movie, ph, init, init_sim, legend_local, legend_global, palette, compact))
 
 
-@app.command(name="commands")
-def show_commands(
-    ctx: typer.Context,
-    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree.", callback=display_tree_callback)] = True
+@app.command(name="pff")
+def show_pff(
+    run_dir: Annotated[pathlib.Path, typer.Argument(help="Path to the .pffd run directory.")],
+    details: Annotated[bool, typer.Option("--details", "-d", help="Show individual PFF files.")] = False,
 ) -> None:
     """
-    Display a tree-like view of all available PSETI commands and subcommands.
+    Explore the structure of a PanoSETI run.
     """
-    pass
+    import sys
+    # Ensure pypff/src is in path
+    repo_root = PanoPaths.software_root_dir()
+    pypff_src = (repo_root / "pypff" / "src").resolve()
+    if str(pypff_src) not in sys.path:
+        sys.path.insert(0, str(pypff_src))
+        
+    from pypff import PanosetiRun
+    
+    if not run_dir.exists():
+        print(f"[red]❌ Run directory {run_dir} does not exist.[/red]")
+        raise typer.Exit(1)
+    
+    run = PanosetiRun(run_dir)
+    run.show(details=details)
 
 
 if __name__ == "__main__":
