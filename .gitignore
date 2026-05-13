@@ -61,3 +61,6 @@ test/
 
 # ignore javascript and css library
 lib/
+
+# ignore egg builds
+**.egg**

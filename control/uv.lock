@@ -1062,101 +1062,6 @@ wheels = [
 ]
 
 [[package]]
-name = "panoseti-control"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "astropy" },
-    { name = "blake3" },
-    { name = "docker" },
-    { name = "gitpython" },
-    { name = "haversine" },
-    { name = "influxdb" },
-    { name = "jsonpickle" },
-    { name = "matplotlib" },
-    { name = "networkx" },
-    { name = "numpy" },
-    { name = "orjson" },
-    { name = "panoseti-grpc" },
-    { name = "paramiko" },
-    { name = "psutil" },
-    { name = "pydantic" },
-    { name = "pypff" },
-    { name = "pyserial" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-mock" },
-    { name = "pytest-timeout" },
-    { name = "pytest-xdist" },
-    { name = "pyvis" },
-    { name = "pyyaml" },
-    { name = "redis" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "testcontainers" },
-    { name = "tftpy" },
-    { name = "typer" },
-    { name = "typing-extensions" },
-    { name = "xxhash" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "fakeredis" },
-    { name = "mypy" },
-    { name = "numpy" },
-    { name = "ruff" },
-    { name = "testcontainers", extra = ["redis"] },
-    { name = "types-paramiko" },
-    { name = "types-requests" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "astropy", specifier = ">=5.2" },
-    { name = "blake3" },
-    { name = "docker", specifier = ">=7.0" },
-    { name = "docker", specifier = ">=7.1.0" },
-    { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.26" },
-    { name = "gitpython", specifier = ">=3.1" },
-    { name = "haversine", specifier = ">=2.9" },
-    { name = "influxdb", specifier = ">=5.3" },
-    { name = "jsonpickle" },
-    { name = "matplotlib" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9" },
-    { name = "networkx" },
-    { name = "numpy", specifier = ">=1.24" },
-    { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.24" },
-    { name = "orjson" },
-    { name = "panoseti-grpc", editable = "../grpc" },
-    { name = "paramiko" },
-    { name = "psutil", specifier = ">=5.9" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pypff", editable = "../pypff" },
-    { name = "pyserial", specifier = ">=3.5" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.23" },
-    { name = "pytest-mock", specifier = ">=3.12" },
-    { name = "pytest-timeout", specifier = ">=2.0" },
-    { name = "pytest-xdist", specifier = ">=3.0" },
-    { name = "pyvis" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "redis", specifier = ">=7" },
-    { name = "requests", specifier = ">=2.31" },
-    { name = "rich", specifier = ">=13.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
-    { name = "testcontainers", specifier = ">=4.14.2" },
-    { name = "testcontainers", extras = ["redis"], marker = "extra == 'dev'", specifier = ">=4.0" },
-    { name = "tftpy", specifier = ">=0.8.2" },
-    { name = "typer" },
-    { name = "types-paramiko", marker = "extra == 'dev'" },
-    { name = "types-requests", marker = "extra == 'dev'" },
-    { name = "typing-extensions", specifier = ">=4.5" },
-    { name = "xxhash" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "panoseti-grpc"
 version = "0.4.11"
 source = { editable = "../grpc" }
@@ -1349,6 +1254,101 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/16/92/d1e32e3e0d894fe00b15ce28ad4944ab692713f2e7f0a99787405e43533a/protobuf-6.33.6-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593", size = 323436, upload-time = "2026-03-18T19:04:55.768Z" },
     { url = "https://files.pythonhosted.org/packages/c4/72/02445137af02769918a93807b2b7890047c32bfb9f90371cbc12688819eb/protobuf-6.33.6-py3-none-any.whl", hash = "sha256:77179e006c476e69bf8e8ce866640091ec42e1beb80b213c3900006ecfba6901", size = 170656, upload-time = "2026-03-18T19:04:59.826Z" },
 ]
+
+[[package]]
+name = "pseti-ctl"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "astropy" },
+    { name = "blake3" },
+    { name = "docker" },
+    { name = "gitpython" },
+    { name = "haversine" },
+    { name = "influxdb" },
+    { name = "jsonpickle" },
+    { name = "matplotlib" },
+    { name = "networkx" },
+    { name = "numpy" },
+    { name = "orjson" },
+    { name = "panoseti-grpc" },
+    { name = "paramiko" },
+    { name = "psutil" },
+    { name = "pydantic" },
+    { name = "pypff" },
+    { name = "pyserial" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+    { name = "pyvis" },
+    { name = "pyyaml" },
+    { name = "redis" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "testcontainers" },
+    { name = "tftpy" },
+    { name = "typer" },
+    { name = "typing-extensions" },
+    { name = "xxhash" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "fakeredis" },
+    { name = "mypy" },
+    { name = "numpy" },
+    { name = "ruff" },
+    { name = "testcontainers", extra = ["redis"] },
+    { name = "types-paramiko" },
+    { name = "types-requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "astropy", specifier = ">=5.2" },
+    { name = "blake3" },
+    { name = "docker", specifier = ">=7.0" },
+    { name = "docker", specifier = ">=7.1.0" },
+    { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.26" },
+    { name = "gitpython", specifier = ">=3.1" },
+    { name = "haversine", specifier = ">=2.9" },
+    { name = "influxdb", specifier = ">=5.3" },
+    { name = "jsonpickle" },
+    { name = "matplotlib" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9" },
+    { name = "networkx" },
+    { name = "numpy", specifier = ">=1.24" },
+    { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.24" },
+    { name = "orjson" },
+    { name = "panoseti-grpc", editable = "../grpc" },
+    { name = "paramiko" },
+    { name = "psutil", specifier = ">=5.9" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pypff", editable = "../pypff" },
+    { name = "pyserial", specifier = ">=3.5" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23" },
+    { name = "pytest-mock", specifier = ">=3.12" },
+    { name = "pytest-timeout", specifier = ">=2.0" },
+    { name = "pytest-xdist", specifier = ">=3.0" },
+    { name = "pyvis" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "redis", specifier = ">=7" },
+    { name = "requests", specifier = ">=2.31" },
+    { name = "rich", specifier = ">=13.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+    { name = "testcontainers", specifier = ">=4.14.2" },
+    { name = "testcontainers", extras = ["redis"], marker = "extra == 'dev'", specifier = ">=4.0" },
+    { name = "tftpy", specifier = ">=0.8.2" },
+    { name = "typer" },
+    { name = "types-paramiko", marker = "extra == 'dev'" },
+    { name = "types-requests", marker = "extra == 'dev'" },
+    { name = "typing-extensions", specifier = ">=4.5" },
+    { name = "xxhash" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "psutil"
@@ -1549,6 +1549,7 @@ dependencies = [
     { name = "rich" },
     { name = "scipy" },
     { name = "tqdm" },
+    { name = "typer" },
 ]
 
 [package.metadata]
@@ -1567,6 +1568,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scipy" },
     { name = "tqdm" },
+    { name = "typer" },
     { name = "typer", marker = "extra == 'dev'", specifier = ">=0.9.0" },
 ]
 provides-extras = ["dev"]
