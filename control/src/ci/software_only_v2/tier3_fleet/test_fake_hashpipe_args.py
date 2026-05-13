@@ -12,10 +12,10 @@ import pytest
 
 from ci.software_only_v2.infra.spec import FleetSpec
 from ci.software_only_v2.orchestrator.fleet import Fleet
-from ci.software_only_v2.tier3_fleet.conftest import make_startdaq_params, requires_docker
 from ci.software_only_v2.tier1_unit.daq_config_fixtures import VALID_CONFIGS
-from control.utils.pydantic_config_models import DataConfig
+from ci.software_only_v2.tier3_fleet.conftest import make_startdaq_params, requires_docker
 from control.driver.quabo_driver import get_daq_params
+from control.utils.pydantic_config_models import DataConfig
 
 pytestmark = pytest.mark.tier3
 

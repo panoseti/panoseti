@@ -335,6 +335,7 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
     """
 
     import grpc
+
     from control.utils import config_file
 
     daq_config = config_file.get_daq_config()

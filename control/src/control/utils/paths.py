@@ -173,10 +173,7 @@ class PanoPaths:
     def calibration_dir(cls) -> pathlib.Path:
         """Directory for calibration artifacts."""
         override = os.environ.get("PSETI_CALIB_DIR")
-        if override:
-            d = pathlib.Path(override).resolve()
-        else:
-            d = cls.state_dir() / "calibration"
+        d = pathlib.Path(override).resolve() if override else cls.state_dir() / "calibration"
         d.mkdir(parents=True, exist_ok=True)
         return d
 

@@ -50,10 +50,9 @@ async def test_start_rollback_continues_on_erofs_archival_failure(
 @pytest.mark.asyncio
 async def test_cleanup_refused_on_uncertain_liveness_without_force() -> None:
     """Proves that CleanupData rejects deletion if PID status is uncertain (corrupted file)."""
+    import grpc
     from panoseti_grpc.daq_control.server import DaqControlServicer
     from panoseti_grpc.generated import daq_control_pb2
-
-    import grpc
     
     servicer = DaqControlServicer(grpc_enabled=False)
     # Inject a non-integer garbage PID (simulating corrupted pid file state)

@@ -7,9 +7,10 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from ci.software_only_v2.tier1_unit.daq_config_fixtures import INVALID_CONFIGS, VALID_CONFIGS
 from control.driver.quabo_driver import get_daq_params
 from control.utils.pydantic_config_models import DataConfig
-from ci.software_only_v2.tier1_unit.daq_config_fixtures import VALID_CONFIGS, INVALID_CONFIGS
+
 
 @pytest.mark.tier1
 @pytest.mark.parametrize("config_dict", VALID_CONFIGS)

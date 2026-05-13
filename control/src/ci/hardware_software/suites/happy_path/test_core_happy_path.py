@@ -44,8 +44,8 @@ pytestmark = [
 
 # pseti start (no --nsecs) returns immediately after the ledger reaches ACTIVE,
 # leaving the run going in background daemons. We sleep this long before stopping.
-_RUN_DURATION_S = 30
-_TRANSFER_TIMEOUT_S = 180
+_RUN_DURATION_S = 15
+_TRANSFER_TIMEOUT_S = 30
 
 
 # ---------------------------------------------------------------------------

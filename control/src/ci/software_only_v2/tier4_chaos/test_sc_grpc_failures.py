@@ -12,9 +12,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import anyio
+import grpc
 import pytest
 
-import grpc
 from ci.software_only_v2.fixtures.chaos import Chaos
 from ci.software_only_v2.infra.spec import FleetSpec
 from ci.software_only_v2.orchestrator.fleet import Fleet
