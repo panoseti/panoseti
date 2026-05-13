@@ -7,8 +7,11 @@ safe-down, list-classes, explain, check-env.
 
 from __future__ import annotations
 
+import fnmatch
 import os
+import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -327,9 +330,6 @@ def hw_ls(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show full node IDs.")] = False,
 ) -> None:
     """List all available HITL tests grouped by hardware state and class."""
-    import fnmatch
-    import tomllib
-
     try:
         # 1. Load TOML for class metadata
         with (_HW_SW_DIR / "hw_tests.toml").open("rb") as f:
@@ -598,7 +598,6 @@ def hw_list_classes() -> None:
             cwd=_CONTROL_DIR,
             timeout=30,
         )
-        import fnmatch
         for line in result.stdout.splitlines():
             line = line.strip()
             if not line or line.startswith("=") or "warning" in line.lower():
@@ -647,8 +646,6 @@ def hw_check_env(
     post_deploy: Annotated[bool, typer.Option("--post-deploy", help="Check environment after deployment.")] = False,
 ) -> None:
     """Verify HITL environment: config files, WPS reachability, network connectivity."""
-    import shutil
-
     from control.utils.run_state import RunStateManager
 
     all_ok = True
@@ -669,7 +666,6 @@ def hw_check_env(
         # 2. Check Docker contexts
         try:
             topo = _get_topology()
-            import subprocess
             r = subprocess.run(["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True, check=True)
             contexts = r.stdout.splitlines()
             for node in topo.daq_nodes():
@@ -689,7 +685,6 @@ def hw_check_env(
 
     if post_deploy:
         console.print("[dim]Running post-deploy checks...[/dim]")
-        import subprocess
         
         # 1. Verify headnode is running
         r = subprocess.run(

@@ -31,8 +31,13 @@ CORE_OBS_CONFIGS = _HW_SW_DIR / "core_obs_configs"
 # Ordered list of data-config variant names to parametrize.
 # Add new entries here when more variants are validated.
 DATA_CONFIGS = [
-    "image_8bit",
-    "pulse_height_uhe",
+    "dual_anytrig_stim-q0",
+    "dual_anytrig_stim-q1",
+    "dual_anytrig_stim-q2",
+    "dual_anytrig_stim-q3",
+    "dual_no-anytrig_stim-all",
+    "ph_two-pix_stim-q1",
+    "ph_three-pix_stim-q3",
     "interleave",
 ]
 
@@ -160,10 +165,10 @@ def active_data_config(request, runner, topology):
     wait_until_all_quabos_reachable(topology, timeout=30, retry_every=2)
     yield name
 
-    # Restore symlink to image_8bit as a safe default
-    default_src = CORE_OBS_CONFIGS / "data_config_image_8bit.json"
+    # Restore symlink to dual_anytrig_stim-q0 as a safe default
+    default_src = CORE_OBS_CONFIGS / "data_config_dual_anytrig_stim-q0.json"
     if dst.is_symlink() or dst.exists():
         dst.unlink()
     if default_src.exists():
         dst.symlink_to(default_src.resolve())
-        logger.info("active_data_config: restored configs/data_config.json → data_config_image_8bit.json")
+        logger.info("active_data_config: restored configs/data_config.json → data_config_dual_anytrig_stim-q0.json")
