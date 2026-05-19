@@ -289,8 +289,9 @@ def redis_client(session_fleet) -> Iterator[Any]:
 
 @pytest.fixture(scope="session")
 def daq_data_client(session_fleet) -> Iterator[DaqDataClient]:
-    _fleet, daq_cfg = session_fleet
-    with DaqDataClient(daq_cfg, network_config=None) as client:
+    fleet, _daq_cfg = session_fleet
+    spec = fleet.specs[0]
+    with DaqDataClient(host=spec.container_host_ip, port=spec.mapped_port) as client:
         yield client
 
 @pytest.fixture

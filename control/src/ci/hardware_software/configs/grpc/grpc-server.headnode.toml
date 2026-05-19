@@ -6,7 +6,7 @@
 # storeLoki.py ships the Redis logs:ingress queue to Loki.
 #
 # Usage:
-#   panoseti-server --config /app/src/ci/integration/configs/grpc/headnode/server.toml
+#   pseti-grpc server --config /app/src/ci/integration/configs/grpc/headnode/server.toml
 #
 # Deployed alongside storeLoki.py in the CI headnode container (10.0.1.22).
 # ============================================================

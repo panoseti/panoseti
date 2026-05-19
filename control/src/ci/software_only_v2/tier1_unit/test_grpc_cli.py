@@ -56,10 +56,13 @@ class TestPsetiGrpcCli:
         mock_telem_resp.success = True
         
         # Patch stubs and client where they are USED in panoseti_grpc._cli.root
-        with patch("panoseti_grpc._cli.root.daq_data_pb2_grpc.DaqDataStub"), \
+        with patch("panoseti_grpc._cli.root.HealthClient") as mock_hc, \
              patch("panoseti_grpc._cli.root.daq_control_pb2_grpc.DaqControlStub") as mock_ctrl_stub, \
              patch("panoseti_grpc._cli.root.TelemetryClient") as mock_telem_client:
-             
+
+            # HealthClient.check returns True → "daq_data SERVING"
+            mock_hc.return_value.check.return_value = True
+
             # Setup mocks
             mock_ctrl_stub.return_value.StatusDaq.return_value = mock_ctrl_resp
             mock_telem_client.return_value.send_log_future.return_value.result.return_value = mock_telem_resp

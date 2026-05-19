@@ -57,14 +57,8 @@ def redis_client() -> Iterator[Any]:
 @pytest.fixture(scope="session")
 def daq_data_client():
     """DaqDataClient for the static integration environment."""
-    # Build a minimal daq_config that points to the static IPs
-    daq_cfg = {
-        "daq_nodes": [
-            {"ip_addr": DAQNODE_DIRECT_HOST, "data_dir": "/data"},
-            {"ip_addr": DAQNODE2_DIRECT_HOST, "data_dir": "/data"}
-        ]
-    }
-    with DaqDataClient(daq_cfg, network_config=None) as client:
+    data_host = os.getenv("DAQNODE_DATA_HOST", DAQNODE_DIRECT_HOST)
+    with DaqDataClient(host=data_host, port=GRPC_PORT) as client:
         yield client
 
 @pytest.fixture(scope="module")
@@ -108,14 +102,9 @@ def real_daq_data_client(hashpipe_pcap_session: dict[str, Any], daqnode_num: int
     daq_data and daq_control share a process, so hashpipe UDS sockets
     at /tmp are directly accessible — no shared volume required.
     """
-    run_params = hashpipe_pcap_session
-    daqnode_host = DAQNODE_DIRECT_HOST# if daqnode_num == 1 else DAQNODE2_DIRECT_HOST
-    daq_cfg = {
-        "daq_nodes": [{"ip_addr": daqnode_host, "data_dir": run_params["data_dir"]}]
-    }
-    with DaqDataClient(daq_cfg, network_config=None) as client:
-        ok = client.init_hp_io(hosts=None, hp_io_cfg=REAL_HP_IO_CFG)
-        # ok = client.init_sim(hosts=None)
+    daqnode_host = DAQNODE_DIRECT_HOST
+    with DaqDataClient(host=daqnode_host, port=GRPC_PORT) as client:
+        ok = client.init_hp_io(REAL_HP_IO_CFG)
         if not ok:
             pytest.skip(
                 "init_hp_io(simulate_daq=False) failed — "

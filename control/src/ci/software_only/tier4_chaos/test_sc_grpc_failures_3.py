@@ -213,7 +213,7 @@ def test_SC016_wrong_port_gives_clear_error(daqnode_ip) -> None:
 @pytest.mark.skip(reason="SC-017: requires server config without daq_control=true")
 def test_SC017_daq_control_disabled_returns_unimplemented() -> None:
     """
-    SC-017: A panoseti-server running without daq_control enabled must return
+    SC-017: A pseti-grpc server running without daq_control enabled must return
     UNIMPLEMENTED for all DAQ Control RPCs.
 
     FAILS RED TODAY: server profile is not tested with daq_control disabled.

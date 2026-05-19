@@ -60,7 +60,7 @@ def data_client(topology: ObservatoryTopology) -> DaqDataClient:
     daq_config = topology._daq
     if not daq_config.daq_nodes:
         raise RuntimeError("No DAQ nodes defined in topology.")
-    
+
     primary = daq_config.daq_nodes[0]
-    # host, port = util.daq_grpc_endpoint(primary, daq_config)
-    return DaqDataClient(daq_config.model_dump(), network_config=topology._net.model_dump())
+    host, port = util.daq_grpc_endpoint(primary, daq_config)
+    return DaqDataClient(host=host, port=port)

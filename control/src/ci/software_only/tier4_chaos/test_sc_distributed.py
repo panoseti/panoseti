@@ -535,18 +535,18 @@ def test_SC079_two_daqnodes_have_separate_data_volumes(
     # Both nodes must be independently operational (volume isolation)
 
 
-# ── SC-080: panoseti-server SIGHUP reload ────────────────────────────────────
+# ── SC-080: pseti-grpc server SIGHUP reload ────────────────────────────────────
 
-@pytest.mark.skip(reason="SC-080: requires SIGHUP to panoseti-server and observation of reload")
+@pytest.mark.skip(reason="SC-080: requires SIGHUP to pseti-grpc server and observation of reload")
 def test_SC080_server_sighup_reloads_config_without_dropping_connections() -> None:
     """
-    SC-080: Sending SIGHUP to the unified panoseti-server should reload its
+    SC-080: Sending SIGHUP to the unified pseti-grpc server should reload its
     config without dropping active gRPC connections or aborting in-progress runs.
 
     FAILS RED TODAY: SIGHUP behavior is not implemented or tested.
     Fix: add SIGHUP handler that reloads config from disk; pin no-drop contract.
     """
-    pytest.skip("Requires SIGHUP injection to running panoseti-server process")
+    pytest.skip("Requires SIGHUP injection to running pseti-grpc server process")
 
 
 @pytest.mark.parametrize("n_nodes", [2])

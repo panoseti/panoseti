@@ -918,57 +918,39 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, net_client: NetworkCl
 
 
 async def _check_daq_data_status(
-    daq_config: DaqConfig, 
+    daq_config: DaqConfig,
     network_config: NetworkConfig,
-    do_init: bool = False
+    do_init: bool = False,
+    gateway_host: str = "localhost",
+    gateway_port: int = 50051,
 ) -> None:
-    """Verify DaqData service initialization and optionally initialize it."""
-    logger.info("Performing DaqData service status pre-flight check...")
-    
-    # Construct a minimal daq_config dict for the client.
-    # We avoid .model_dump() because daq_config.daq_nodes might contain MagicMocks during tests,
-    # which Pydantic cannot serialize.
-    daq_cfg_dict = daq_config.model_dump() #{"daq_nodes": [{"ip_addr": str(node.ip_addr)} for node in daq_config.daq_nodes]}
-    net_cfg_dict = network_config.model_dump()
+    """Verify DaqData gateway is reachable and optionally request re-initialization."""
+    logger.info("Performing DaqData gateway status pre-flight check...")
 
-    async with AioDaqDataClient(daq_cfg_dict, net_cfg_dict) as client:
-        hosts = await client.get_valid_daq_hosts()
-        
-        async def check_host(host: str) -> None:
-            status = await client.status(host)
-            if not status or not status.hp_io_initialized:
-                if do_init:
-                    logger.info(f"Initializing DaqData hp_io on {host}...")
-                    
-                    # Find the node-specific data directory.
-                    node_data_dir = daq_config.get_node_by_ip(host).data_dir
-                    
-                    # Construct a default hp_io_cfg. 
-                    # Note: In a real run, it should watch the root data_dir.
-                    hp_io_cfg = {
-                        "data_dir": node_data_dir,
-                        "update_interval_seconds": 0.1,
-                        "force": False,
-                        "simulate_daq": False,
-                        "module_ids": []
-                    }
-                    success = await client.init_hp_io(host, hp_io_cfg)
-                    if success:
-                        logger.info(f"Successfully initialized DaqData hp_io on {host}.")
-                    else:
-                        logger.warning(f"Failed to initialize DaqData hp_io on {host}.")
+    async with AioDaqDataClient(gateway_host, gateway_port) as client:
+        status = await client.status()
+        if not status or not status.hp_io_initialized:
+            if do_init:
+                logger.info("Requesting DaqData gateway re-initialization...")
+                hp_io_cfg = {
+                    "update_interval_seconds": 0.1,
+                    "force": False,
+                    "simulate_daq": False,
+                    "module_ids": [],
+                }
+                success = await client.init_hp_io(hp_io_cfg)
+                if success:
+                    logger.info("DaqData gateway re-initialization succeeded.")
                 else:
-                    logger.warning(
-                        f"DaqData service hp_io is NOT initialized on {host}. "
-                        "Real-time streaming (pseti show sci) will not be available. "
-                        "Use --init-snapshot to enable it automatically (default)."
-                    )
+                    logger.warning("DaqData gateway re-initialization failed.")
             else:
-                logger.info(f"DaqData service hp_io is initialized and valid on {host}.")
-
-        async with asyncio.TaskGroup() as tg:
-            for h in hosts:
-                tg.create_task(check_host(h))
+                logger.warning(
+                    "DaqData gateway hp_io is NOT initialized. "
+                    "Real-time streaming (pseti show sci) will not be available. "
+                    "Use --init-snapshot to enable it automatically (default)."
+                )
+        else:
+            logger.info("DaqData gateway hp_io is initialized and valid.")
 
 async def start_run(
     obs_config: ObsConfig,

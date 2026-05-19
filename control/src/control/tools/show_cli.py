@@ -215,32 +215,29 @@ async def stream_sci_data(
     compact: bool = True,
 ) -> None:
     """Async science data stream with decoupled rendering to prevent flickering."""
-    # Simplified: AioDaqDataClient accepts config paths directly and handles all valid hosts if hosts=[] is passed.
-    daq_config_path = PanoPaths.config_dir() / config_file.daq_config_filename
-    network_config_path = PanoPaths.config_dir() / config_file.network_config_filename
+    gateway_host = os.getenv("DAQ_DATA_GATEWAY_HOST", "localhost")
+    gateway_port = int(os.getenv("DAQ_DATA_GATEWAY_PORT", "50051"))
 
     # Shared state between ingestion and rendering
     latest_images: dict[int, dict[str, dict[Any, Any]]] = {}
     dirty = False
-    
-    async with AioDaqDataClient(daq_config_path, network_config_path) as client:
+
+    async with AioDaqDataClient(gateway_host, gateway_port) as client:
         # Handle initialization if requested
         if init_sim:
-            await client.init_sim(hosts=[])
-            print("[green]Initialized simulation stream on all DAQ nodes.[/green]")
+            await client.init_sim()
+            print("[green]Initialized simulation stream.[/green]")
         elif init:
-            # client.init_hp_io handles broadcasting and node-specific data_dirs from daq_config
             hp_io_cfg = {"update_interval_seconds": 0.1, "force": True}
-            await client.init_hp_io(hosts=[], hp_io_cfg=hp_io_cfg)
-            print("[green]Initialized science stream on all DAQ nodes.[/green]")
+            await client.init_hp_io(hp_io_cfg)
+            print("[green]Initialized science stream.[/green]")
 
-        stream = await client.stream_images(
-            hosts=[],
+        stream = client.stream_images(
             stream_movie_data=movie,
             stream_pulse_height_data=ph,
             update_interval_seconds=interval,
             module_ids=tuple(module_ids),
-            parse_pano_images=True
+            parse_pano_images=True,
         )
 
         console = Console()

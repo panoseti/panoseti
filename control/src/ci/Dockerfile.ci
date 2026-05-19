@@ -75,6 +75,13 @@ USER panoseti
 # Prepare directories with correct ownership before copying/syncing
 RUN mkdir -p /app/state /app/.pytest_cache /app/tmp/
 
+# Log directory for Alloy log-shipping (jsonl → Alloy sidecar → Loki).
+# get_logger() appends the hostname segment at runtime; we just need the root.
+USER root
+RUN mkdir -p /var/log/panoseti && chmod 1777 /var/log/panoseti
+USER panoseti
+ENV PANOSETI_LOG_DIR=/var/log/panoseti
+
 # Copy source code as the panoseti user
 COPY --chown=panoseti:panoseti control/ .
 

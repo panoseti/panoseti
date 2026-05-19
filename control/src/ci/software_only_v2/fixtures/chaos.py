@@ -14,8 +14,8 @@ Usage in tests::
 
     def test_process_kill(session_fleet):
         node = session_fleet.daq_nodes[0]
-        session_fleet.chaos.proc.kill(node, "panoseti-server")
-        assert not session_fleet.chaos.proc.alive(node, "panoseti-server")
+        session_fleet.chaos.proc.kill(node, "pseti-grpc")
+        assert not session_fleet.chaos.proc.alive(node, "pseti-grpc")
 
 Or via the pytest fixture::
 

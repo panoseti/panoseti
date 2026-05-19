@@ -1,7 +1,7 @@
 """
 containers/daqnode_sim.py — Simulated DAQ-node container.
 
-Runs panoseti-server --profile daq_node (daq_data + daq_control) inside
+Runs pseti-grpc server --profile daq_node (daq_data + daq_control) inside
 the pseti-test-runner image.  hashpipe is NOT present; UdsStrategy from
 panoseti_grpc.daq_data.simulate acts as the data-plane stand-in.
 
@@ -41,7 +41,7 @@ _GRPC_SRC = _find_grpc_src()
 
 
 class DaqNodeSimContainer(PsetiContainer):
-    """A simulated DAQ node running panoseti-server --profile daq_node.
+    """A simulated DAQ node running pseti-grpc server --profile daq_node.
 
     The daq_data service starts with the bundled simulate_daq_cfg so
     UdsStrategy can replay PFF frames when a client calls init_sim().

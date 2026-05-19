@@ -2,8 +2,6 @@
 DaqData gRPC stream helpers.
 
 Collects PanoImage frames from the daq_data gRPC server during an active run.
-Requires the run to have been started with --init-snapshot (or a live
-snapshot service on the DAQ node).
 """
 
 from __future__ import annotations
@@ -13,27 +11,16 @@ import time
 
 from panoseti_grpc.daq_data.client import AioDaqDataClient
 
-from control.utils.pydantic_config_models import DaqConfig, NetworkConfig
 
-
-async def _collect_async(daq_cfg: DaqConfig, net_cfg: NetworkConfig, run_dir: str, n: int, timeout_s: float) -> list:
+async def _collect_async(host: str, port: int, n: int, timeout_s: float) -> list:
     frames: list = []
     deadline = time.monotonic() + timeout_s
-    hp_io_cfg = {
-        "data_dir": '/tmp/',
-        "update_interval_seconds": 0.1,
-        "force": False,
-        "simulate_daq": False,
-        "module_ids": []
-    }
 
-    async with AioDaqDataClient(daq_cfg.model_dump(), net_cfg.model_dump()) as client:
-        await client.init_hp_io(run_dir, hp_io_cfg)
-        async for image in await client.stream_images(
-            hosts=[],
+    async with AioDaqDataClient(host, port) as client:
+        async for image in client.stream_images(
             stream_movie_data=True,
             stream_pulse_height_data=True,
-            update_interval_seconds=0.5
+            update_interval_seconds=0.5,
         ):
             frames.append(image)
             if len(frames) >= n or time.monotonic() > deadline:
@@ -46,10 +33,10 @@ def collect_n_frames(host: str, port: int, run_dir: str, module_id: int,
     """Synchronous wrapper around the async DaqData stream.
 
     Args:
-        host: DAQ node host (real_host from topology).
+        host: DAQ node host (or gateway host).
         port: gRPC port (typically 50051).
-        run_dir: Run directory path on the DAQ node.
-        module_id: Module ID to stream from.
+        run_dir: Run directory path (unused; kept for call-site compatibility).
+        module_id: Module ID to stream from (unused; kept for call-site compatibility).
         n: Minimum number of frames to collect.
         timeout: Maximum seconds to wait for n frames.
 
@@ -59,10 +46,7 @@ def collect_n_frames(host: str, port: int, run_dir: str, module_id: int,
     Raises:
         AssertionError: if fewer than n frames are collected within timeout.
     """
-    from control.utils import config_file
-    daq_cfg = config_file.get_daq_config()
-    net_cfg = config_file.get_network_config()
-    frames = asyncio.run(_collect_async(daq_cfg, net_cfg, run_dir, n, timeout))
+    frames = asyncio.run(_collect_async(host, port, n, timeout))
     assert len(frames) >= n, (
         f"DaqData stream yielded only {len(frames)} frames in {timeout:.0f}s "
         f"(expected ≥ {n}) from {host}:{port} module={module_id}"

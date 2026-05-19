@@ -16,15 +16,19 @@ from panoseti_grpc.telemetry.logger import get_logger
 def test_when_logger_called_then_jsonl_output_is_valid(tmp_path: pathlib.Path) -> None:
     """
     Verify that the unified logger produces correctly formatted JSONL.
+    get_logger() appends a per-host subdirectory by default (Phase 1),
+    so we glob for the file rather than hard-coding the path.
     """
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
-    
+
     logger = get_logger("telemetry_test", log_dir=log_dir)
     logger.info("Test message", extra={"run_id": "test_123"})
-    
-    # Locate the jsonl file
-    jsonl_path = log_dir / "telemetry_test.jsonl"
+
+    # The file lands at log_dir/<hostname>/telemetry_test.jsonl
+    matches = list(log_dir.rglob("telemetry_test.jsonl"))
+    assert matches, f"telemetry_test.jsonl not found under {log_dir}"
+    jsonl_path = matches[0]
     assert jsonl_path.exists()
     
     lines = jsonl_path.read_text().strip().split('\n')
