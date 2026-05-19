@@ -58,6 +58,7 @@ test/
 .vscode
 .idea
 .worktrees/
+.antigravitycli/
 
 # ignore javascript and css library
 lib/
