@@ -22,7 +22,7 @@ Start a new recording run.
 ### `pseti stat`
 Show observatory health, acquisition status, and transactional ledger.
 - `pseti stat`: (Default) Summary of head node and remote DAQ node status.
-- `pseti stat ledger`: Inspect the run state ledger (read-only).
+- `pseti stat ledger`: Inspect the run state ledger (read-only). Lazy-loaded from `control.tools.ledger_cli`.
 - `pseti stat sweep`: Full network reachability sweep (Quabo ping + gRPC).
 - Options: `--watch` (interactive), `--interval`, `--no-remote`.
 
@@ -32,10 +32,15 @@ Stop and finish the current recording run.
 - `--no-collect`: Skip rsync to head node.
 
 ### `pseti cfg`
-Configure observatory hardware and daemons (e.g., `ping`, `reboot`, `hv-on`, `maroc-config`).
+Configure observatory hardware and daemons. Subcommands:
+`ping`, `reboot`, `reboot-single`, `loads`, `init-daq-nodes`, `hk-dest`,
+`redis-daemons`, `stop-redis-daemons`, `permanent-daemons`, `stop-permanent-daemons`,
+`show-permanent-daemons`, `hv-on`, `hv-off`, `maroc-config`, `mask-config`,
+`calibrate-ph`, `show-ph-baselines`, `shutter-open`, `shutter-close`, `disk-space`,
+`start-interleave`, `stop-interleave`, `dry-run-interleave`.
 
 ### `pseti val`
-Configuration and topology validation tools (`all`, `network`, `graph`, `debug`).
+Configuration and topology validation tools. Subcommands: `all`, `network`, `graph`, `debug`.
 
 ### `pseti power`
 Control Quabo power via Web Power Switches (WPS). By default, queries the status of all switches.
@@ -60,16 +65,53 @@ Gracefully terminate a session. Powers off all modules and stops background Redi
 ## System Commands
 
 ### `pseti show`
-Inspect and visualize PSETI system state.
-- `paths`: Display the current resolved paths for all key directories and environment variable overrides.
+Inspect and visualize PSETI system state. Subcommands:
 - `sci`: Live-updating text visualization of the science data stream (requires running gRPC).
-- `commands`: Display a tree-like view of all available PSETI commands.
+- `pff`: Inspect PFF data files on disk.
+
+### `pseti paths`
+Display the current resolved paths for all key directories and environment variable overrides. This is a **top-level** command (`pseti paths`), not a subcommand of `pseti show`.
 
 ### `pseti test`
-Quality Assurance and Testing Suite.
-- `lint`: Static analysis and linting (Ruff, MyPy).
-- `sw`: Software QA tests (Docker-based CI simulations).
-- `hw`: Hardware-in-the-Loop (HITL) physical lab tests.
+Quality Assurance and Testing Suite. All Docker-backed suites accept shared flags at the `pseti test` level (before the subcommand):
+- `--dev`: Add `.dev.yml` overlay — hot-mounts source into containers (fast iteration without rebuild).
+- `--no-build`: Skip image build; use existing cached image.
+- `--tool docker|podman`: Container runtime (default: `docker`).
+- `--debug` / `--no-teardown`: Skip container teardown on completion (preserves state for debugging).
+
+#### `pseti test sw2` — v2 test suite (current)
+Primary software QA suite. Run `pseti test sw2 -h` for all options.
+| Tier | Command | Docker | Description |
+|------|---------|--------|-------------|
+| 1 | `pseti test sw2 unit` | No | Pure logic, Pydantic, driver parsing |
+| 2 | `pseti test sw2 logic` | No | State-machine logic with isolated workspace |
+| 3 | `pseti test sw2 fleet` | Yes (testcontainers) | Multi-node E2E |
+| 4 | `pseti test sw2 chaos` | Yes (testcontainers) | Fault injection |
+| 5 | `pseti test sw2 integration` | Yes (static compose) | Real Hashpipe + tcpreplay |
+| — | `pseti test sw2 all` | Yes | lint + all five tiers |
+| — | `pseti test sw2 build` | Yes | Build CI images only |
+| — | `pseti test sw2 cleanup` | Yes | Tear down compose stacks |
+
+`pseti test sw v2 <tier>` is a valid legacy alias (e.g. `pseti test sw v2 unit`).
+
+#### `pseti test sw` — v1 test suite (sunset in progress)
+| Subcommand | Notes |
+|------------|-------|
+| `logic` | v1 logic tests |
+| `fleet` | v1 fleet tests |
+| `integration` | v1 integration tests |
+| `all` | All v1 tiers |
+| `build` / `cleanup` | Build / teardown |
+
+#### Other test suites
+| Command | Description |
+|---------|-------------|
+| `pseti test lint [ruff\|mypy\|all]` | Static analysis: Ruff and/or MyPy. |
+| `pseti test grpc [all\|lint\|daq-control\|daq-data\|telemetry]` | gRPC service tests (Docker). |
+| `pseti test pff` | PFF file format tests. |
+| `pseti test prune` | Prune stale Docker resources. |
+| `pseti test hw check-env` | Verify hardware connectivity (real Quabos + DAQ node required). |
+| `pseti test hw run [-k SCENARIO]` | Full HW-in-the-loop suite or single scenario. |
 
 ### `pseti grpc`
 PSETI unified gRPC CLI. Connects to the unified server and issues RPCs.
@@ -98,3 +140,6 @@ To change options or behavior for a command like `start`, edit the corresponding
 
 ### 3. The "Unwrap" Pattern
 If a module's Typer app contains only one command (usually named `main` or `@app.command()`), the lazy loader automatically "unwraps" it. This allows `pseti start --option` instead of forcing `pseti start main --option`.
+
+### 4. Discovery
+Use `pseti -t` / `pseti --tree` for a full top-level command tree, or `pseti <cmd> -h` for per-command help. There is no `pseti show commands` subcommand.
