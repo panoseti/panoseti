@@ -17,11 +17,11 @@ loki.process "panoseti" {
       service = "service", 
       level = "level", 
       git_commit = "git_commit", 
-      run_id = "run_id" 
+      run_id = "run_id", 
     }
   }
   stage.labels {
-    values = { service = "service", level = "level", git_commit = "git_commit" }
+    values = { service = "service", level = "level", git_commit = "git_commit", }
   }
   stage.static_labels {
     values = { hostname = env("HOSTNAME") }
