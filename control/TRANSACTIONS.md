@@ -14,10 +14,11 @@ Two separate advisory locks prevent concurrent operations at different granulari
 
 | Lock file | Mechanism | Held by | Duration |
 |---|---|---|---|
-| `state/locks/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `pseti start` / `pseti stop` | Seconds (hardware I/O only) |
-| `state/locks/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Full job duration (minutes to hours) |
+| `state/locks/panoseti_control.lock` | `SoftFileLock` (`O_EXCL` wrapper) | `pseti start` / `pseti stop` | Seconds (hardware I/O only) |
+| `state/locks/panoseti_transfer.lock` | `SoftFileLock` (`O_EXCL` wrapper) | Transfer Daemon | Full job duration (minutes to hours) |
+| `state/locks/interleave.lock` | `SoftFileLock` (`O_EXCL` wrapper) | Interleave Controller | Full observing run duration |
 
-The control lock uses atomic file creation (`O_CREAT | O_EXCL`). If acquisition fails, the PID inside the file is checked — a dead PID causes a self-healing delete and retry (SC-015/SC-021). The transfer lock uses `flock`, which the kernel releases automatically on process exit.
+All locks are implemented using the `SoftFileLock` class from the `filelock` package. This mechanism uses atomic file creation (`O_CREAT | O_EXCL`) and is fully compatible with Docker volumes (where `fcntl`/`flock` is unreliable). Wait timeouts and retry logic are configured per component to handle contention or stale lock eviction (e.g., dead PIDs).
 
 ## High-Performance Orchestration
 

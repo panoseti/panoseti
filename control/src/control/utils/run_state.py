@@ -4,12 +4,16 @@ import asyncio
 import contextlib
 import os
 import pathlib
+from pathlib import Path
 import tempfile
 import time
 import tomllib
 from typing import Any
+import logging
 
 from panoseti_grpc.telemetry.logger import get_logger
+
+from filelock import SoftFileLock, Timeout
 
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger, RunStatus
@@ -18,7 +22,7 @@ LOCK_FILE = "panoseti_control.lock"
 STATE_FILE = "ledger.toml"
 STATE_FILE_STALE = f"stale_{STATE_FILE}"
 
-logger = get_logger("PSETI.RunState")
+logger = logging.getLogger("PSETI.Ledger")
 
 
 class ValidationError(Exception):
@@ -32,111 +36,70 @@ class LockError(Exception):
 
 
 class RunStateManager:
-    """
-    Manages the PANOSETI control plane state ledger and advisory locking.
-    Ensures transactional integrity across start/stop operations.
+    """Manages transactional file-based state for PANOSETI observatory runs.
+
+    Coordinates the start/stop state machine via a central lock file and a TOML ledger.
     """
 
-    def __init__(self, base_dir: str | pathlib.Path | None = None) -> None:
+    def __init__(self, base_dir: Path | str | None = None) -> None:
+        """
+        Args:
+            base_dir: Optional override for the root state directory.
+                     Defaults to PanoPaths.state_dir().
+        """
         if base_dir:
-            self.base_dir = pathlib.Path(base_dir)
-            # Legacy/override support: if provided base_dir looks like a state root
+            self.base_dir = Path(base_dir)
             self.lock_path = self.base_dir / "locks" / LOCK_FILE
             self.state_path = self.base_dir / "runs" / STATE_FILE
-            # Ensure they exist if possible, but PanoPaths handles defaults better
+            self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
         else:
             self.base_dir = PanoPaths.state_dir()
             self.lock_path = PanoPaths.locks_dir() / LOCK_FILE
             self.state_path = PanoPaths.runs_dir() / STATE_FILE
+            PanoPaths.ensure_state_dirs()
 
-        self._lock_fh: Any | None = None
+        self._filelock = SoftFileLock(str(self.lock_path), timeout=5)
+        self._lock_held = False
         self._async_lock = asyncio.Lock()
 
-        # Ensure directory exists
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-
     def acquire_lock(self) -> bool:
-        """Acquire the exclusive advisory control-plane lock.
+        """Acquire the exclusive global observatory advisory lock.
 
-        Uses atomic ``O_EXCL`` file creation with stale-PID healing
-        (SC-015/SC-021).
+        Creates an atomic lock file at `state/locks/panoseti_control.lock`.
+        If the file exists but the holding PID is dead (e.g., from an abrupt crash),
+        the lock is considered stale and automatically overwritten.
 
         Returns:
-            ``True`` when the lock is acquired successfully.
+            True if the lock was acquired successfully.
 
         Raises:
-            LockError: If another live process already holds the lock.
+            LockError: If the lock is held by a live control process.
         """
-        if self._lock_fh:
+        if self._lock_held:
             return True
 
-        # Ensure directory exists
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        if self._filelock.is_locked:
+            logger.info(f"Waiting up to 5 seconds for existing lock on {self.lock_path}...")
 
-        for attempt in range(2):
-            try:
-                # O_EXCL ensures that this call atomically creates the file; if it exists, it fails.
-                fd = os.open(str(self.lock_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-                with os.fdopen(fd, "w") as f:
-                    f.write(str(os.getpid()))
-                self._lock_fh = True
-                return True
-            except FileExistsError:
-                # The file exists. Check if it's live or stale.
-                # Window of danger: Process A just called os.open() but hasn't written its PID yet.
-                # Process B must wait before assuming the file is empty/stale.
-                pid: int | None = None
-                
-                for _poll_attempt in range(3):
-                    try:
-                        with open(self.lock_path) as f:
-                            pid_str = f.read().strip()
-                        if pid_str:
-                            pid = int(pid_str)
-                            break
-                    except (ValueError, OSError):
-                        pass
-                    # Wait 50ms and try again
-                    time.sleep(0.05)
-                
-                if pid is not None:
-                    # Check if process is alive
-                    try:
-                        os.kill(pid, 0)
-                        # Process is LIVE. This is a legitimate lock collision.
-                        raise LockError(
-                            f"Another PANOSETI control process (PID {pid}) is already running. "
-                            f"Check for concurrent start.py or stop.py executions. Lock file: {self.lock_path}"
-                        ) from None
-                    except (ProcessLookupError, OSError):
-                        # Process is dead. Stale lock.
-                        pass
-
-                # If we reach here, either the file was empty after 150ms or the PID is dead.
-                # Self-heal (unlink and retry once).
-                try:
-                    self.lock_path.unlink()
-                    if attempt == 0:
-                        continue
-                except OSError:
-                    pass
-                
-                raise LockError(f"Failed to acquire lock. Stale lock file detected and could not be cleared: {self.lock_path}") from None
-            except OSError as e:
-                raise LockError(f"Failed to create lock file: {e}") from None
-        
-        return False
+        try:
+            self._filelock.acquire()
+            self._lock_held = True
+            return True
+        except Timeout:
+            holder_pid = self._filelock.pid
+            raise LockError(
+                f"Another PANOSETI control process (PID {holder_pid}) is already running. "
+                f"Check for concurrent start.py or stop.py executions. "
+                f"Lock file: {self.lock_path}"
+            ) from None
 
     def release_lock(self) -> None:
-        """Releases the advisory lock by removing the file."""
-        if self._lock_fh:
-            try:
-                if self.lock_path.exists():
-                    self.lock_path.unlink()
-            except OSError:
-                pass
-            self._lock_fh = None
+        """Release the exclusive global observatory advisory lock."""
+        if self._lock_held:
+            with contextlib.suppress(OSError):
+                self._filelock.release()
+            self._lock_held = False
 
     def load_state(self) -> RunStateLedger | None:
         """Loads the current run state from the TOML ledger."""
@@ -229,13 +192,14 @@ class RunStateManager:
             raise
 
     def clear_state(self) -> None:
-        """Clears the run state ledger and advisory lock."""
+        """Clear the current run state and release the lock. Intended for testing."""
         if self.state_path.exists():
             self.state_path.unlink()
+        with contextlib.suppress(OSError):
+            self._filelock.release(force=True)
+        self._lock_held = False
         if self.lock_path.exists():
-            with contextlib.suppress(OSError):
-                self.lock_path.unlink()
-        self._lock_fh = None
+            self.lock_path.unlink()
 
     def transition(self, status: RunStatus, **fields: Any) -> RunStateLedger | None:
         """Load current state, update status and any extra fields, save, return new state.

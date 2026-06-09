@@ -15,6 +15,7 @@ from typing import Any
 
 import anyio
 from panoseti_grpc.telemetry.logger import get_logger
+from filelock import SoftFileLock, Timeout
 
 from control.transfer.lifecycle import MAX_ATTEMPTS, RETRY_DELAYS
 from control.transfer.models import TransferJob, TransferNodeSpec
@@ -77,53 +78,30 @@ def _transfer_state_dir() -> pathlib.Path:
     return d
 
 
-def _acquire_transfer_lock() -> pathlib.Path | None:
+def _acquire_transfer_lock() -> SoftFileLock | None:
     """Try to acquire the exclusive transfer daemon lock file.
 
-    Uses atomic ``O_EXCL`` file creation with stale-PID healing (SC-TX-001).
-    This ensures only one transfer daemon runs at a time, even on Docker
-    volumes where ``flock`` may be unreliable.
+    Uses SoftFileLock with O_EXCL-based locking and built-in stale-PID
+    detection. Safe on Docker volumes (no fcntl dependency).
 
     Returns:
-        The Path to the lock file if acquired, or ``None`` if another process
+        The SoftFileLock instance if acquired, or None if another daemon
         already holds it.
     """
     lock_path = PanoPaths.locks_dir() / "transfer.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock = SoftFileLock(str(lock_path), timeout=0)
+    try:
+        lock.acquire()
+        return lock
+    except Timeout:
+        return None
 
-    for attempt in range(2):
-        try:
-            fd = os.open(str(lock_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-            with os.fdopen(fd, "w") as f:
-                f.write(str(os.getpid()))
-            return lock_path
-        except FileExistsError:
-            try:
-                with open(lock_path) as f:
-                    pid = int(f.read().strip())
-                os.kill(pid, 0)
-                return None
-            except (OSError, ValueError, ProcessLookupError):
-                with contextlib.suppress(OSError):
-                    lock_path.unlink()
-                if attempt == 0:
-                    continue
-                return None
-        except OSError:
-            return None
-    return None
-
-
-def _release_transfer_lock(lock_path: pathlib.Path | None) -> None:
-    """Release the exclusive lock by unlinking the lock file.
-
-    Args:
-        lock_path: Path returned by ``_acquire_transfer_lock``. A ``None``
-            value is accepted safely (no-op).
-    """
-    if lock_path:
+def _release_transfer_lock(lock: SoftFileLock | None) -> None:
+    """Release the exclusive lock."""
+    if lock is not None:
         with contextlib.suppress(OSError):
-            lock_path.unlink()
+            lock.release()
 
 
 async def _heartbeat_loop(heartbeat_path: pathlib.Path, interval: float = 5.0) -> None:
@@ -492,8 +470,8 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
         poll_interval: Seconds to wait between queue polls when no job is
             pending.
     """
-    lock_path = _acquire_transfer_lock()
-    if lock_path is None:
+    lock = _acquire_transfer_lock()
+    if lock is None:
         logger.info("Another transfer daemon is already running. Exiting.")
         return
 
@@ -609,7 +587,7 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
         await asyncio.gather(hb_task, return_exceptions=True)
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(sig)
-        _release_transfer_lock(lock_path)
+        _release_transfer_lock(lock)
         with contextlib.suppress(OSError):
             pid_path.unlink()
         logger.info("Transfer daemon stopped")

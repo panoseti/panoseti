@@ -41,6 +41,7 @@ dependencies = [
   "pytest-xdist>=3.0",
   "docker>=7.0",
   "pypff",
+  "filelock>=3.18",
 ]
 
   [project.optional-dependencies]

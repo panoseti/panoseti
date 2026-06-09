@@ -52,7 +52,7 @@ class TestLockAcquisition:
         mgr = _make_manager(pseti_workspace)
         dead_pid = 2 ** 22
         mgr.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        mgr.lock_path.write_text(str(dead_pid))
+        mgr.lock_path.write_text(f"{dead_pid}\n{socket.gethostname()}\n")
 
         acquired = mgr.acquire_lock()
         assert acquired, "RunStateManager must self-heal a stale lock (dead PID)"
@@ -78,7 +78,8 @@ class TestLockAcquisition:
         mgr = _make_manager(pseti_workspace)
         mgr.acquire_lock()
         try:
-            written_pid = int(mgr.lock_path.read_text().strip())
+            content = mgr.lock_path.read_text()
+            written_pid = int(content.splitlines()[0].strip())
             assert written_pid == os.getpid()
         finally:
             mgr.release_lock()
