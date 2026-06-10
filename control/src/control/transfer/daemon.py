@@ -90,7 +90,7 @@ def _acquire_transfer_lock() -> SoftFileLock | None:
     """
     lock_path = PanoPaths.locks_dir() / "transfer.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock = SoftFileLock(str(lock_path), timeout=0)
+    lock = SoftFileLock(str(lock_path), timeout=0, thread_local=False)
     try:
         lock.acquire()
         return lock

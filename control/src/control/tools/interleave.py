@@ -136,7 +136,7 @@ class InterleaveController:
         from filelock import SoftFileLock, Timeout
         
         INTERLEAVE_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = SoftFileLock(str(INTERLEAVE_LOCK_PATH), timeout=0)
+        self._lock = SoftFileLock(str(INTERLEAVE_LOCK_PATH), timeout=0, thread_local=False)
         
         try:
             self._lock.acquire()

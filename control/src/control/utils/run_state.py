@@ -59,7 +59,7 @@ class RunStateManager:
             self.state_path = PanoPaths.runs_dir() / STATE_FILE
             PanoPaths.ensure_state_dirs()
 
-        self._filelock = SoftFileLock(str(self.lock_path), timeout=5)
+        self._filelock = SoftFileLock(str(self.lock_path), timeout=5, thread_local=False)
         self._lock_held = False
         self._async_lock = asyncio.Lock()
 
