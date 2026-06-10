@@ -132,13 +132,13 @@ class TestConcurrentDaqOperations:
         )
 
         # CleanupData should be blocked while hashpipe is live
-        cleanup_resp = daq_client.CleanupData({
-            "data_dir":  rp["data_dir"],
-            "run_dir":   rp["run_dir"],
-            "module_id": rp["module_id"],
-        })
-        assert cleanup_resp["success"] is False
-        assert "HASHPIPE is still alive" in cleanup_resp["message"]
+        with pytest.raises(Exception) as excinfo:
+            daq_client.CleanupData({
+                "data_dir":  rp["data_dir"],
+                "run_dir":   rp["run_dir"],
+                "module_id": rp["module_id"],
+            })
+        assert "HASHPIPE is still alive" in str(excinfo.value)
 
         # After stop, cleanup should succeed (or gracefully no-op)
         daq_client.StopDaq({

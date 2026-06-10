@@ -121,16 +121,18 @@ async def test_when_lock_held_then_second_daemon_exits(
     lock_path = PanoPaths.locks_dir() / "transfer.lock"
     lock_script = pseti_workspace.root / "hold_lock.py"
     lock_script.write_text(
-        "import os, time, sys\n"
+        "import sys, time\n"
+        "from filelock import SoftFileLock, Timeout\n"
         "lp = sys.argv[1]\n"
+        "lock = SoftFileLock(lp, timeout=0)\n"
         "try:\n"
-        "    fd = os.open(lp, os.O_WRONLY | os.O_CREAT | os.O_EXCL)\n"
-        "    with os.fdopen(fd, 'w') as f:\n"
-        "        f.write(str(os.getpid()))\n"
+        "    lock.acquire()\n"
         "    print('LOCKED', flush=True)\n"
         "    time.sleep(10)\n"
-        "except FileExistsError:\n"
+        "except Timeout:\n"
         "    print('FAILED TO LOCK')\n"
+        "finally:\n"
+        "    lock.release()\n"
     )
 
     env = os.environ.copy()

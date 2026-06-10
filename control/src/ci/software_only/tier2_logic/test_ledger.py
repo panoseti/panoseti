@@ -28,7 +28,7 @@ def test_when_lock_stale_then_self_heals(tmp_path: pathlib.Path) -> None:
 
     # Write a lock file with a PID that cannot be alive (very large number)
     dead_pid = 2**22
-    lock_path.write_text(str(dead_pid))
+    lock_path.write_text(f"{dead_pid}\n{socket.gethostname()}\n")
 
     acquired = mgr.acquire_lock()
     assert acquired, "RunStateManager must self-heal a stale lock with a dead PID"

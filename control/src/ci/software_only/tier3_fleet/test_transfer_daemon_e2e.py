@@ -329,18 +329,20 @@ async def test_transfer_daemon_singleton_lock_in_container(mock_workspace, tmp_p
     # mock_workspace isolates PSETI_STATE
     lock_script = tmp_path / "hold_lock.py"
     lock_script.write_text('''
-import os
-import time
 import sys
+import time
+from filelock import SoftFileLock, Timeout
+
 lock_file = sys.argv[1]
+lock = SoftFileLock(lock_file, timeout=0)
 try:
-    fd = os.open(lock_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-    with os.fdopen(fd, "w") as f:
-        f.write(str(os.getpid()))
+    lock.acquire()
     print("LOCKED", flush=True)
     time.sleep(10)
-except FileExistsError:
+except Timeout:
     print("FAILED TO LOCK")
+finally:
+    lock.release()
 ''')
 
     lock_path = PanoPaths.locks_dir() / "transfer.lock"

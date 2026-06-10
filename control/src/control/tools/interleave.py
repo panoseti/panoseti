@@ -133,43 +133,29 @@ class InterleaveController:
         Raises:
             SystemExit: If another instance is already running.
         """
-        if os.path.exists(INTERLEAVE_LOCK_PATH):
+        from filelock import SoftFileLock, Timeout
+        
+        INTERLEAVE_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = SoftFileLock(str(INTERLEAVE_LOCK_PATH), timeout=0, thread_local=False)
+        
+        try:
+            self._lock.acquire()
+        except Timeout:
+            logger.info("Lock is contested. Adding a brief delay...")
+            time.sleep(0.5)
             try:
-                with open(INTERLEAVE_LOCK_PATH) as f:
-                    old_pid = int(f.read().strip())
-
-                if psutil.pid_exists(old_pid):
-                    # Check if the process is actually an interleave process
-                    try:
-                        p = psutil.Process(old_pid)
-                        if "interleave.py" in " ".join(p.cmdline()):
-                            logger.critical(
-                                f"CRITICAL: Another interleave process (PID {old_pid}) is currently running.\n"
-                                "To resolve this, run `python config.py --stop-interleave`."
-                            )
-                            sys.exit(1)
-                        else:
-                            logger.warning(f"Lock file belongs to unrelated process {old_pid}. Cleaning up...")
-                            os.remove(INTERLEAVE_LOCK_PATH)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        logger.warning(f"Stale lock file for inaccessible process {old_pid}. Cleaning up...")
-                        os.remove(INTERLEAVE_LOCK_PATH)
-                else:
-                    logger.warning(f"Stale PID file detected for dead process {old_pid}. Cleaning up...")
-                    os.remove(INTERLEAVE_LOCK_PATH)
-            except (ValueError, OSError):
-                with contextlib.suppress(OSError):
-                    os.remove(INTERLEAVE_LOCK_PATH)
-
-        os.makedirs(os.path.dirname(INTERLEAVE_LOCK_PATH), exist_ok=True)
-        with open(INTERLEAVE_LOCK_PATH, "w") as f:
-            f.write(str(os.getpid()))
+                self._lock.acquire(timeout=0)
+            except Timeout:
+                logger.critical(
+                    "CRITICAL: Another interleave process is currently running.\n"
+                    "To resolve this, run `python config.py --stop-interleave`."
+                )
+                sys.exit(1)
 
     def _release_lock(self) -> None:
         """Remove the interleaver PID file."""
-        if os.path.exists(INTERLEAVE_LOCK_PATH):
-            with contextlib.suppress(OSError):
-                os.remove(INTERLEAVE_LOCK_PATH)
+        if hasattr(self, "_lock") and self._lock is not None:
+            self._lock.release()
 
     def _handle_shutdown_signal(self, signum: int, frame: Any) -> None:
         """Gracefully break the observing loop on SIGINT/SIGTERM."""
