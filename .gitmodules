@@ -4,7 +4,7 @@
 [submodule "grpc"]
 	path = grpc
 	url = https://github.com/panoseti/panoseti_grpc.git
-	branch = add-two-server-daq-data-v2
+	branch = feat/ml-inference-service
 [submodule "web"]
 	path = web
 	url = https://github.com/panoseti/panoseti_web.git
@@ -17,3 +17,4 @@
 [submodule "pypff"]
 	path = pypff
 	url = https://github.com/panoseti/pypff.git
+  branch = dev
