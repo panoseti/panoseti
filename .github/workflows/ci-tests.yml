@@ -1,8 +1,9 @@
 name: CI Tests
 
 on:
+  workflow_dispatch:
   push:
-    branches: [master, dev, test-hw-sw, claude-refactor, phase-2-robustness-and-driver-tests, add-linting, test-pseti]
+    branches: [master, dev, test-pseti]
     paths:
       - 'control/**'
       - '.github/workflows/ci-tests.yml'
