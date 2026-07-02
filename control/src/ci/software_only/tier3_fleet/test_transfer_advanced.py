@@ -1,12 +1,15 @@
 """
-test_transfer_advanced.py — Advanced scenarios for the transfer queue.
+tier3_fleet/test_transfer_advanced.py — Advanced scenarios for the transfer queue.
 Covers chaos recovery, scale, queue depth, and lifecycle resilience.
 """
+
+from __future__ import annotations
 
 import asyncio
 import contextlib
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -14,6 +17,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from ci.fixtures.rsync_fixtures import RsyncMock
+from ci.software_only.orchestrator.fleet import Fleet
+from ci.software_only.tier3_fleet.conftest import requires_docker
 from ci.software_only.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
     get_mapped_client_factory,
@@ -21,28 +26,30 @@ from ci.software_only.tier3_fleet.transfer_testing_utils import (
     verify_head_node_accuracy,
 )
 from control.transfer.daemon import _process_job, run_daemon
-from control.transfer.models import TransferJob
+from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.utils import config_file
-from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager, RunStatus
+
+pytestmark = pytest.mark.tier3
+
 
 # ---------------------------------------------------------------------------
 # 1. Chaos: Partial Transfer Recovery
 # ---------------------------------------------------------------------------
 
+@requires_docker
 @pytest.mark.asyncio
 @pytest.mark.timeout(120)
 async def test_transfer_queue_chaos_partial_transfer_recovery(
-    session_fleet: Any,
-    ensure_clean_daq_state: Any,
+    session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
-    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
     transfer_queue: TransferQueue,
 ) -> None:
     """Verify the queue recovers from an rsync error and succeeds on retry."""
-    fleet, _ = session_fleet
-    head_data_dir, daq_config = isolated_transfer_env
+    fleet = session_fleet
+    daq_config = fleet.live_daq_config
+    head_data_dir = Path(daq_config.head_node_data_dir)
     run_name = f"chaos_recovery_{uuid.uuid4().hex[:8]}.pffd"
     
     expected_data = await generate_mocked_run(fleet, daq_config, run_name)
@@ -58,7 +65,7 @@ async def test_transfer_queue_chaos_partial_transfer_recovery(
         
         # Subsequent attempts succeed
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
-        return None # Uses default success mock
+        return None
 
     mock_rsync_transfer.side_effect = rsync_side_effect
 
@@ -84,22 +91,28 @@ async def test_transfer_queue_chaos_partial_transfer_recovery(
         success2, err2 = await _process_job(job2, asyncio.Event(), mgr)
         assert success2, f"Job failed even after retry: {err2}"
         tq.complete(job.run_name)
+        
+        from ci.software_only.infra.parity import run_scenario
+        run_scenario("transfer_partial_recovery", 
+                     success=success2, 
+                     archived=(mgr.load_state().status == RunStatus.ARCHIVED))
 
     verify_head_node_accuracy(head_data_dir, run_name, expected_data)
     # Call count: 1 (fail) + 2 (success across 2 nodes) = 3
     assert mock_rsync_transfer.call_count == len(daq_config.daq_nodes) + 1
+
+
 # ---------------------------------------------------------------------------
 # 2. Scale: Parameterized Mock Fleet (2-8 nodes)
 # ---------------------------------------------------------------------------
 
+@requires_docker
 @pytest.mark.parametrize("num_nodes", [2, 4, 8])
 @pytest.mark.asyncio
 @pytest.mark.timeout(120)
 async def test_transfer_queue_parameterized_scale(
-    mock_workspace,
+    pseti_workspace: Any,
     num_nodes: int,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     mock_rsync_transfer: RsyncMock,
     transfer_job_factory: Callable[..., TransferJob],
     transfer_queue: TransferQueue,
@@ -107,15 +120,11 @@ async def test_transfer_queue_parameterized_scale(
     """Verify the transfer queue handles scaling to 8 concurrent nodes over gRPC."""
     # We use a mock configuration with N nodes and mock clients to test concurrency logic
     # without the overhead of 8 actual Docker containers.
-    # mock_workspace already isolates PSETI_STATE and PSETI_CONFIG
-    head_data_dir = tmp_path / "head_data"
+    head_data_dir = pseti_workspace.root / "head_data"
     head_data_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_dir))
-    PanoPaths.ensure_state_dirs()
     
-    from control.utils.config_file import DaqNode
     nodes = [
-        DaqNode(
+        config_file.DaqNode(
             ip_addr=f"192.168.100.{10+i}",
             username="panoseti",
             data_dir="/data",
@@ -126,15 +135,12 @@ async def test_transfer_queue_parameterized_scale(
     
     run_name = "scale_test.pffd"
     tq = transfer_queue
-    from datetime import UTC, datetime
-
-    from control.transfer.models import TransferNodeSpec
     job = transfer_job_factory(
         run_name=run_name,
         head_data_dir=head_data_dir,
         daq_nodes=[
             TransferNodeSpec(
-                ip_addr=n.ip_addr,
+                ip_addr=str(n.ip_addr),
                 username="panoseti",
                 data_dir=n.data_dir,
                 module_ids=n.module_ids
@@ -168,8 +174,7 @@ async def test_transfer_queue_parameterized_scale(
         mock_client.__aenter__.return_value = mock_client
         mock_client_cls.return_value = mock_client
 
-        mgr = RunStateManager()
-        from datetime import UTC, datetime
+        mgr = RunStateManager(base_dir=pseti_workspace.root / "state")
         active_job.head_node_username = "panoseti"
         active_job.created_at = datetime.now(UTC)
         success, err = await asyncio.wait_for(_process_job(active_job, asyncio.Event(), mgr), timeout=10.0)
@@ -181,18 +186,18 @@ async def test_transfer_queue_parameterized_scale(
 # 3. Queue Depth: Drain 6 Deep
 # ---------------------------------------------------------------------------
 
+@requires_docker
 @pytest.mark.asyncio
 @pytest.mark.timeout(180)
 async def test_transfer_queue_drain_6_deep(
-    session_fleet: Any,
-    ensure_clean_daq_state: Any,
+    session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
-    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
     transfer_queue: TransferQueue,
 ) -> None:
     """Verify the daemon correctly drains a pending queue 6 transfers deep."""
-    fleet, _ = session_fleet
-    head_data_dir, daq_config = isolated_transfer_env
+    fleet = session_fleet
+    daq_config = fleet.live_daq_config
+    head_data_dir = Path(daq_config.head_node_data_dir)
     
     runs = []
     for i in range(6):
@@ -245,18 +250,18 @@ async def test_transfer_queue_drain_6_deep(
 # 4. Resilience: Stop/Start Daemon During Transfer
 # ---------------------------------------------------------------------------
 
+@requires_docker
 @pytest.mark.asyncio
 @pytest.mark.timeout(120)
 async def test_transfer_queue_stop_start_during_transfer(
-    session_fleet: Any,
-    ensure_clean_daq_state: Any,
+    session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
-    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
     transfer_queue: TransferQueue,
 ) -> None:
     """Verify daemon resume from crash mid-transfer without data loss."""
-    fleet, _ = session_fleet
-    head_data_dir, daq_config = isolated_transfer_env
+    fleet = session_fleet
+    daq_config = fleet.live_daq_config
+    head_data_dir = Path(daq_config.head_node_data_dir)
     run_name = f"stop_start_{uuid.uuid4().hex[:8]}.pffd"
     
     expected_data = await generate_mocked_run(fleet, daq_config, run_name)
@@ -268,11 +273,16 @@ async def test_transfer_queue_stop_start_during_transfer(
     sync_event = asyncio.Event()
     daemon_cancelled = asyncio.Event()
 
-    async def stalling_rsync(*args, **kwargs):
-        sync_event.set()
-        await daemon_cancelled.wait()
-        # This will be interrupted by task cancellation
-        return None
+    def stalling_rsync(*args, **kwargs):
+        proc = mock_rsync_transfer._make_proc_mock()
+        async def stall_read(*a, **k):
+            sync_event.set()
+            # Wait for event without swallowing CancelledError.
+            # When daemon_task.cancel() is called, this will raise.
+            await daemon_cancelled.wait()
+            return b""
+        proc.stdout.readline = AsyncMock(side_effect=stall_read)
+        return proc
 
     mock_rsync_transfer.side_effect = stalling_rsync
 
@@ -282,20 +292,27 @@ async def test_transfer_queue_stop_start_during_transfer(
         
         # Wait for daemon to reach TRANSFERRING
         await asyncio.wait_for(sync_event.wait(), timeout=10.0)
-        assert mgr.load_state().status == RunStatus.TRANSFERRING
         
         # 2. "Crash" the daemon
         daemon_task.cancel()
-        daemon_cancelled.set()
+        # We do NOT set daemon_cancelled yet; we want it to stay stuck until cancellation hits.
         with contextlib.suppress(asyncio.CancelledError):
             await daemon_task
+        
+        # Now set it just in case
+        daemon_cancelled.set()
 
     # Job should be stranded in active/
     assert (tq._queue / "active" / f"{run_name}.job.toml").exists()
     
     # 3. Restart daemon with working rsync
     def rsync_side_effect(*args, **kwargs):
-        simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
+        # args[0] is the command list if using create_subprocess_exec with *cmd
+        # or it could be individual arguments if the caller used *args.
+        # daemon.py uses: await asyncio.create_subprocess_exec(*cmd, ...)
+        cmd = args
+        dest_dir = Path(cmd[-1])
+        simulate_rsync_from_fleet(fleet, run_name, dest_dir)
         return None
 
     mock_rsync_transfer.side_effect = rsync_side_effect

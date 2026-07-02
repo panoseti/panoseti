@@ -1,8 +1,13 @@
 """
-ci/tier2_logic/test_ledger.py
+test_ledger.py — RunStateManager locking and ledger transition tests.
 
-Logic tests for the RunStateManager and advisory locking system.
-Verifies transactional integrity, stale-PID healing, and status transitions.
+Ported from ci/software_only/tier2_logic/test_ledger.py.
+
+Each test receives an isolated pseti_workspace so that PSETI_STATE points
+to a fresh temporary directory. RunStateManager() (no base_dir argument)
+resolves its lock and ledger paths through PanoPaths, which in turn reads
+the monkeypatched PSETI_STATE — giving each test complete isolation without
+any manual base_dir wiring.
 """
 
 from __future__ import annotations
@@ -13,94 +18,173 @@ from datetime import UTC, datetime
 
 import pytest
 
+from ci.software_only.infra.workspace import Workspace
 from control.utils.pydantic_config_models import RunStateLedger, RunStatus
 from control.utils.run_state import LockError, RunStateManager
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-def test_when_lock_stale_then_self_heals(tmp_path: pathlib.Path) -> None:
-    """
-    Intent: Verify that RunStateManager detects and clears stale locks (dead PIDs).
-    Scenario: A lock file exists with a PID that is not running on the system.
-    Assertion: acquire_lock() succeeds and the stale lock is cleared.
-    """
-    mgr = RunStateManager()
-    lock_path = mgr.lock_path
+def _make_manager(workspace: Workspace) -> RunStateManager:
+    """Return a RunStateManager rooted in the workspace's isolated state dir."""
+    return RunStateManager(base_dir=workspace.root / "state")
 
-    # Write a lock file with a PID that cannot be alive (very large number)
-    dead_pid = 2**22
-    lock_path.write_text(f"{dead_pid}\n{socket.gethostname()}\n")
 
-    acquired = mgr.acquire_lock()
-    assert acquired, "RunStateManager must self-heal a stale lock with a dead PID"
-    mgr.release_lock()
-
-def test_when_lock_held_then_concurrent_acquisition_fails() -> None:
-    """
-    Intent: Ensure mutual exclusion is enforced by the advisory lock.
-    Scenario: One manager holds the lock while another attempts to acquire it.
-    Assertion: The second acquire_lock() call raises LockError.
-    """
-    mgr1 = RunStateManager()
-    mgr2 = RunStateManager()
-    
-    assert mgr1.acquire_lock() is True
-    
-    with pytest.raises(LockError):
-        mgr2.acquire_lock()
-    
-    mgr1.release_lock()
-    assert mgr2.acquire_lock() is True
-    mgr2.release_lock()
-
-def test_when_run_aborted_then_ledger_transitions_to_aborted():
-    """
-    Intent: Verify atomic status transitions for aborted runs.
-    Scenario: A run is manually transitioned to ABORTED via the manager.
-    Assertion: load_state() reflects the ABORTED status.
-    """
-    mgr = RunStateManager()
-    run_name = "abort_test.pffd"
-    
-    ledger = RunStateLedger(
+def _ledger(status: RunStatus, pid: int = 1234, run_name: str = "test_run") -> RunStateLedger:
+    return RunStateLedger(
         run_name=run_name,
-        status=RunStatus.STARTING,
+        status=status,
         start_time=datetime.now(UTC).isoformat(),
-        pid=1234,
-        host=socket.gethostname()
+        pid=pid,
+        host=socket.gethostname(),
     )
-    mgr.save_state(ledger)
-    
-    mgr.transition(RunStatus.ABORTED)
-    
-    updated = mgr.load_state()
-    assert updated is not None
-    assert updated.status == RunStatus.ABORTED
 
-def test_when_ledger_stale_then_self_heals_on_new_start():
-    """
-    Intent: Verify that a new session can start if the previous ledger is stale (dead PID).
-    Scenario: Ledger says ACTIVE but the PID associated with the run is dead.
-    Assertion: RunStateManager allows a new state to be saved (or self-heals).
-    """
-    mgr = RunStateManager()
-    
-    # Dead PID
-    dead_pid = 2**22
-    
-    stale_ledger = RunStateLedger(
-        run_name="stale_run.pffd",
-        status=RunStatus.ACTIVE,
-        start_time=datetime.now(UTC).isoformat(),
-        pid=dead_pid,
-        host=socket.gethostname()
-    )
-    mgr.save_state(stale_ledger)
-    
-    # In practice, start.py checks this via mgr.load_state() and logic
-    current = mgr.load_state()
-    assert current is not None
-    # Verify our logic for 'is_stale' (mimicking start.py)
-    # (Simplified check: process not alive on this host)
-    is_alive = False # Mock dead process
-    assert current.status == RunStatus.ACTIVE
-    assert not is_alive 
+
+# ---------------------------------------------------------------------------
+# Lock acquisition
+# ---------------------------------------------------------------------------
+
+class TestLockAcquisition:
+    """RunStateManager advisory locking — mutual exclusion and stale-PID healing."""
+
+    def test_stale_lock_is_self_healed(self, pseti_workspace: Workspace) -> None:
+        mgr = _make_manager(pseti_workspace)
+        dead_pid = 2 ** 22
+        mgr.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        mgr.lock_path.write_text(f"{dead_pid}\n{socket.gethostname()}\n")
+
+        acquired = mgr.acquire_lock()
+        assert acquired, "RunStateManager must self-heal a stale lock (dead PID)"
+        mgr.release_lock()
+
+    def test_live_lock_prevents_concurrent_acquisition(
+        self, pseti_workspace: Workspace
+    ) -> None:
+        mgr1 = _make_manager(pseti_workspace)
+        mgr2 = _make_manager(pseti_workspace)
+
+        assert mgr1.acquire_lock() is True
+        with pytest.raises(LockError):
+            mgr2.acquire_lock()
+        mgr1.release_lock()
+
+        # After release, mgr2 can now acquire
+        assert mgr2.acquire_lock() is True
+        mgr2.release_lock()
+
+    def test_lock_file_written_with_current_pid(self, pseti_workspace: Workspace) -> None:
+        import os
+        mgr = _make_manager(pseti_workspace)
+        mgr.acquire_lock()
+        try:
+            content = mgr.lock_path.read_text()
+            written_pid = int(content.splitlines()[0].strip())
+            assert written_pid == os.getpid()
+        finally:
+            mgr.release_lock()
+
+    def test_lock_file_removed_on_release(self, pseti_workspace: Workspace) -> None:
+        mgr = _make_manager(pseti_workspace)
+        mgr.acquire_lock()
+        assert mgr.lock_path.exists()
+        mgr.release_lock()
+        assert not mgr.lock_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Ledger status transitions
+# ---------------------------------------------------------------------------
+
+class TestLedgerTransitions:
+    """RunStateManager ledger read/write and status transitions."""
+
+    def test_load_state_returns_none_when_no_ledger(
+        self, pseti_workspace: Workspace
+    ) -> None:
+        from ci.software_only.infra.parity import run_scenario
+        run_scenario("ledger_starts_empty", state_dir=pseti_workspace.root / "state")
+
+    def test_save_and_load_roundtrip(self, pseti_workspace: Workspace) -> None:
+        mgr = _make_manager(pseti_workspace)
+        original = _ledger(RunStatus.STARTING)
+        mgr.save_state(original)
+        loaded = mgr.load_state()
+        assert loaded is not None
+        assert loaded.status == RunStatus.STARTING
+        assert loaded.run_name == original.run_name
+
+    def test_transition_to_aborted(self, pseti_workspace: Workspace) -> None:
+        mgr = _make_manager(pseti_workspace)
+        mgr.save_state(_ledger(RunStatus.STARTING, run_name="abort_run"))
+        mgr.transition(RunStatus.ABORTED)
+        updated = mgr.load_state()
+        assert updated is not None
+        assert updated.status == RunStatus.ABORTED
+
+    def test_transition_to_active(self, pseti_workspace: Workspace) -> None:
+        mgr = _make_manager(pseti_workspace)
+        mgr.save_state(_ledger(RunStatus.STARTING))
+        mgr.transition(RunStatus.ACTIVE)
+        assert mgr.load_state().status == RunStatus.ACTIVE
+
+    def test_full_lifecycle_transition_sequence(self, pseti_workspace: Workspace) -> None:
+        mgr = _make_manager(pseti_workspace)
+        mgr.save_state(_ledger(RunStatus.STARTING))
+
+        for status in (
+            RunStatus.ACTIVE,
+            RunStatus.STOPPING,
+            RunStatus.RECORDING_ENDED,
+            RunStatus.TRANSFERRING,
+            RunStatus.ARCHIVED,
+        ):
+            mgr.transition(status)
+            assert mgr.load_state().status == status
+
+
+# ---------------------------------------------------------------------------
+# Stale ledger detection
+# ---------------------------------------------------------------------------
+
+class TestStaleLedgerDetection:
+    """Verify that a ledger with a dead PID is detectable (mimics start.py logic)."""
+
+    def test_stale_active_ledger_has_dead_pid(self, pseti_workspace: Workspace) -> None:
+        mgr = _make_manager(pseti_workspace)
+        dead_pid = 2 ** 22
+        stale = _ledger(RunStatus.ACTIVE, pid=dead_pid, run_name="stale_run")
+        mgr.save_state(stale)
+
+        current = mgr.load_state()
+        assert current is not None
+        assert current.status == RunStatus.ACTIVE
+
+        # Mimics start.py's is-process-alive check
+        try:
+            import os
+            os.kill(dead_pid, 0)
+            is_alive = True
+        except (ProcessLookupError, PermissionError):
+            is_alive = False
+        assert not is_alive, "The dead_pid must not correspond to a live process"
+
+    def test_two_workspaces_have_isolated_ledgers(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ledger isolation: two different base_dirs must not share state."""
+        state_a = tmp_path / "state_a"
+        state_b = tmp_path / "state_b"
+        for d in (state_a / "runs", state_a / "locks",
+                  state_b / "runs", state_b / "locks"):
+            d.mkdir(parents=True)
+
+        mgr_a = RunStateManager(base_dir=state_a)
+        mgr_b = RunStateManager(base_dir=state_b)
+
+        mgr_a.save_state(_ledger(RunStatus.ACTIVE, run_name="run_a"))
+
+        # mgr_b has no state
+        assert mgr_b.load_state() is None
+        # mgr_a state is unchanged
+        assert mgr_a.load_state().run_name == "run_a"

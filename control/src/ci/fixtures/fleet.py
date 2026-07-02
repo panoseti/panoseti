@@ -43,7 +43,6 @@ from typing import Any
 
 from testcontainers.core.container import DockerContainer
 
-
 from control.utils.pydantic_config_models import DaqConfig, DaqNode, PortForwarding
 
 

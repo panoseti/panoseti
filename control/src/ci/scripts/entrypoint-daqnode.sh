@@ -11,6 +11,10 @@ rm -f "${DATA_DIR}/module.config"
 
 # Align ownership if running as root
 if [ "$(id -u)" = "0" ]; then
+    if [ -n "$LOCAL_UID" ] && [ -n "$LOCAL_GID" ]; then
+        groupmod -o -g "$LOCAL_GID" panoseti 2>/dev/null || true
+        usermod -o -u "$LOCAL_UID" panoseti 2>/dev/null || true
+    fi
     chown -R panoseti:panoseti "${DATA_DIR}" 2>/dev/null || true
 fi
 

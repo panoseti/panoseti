@@ -1,86 +1,62 @@
-# mypy: ignore-errors
 """
-test_transfer_port_forwarding.py
+tier3_fleet/test_transfer_port_forwarding.py
 
-Phase 3 integration tests: port-forwarding round-trip through TransferJob.
+Port-forwarding round-trip through the TransferJob pipeline.
 
-Requires Docker CI stack (IN_DOCKER_CI=1):
-    pseti test sw integration -k transfer_port_forwarding
+Verifies:
+1. TransferNodeSpec.port_forwarding survives TOML serialization.
+2. build_rsync_cmd() uses the gateway address and SSH port when PF is active.
+3. _process_job() passes the PF-aware rsync command via mock_rsync_transfer.
 
-Critical regression: the port_forwarding block in daq_config.json must
-survive the full stop→TOML→daemon→rsync pipeline without being dropped.
+No Docker is required for these tests.
 
-Topology:
-    head (10.0.1.x) ──socat──→ gateway (10.0.1.254:22xx) ──→ daqnode (192.168.0.10:22)
-
-The tests assert:
-  1. TransferNodeSpec.port_forwarding round-trips through TOML serialization.
-  2. build_rsync_cmd() uses the gateway address and SSH port when PF is active.
-  3. _process_job() passes the PF-aware rsync command (captured via mock).
-  4. With PF active, rsync is NOT called with the raw daqnode IP.
+Ported from software_only/tier3_fleet/test_transfer_port_forwarding.py.
 """
+
 from __future__ import annotations
 
 import asyncio
-import os
-import pathlib
-import sys
 import tomllib
 import uuid
-from collections.abc import Callable
-from contextlib import contextmanager
-from types import ModuleType
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from ci.fixtures.rsync_fixtures import RsyncMock
+from ci.software_only.infra.spec import FleetSpec
+from ci.software_only.infra.workspace import Workspace
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.transfer.rsync import build_rsync_cmd
-from control.utils import config_file
 from control.utils.pydantic_config_models import PortForwarding
 from control.utils.run_state import RunStateManager
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-DAQNODE_IP = os.environ.get("DAQNODE_DIRECT_HOST", "192.168.0.10")
-GATEWAY_IP = os.environ.get("DAQNODE_GATEWAY_HOST", "10.0.1.254")
-HEAD_DATA_DIR = pathlib.Path(os.environ.get("HEAD_DATA_DIR", "/data/head"))
-DAQ_DATA_DIR = pathlib.Path(os.environ.get("DAQ_DATA_DIR", "/data"))
-PF_PORT = int(os.environ.get("DAQNODE_PF_PORT", "2200"))
-
+pytestmark = pytest.mark.tier3
 
 # ---------------------------------------------------------------------------
-# gRPC stub injection
+# Shared constants
 # ---------------------------------------------------------------------------
 
-@contextmanager
-def _mock_grpc(mock_client: MagicMock):
-    stub_root = ModuleType("panoseti_grpc")
-    stub_daq = ModuleType("panoseti_grpc.daq_control")
-    stub_cm = ModuleType("panoseti_grpc.daq_control.client")
-    stub_cm.AsyncDaqControlClient = MagicMock(return_value=mock_client)
-    stub_root.daq_control = stub_daq
-    stub_daq.client = stub_cm
-    injected = {
-        "panoseti_grpc": stub_root,
-        "panoseti_grpc.daq_control": stub_daq,
-        "panoseti_grpc.daq_control.client": stub_cm,
-    }
-    prev = {k: sys.modules.get(k) for k in injected}
-    sys.modules.update(injected)
-    try:
-        yield stub_cm.AsyncDaqControlClient
-    finally:
-        for k, orig in prev.items():
-            if orig is None:
-                sys.modules.pop(k, None)
-            else:
-                sys.modules[k] = orig
+_DAQNODE_IP = "192.168.0.10"
+_GATEWAY_IP = "10.0.1.254"
+_DAQ_DATA_DIR = "/data"
+_PF_PORT = 2200  # SSH forwarded port
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _pf_node() -> TransferNodeSpec:
+    return TransferNodeSpec(
+        ip_addr=_DAQNODE_IP,
+        username="panoseti",
+        data_dir=_DAQ_DATA_DIR,
+        module_ids=[200],
+        port_forwarding=PortForwarding(status=True, gw_ip=_GATEWAY_IP, port=_PF_PORT),
+    )
 
 
 def _grpc_client_ok() -> MagicMock:
@@ -93,106 +69,71 @@ def _grpc_client_ok() -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def pf() -> PortForwarding:
-    return PortForwarding(status=True, gw_ip=GATEWAY_IP, port=PF_PORT)
-
-
-@pytest.fixture
-def pf_node(pf: PortForwarding) -> TransferNodeSpec:
-    return TransferNodeSpec(
-        ip_addr=DAQNODE_IP,
-        username="panoseti",
-        data_dir=str(DAQ_DATA_DIR),
-        module_ids=[200],
-        port_forwarding=pf,
-    )
-
-
-@pytest.fixture
-def run_name() -> str:
-    return f"ci_transfer_pf_{uuid.uuid4().hex[:8]}.pffd"
-
-
-@pytest.fixture
-def run_dir(run_name: str, head_data_dir: pathlib.Path) -> pathlib.Path:
-    d = head_data_dir / run_name
-    d.mkdir(parents=True, exist_ok=True)
-    yield d
-    import shutil
-    shutil.rmtree(d, ignore_errors=True)
-
-
-@pytest.fixture
-def pf_job(run_name: str, pf_node: TransferNodeSpec, head_data_dir: pathlib.Path, transfer_job_factory: Callable[..., TransferJob]) -> TransferJob:
-    return transfer_job_factory(
-        run_name=run_name,
-        head_data_dir=head_data_dir,
-        no_collect=False,
-        no_cleanup=True,
-        daq_nodes=[pf_node],
-    )
-
-
-# ---------------------------------------------------------------------------
 # 1. Round-trip: port_forwarding survives TOML serialization
 # ---------------------------------------------------------------------------
 
 class TestPortForwardingRoundTrip:
     """port_forwarding must survive the stop → TOML → daemon pipeline."""
 
-    def test_pf_survives_toml_roundtrip(
+    def test_when_pf_active_then_survives_toml_roundtrip(
         self,
         transfer_queue: TransferQueue,
-        run_name: str,
-        pf_job: TransferJob,
     ) -> None:
-        """Enqueue → read TOML → model_validate must preserve port_forwarding."""
+        """Enqueue → read TOML → model_validate preserves port_forwarding."""
+        run_name = f"ci_pf_{uuid.uuid4().hex[:8]}.pffd"
+        job = TransferJob(
+            schema_version=1,
+            run_name=run_name,
+            head_data_dir="/data/head",
+            head_node_username="panoseti",
+            created_at=datetime.now(UTC),
+            daq_nodes=[_pf_node()],
+        )
         tq = transfer_queue
-        tq.enqueue(pf_job)
+        tq.enqueue(job)
+
         pending = tq._queue / "pending" / f"{run_name}.job.toml"
         assert pending.exists()
         with open(pending, "rb") as f:
             data = tomllib.load(f)
+
         reloaded = TransferJob.model_validate(data)
         node = reloaded.daq_nodes[0]
         assert node.port_forwarding is not None, (
-            "port_forwarding was silently dropped — this is the core regression!"
+            "port_forwarding was silently dropped — core regression"
         )
-        assert str(node.port_forwarding.gw_ip) == GATEWAY_IP
-        assert node.port_forwarding.port == PF_PORT
+        assert str(node.port_forwarding.gw_ip) == _GATEWAY_IP
+        assert node.port_forwarding.port == _PF_PORT
         assert node.port_forwarding.status is True
 
-    def test_no_pf_survives_toml_roundtrip(
+    def test_when_pf_none_then_toml_roundtrip_clean(
         self,
         transfer_queue: TransferQueue,
-        run_name: str,
-        transfer_job_factory: Callable[..., TransferJob],
     ) -> None:
-        """A node with port_forwarding=None must also round-trip cleanly."""
-        job = transfer_job_factory(
+        """A node with port_forwarding=None round-trips cleanly."""
+        run_name = f"ci_nopf_{uuid.uuid4().hex[:8]}.pffd"
+        node = TransferNodeSpec(
+            ip_addr=_DAQNODE_IP,
+            username="panoseti",
+            data_dir=_DAQ_DATA_DIR,
+            module_ids=[200],
+            port_forwarding=None,
+        )
+        job = TransferJob(
+            schema_version=1,
             run_name=run_name,
-            head_data_dir=HEAD_DATA_DIR,
-            no_collect=True,
-            no_cleanup=True,
-            daq_nodes=[
-                TransferNodeSpec(
-                    ip_addr=DAQNODE_IP,
-                    username="panoseti",
-                    data_dir=str(DAQ_DATA_DIR),
-                    module_ids=[200],
-                    port_forwarding=None,
-                )
-            ],
+            head_data_dir="/data/head",
+            head_node_username="panoseti",
+            created_at=datetime.now(UTC),
+            daq_nodes=[node],
         )
         tq = transfer_queue
         tq.enqueue(job)
+
         pending = tq._queue / "pending" / f"{run_name}.job.toml"
         with open(pending, "rb") as f:
             data = tomllib.load(f)
+
         reloaded = TransferJob.model_validate(data)
         assert reloaded.daq_nodes[0].port_forwarding is None
 
@@ -204,102 +145,109 @@ class TestPortForwardingRoundTrip:
 class TestBuildRsyncCmd:
     """build_rsync_cmd() produces PF-aware ssh arguments."""
 
-    def test_pf_cmd_uses_gateway_address(
-        self,
-        pf_node: TransferNodeSpec,
-        run_name: str,
-    ) -> None:
-        cmd = build_rsync_cmd(pf_node, run_name, str(HEAD_DATA_DIR / run_name))
-        cmd_str = " ".join(cmd)
-        assert GATEWAY_IP in cmd_str, (
-            f"rsync command must use gateway IP {GATEWAY_IP}, got: {cmd_str}"
+    def test_when_pf_active_then_uses_gateway_address(self) -> None:
+        """rsync command targets gateway IP, not daqnode IP."""
+        run_name = "pf_test.pffd"
+        head_dir = "/data/head/pf_test.pffd"
+        cmd_str = " ".join(build_rsync_cmd(_pf_node(), run_name, head_dir))
+
+        assert _GATEWAY_IP in cmd_str, (
+            f"rsync must reference gateway {_GATEWAY_IP}: {cmd_str}"
         )
-        assert DAQNODE_IP not in cmd_str, (
-            f"rsync must NOT use raw daqnode IP {DAQNODE_IP} when PF is active"
+        assert _DAQNODE_IP not in cmd_str, (
+            f"rsync must NOT use raw daqnode IP when PF is active: {cmd_str}"
         )
-        assert f"-p {PF_PORT}" in cmd_str or f"-p{PF_PORT}" in cmd_str, (
-            f"rsync command must include SSH port {PF_PORT}, got: {cmd_str}"
+        assert f"-p {_PF_PORT}" in cmd_str or f"-p{_PF_PORT}" in cmd_str, (
+            f"rsync must include SSH port {_PF_PORT}: {cmd_str}"
         )
 
-    def test_no_pf_cmd_uses_daqnode_address(
-        self,
-        run_name: str,
-    ) -> None:
+    def test_when_pf_none_then_uses_daqnode_address(self) -> None:
+        """Without port-forwarding, rsync targets the daqnode directly."""
         node = TransferNodeSpec(
-            ip_addr=DAQNODE_IP,
+            ip_addr=_DAQNODE_IP,
             username="panoseti",
-            data_dir=str(DAQ_DATA_DIR),
+            data_dir=_DAQ_DATA_DIR,
             module_ids=[200],
             port_forwarding=None,
         )
-        cmd = build_rsync_cmd(node, run_name, str(HEAD_DATA_DIR / run_name))
-        cmd_str = " ".join(cmd)
-        assert DAQNODE_IP in cmd_str
-        assert GATEWAY_IP not in cmd_str
+        run_name = "direct.pffd"
+        cmd_str = " ".join(build_rsync_cmd(node, run_name, "/data/head/direct.pffd"))
 
-    def test_pf_disabled_falls_back_to_direct(
-        self,
-        run_name: str,
-    ) -> None:
-        """If port_forwarding.status=False, rsync uses the direct IP."""
+        assert _DAQNODE_IP in cmd_str
+        assert _GATEWAY_IP not in cmd_str
+
+    def test_when_pf_disabled_then_falls_back_to_direct(self) -> None:
+        """port_forwarding.status=False → rsync uses the direct IP."""
         node = TransferNodeSpec(
-            ip_addr=DAQNODE_IP,
+            ip_addr=_DAQNODE_IP,
             username="panoseti",
-            data_dir=str(DAQ_DATA_DIR),
+            data_dir=_DAQ_DATA_DIR,
             module_ids=[200],
-            port_forwarding=PortForwarding(status=False, gw_ip=GATEWAY_IP, port=PF_PORT),
+            port_forwarding=PortForwarding(
+                status=False, gw_ip=_GATEWAY_IP, port=_PF_PORT
+            ),
         )
-        cmd = build_rsync_cmd(node, run_name, str(HEAD_DATA_DIR / run_name))
-        cmd_str = " ".join(cmd)
-        assert DAQNODE_IP in cmd_str
-        assert GATEWAY_IP not in cmd_str
+        run_name = "disabled_pf.pffd"
+        cmd_str = " ".join(build_rsync_cmd(node, run_name, "/data/head/disabled_pf.pffd"))
+
+        assert _DAQNODE_IP in cmd_str
+        assert _GATEWAY_IP not in cmd_str
 
 
 # ---------------------------------------------------------------------------
-# 3. _process_job with PF active calls rsync with the gateway address
+# 3. _process_job passes PF-aware rsync command to subprocess
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize("pseti_workspace", [FleetSpec.minimal_unit()], indirect=True)
 class TestProcessJobWithPortForwarding:
-    """_process_job passes PF-aware rsync command to subprocess."""
+    """_process_job passes the gateway address to rsync when PF is active."""
 
-    async def test_process_job_rsync_uses_gateway(
+    @pytest.mark.asyncio
+    async def test_when_pf_active_then_rsync_targets_gateway(
         self,
-        tmp_path: pathlib.Path,
-        run_name: str,
-        run_dir: pathlib.Path,
-        pf_job: TransferJob,
-        head_data_dir: pathlib.Path,
+        pseti_workspace: Workspace,
         mock_rsync_transfer: RsyncMock,
     ) -> None:
         """subprocess.run is called with the gateway address, not the daqnode IP."""
-        monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
-        # Ensure head_node_data_dir in daq_config matches our isolated path
-        # so validator passes.
-        daq_cfg = config_file.get_daq_config()
-        daq_cfg.head_node_data_dir = str(head_data_dir)
-        client = _grpc_client_ok()
+        head_data_dir = pseti_workspace.root / "head_data"
+        run_name = f"pf_job_{uuid.uuid4().hex[:8]}.pffd"
+        (head_data_dir / run_name).mkdir(parents=True, exist_ok=True)
+
+        pf_job = TransferJob(
+            schema_version=1,
+            run_name=run_name,
+            head_data_dir=str(head_data_dir),
+            head_node_username="panoseti",
+            created_at=datetime.now(UTC),
+            daq_nodes=[_pf_node()],
+        )
+
         rsync_calls: list[list[str]] = []
 
-        def rsync_side_effect(*args, **kwargs):
-            rsync_calls.append(args[0])
-            (head_data_dir / run_name).mkdir(parents=True, exist_ok=True)
+        def rsync_side_effect(*args: object, **kwargs: object) -> None:
+            rsync_calls.append(list(args))
             (head_data_dir / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
-            return None
 
         mock_rsync_transfer.side_effect = rsync_side_effect
 
-        with _mock_grpc(client):
-            result, _ = await _process_job(pf_job, asyncio.Event(), RunStateManager())
+        mock_client = _grpc_client_ok()
+
+        with patch(
+            "panoseti_grpc.daq_control.client.AsyncDaqControlClient",
+            return_value=mock_client,
+        ):
+            result, _ = await _process_job(
+                pf_job, asyncio.Event(), RunStateManager()
+            )
 
         assert result is True
-        assert rsync_calls, "rsync must have been called"
+        assert rsync_calls, "rsync must have been called at least once"
+
         for cmd in rsync_calls:
             cmd_str = " ".join(cmd)
-            assert GATEWAY_IP in cmd_str, (
-                f"rsync command must reference gateway {GATEWAY_IP}, got: {cmd_str}"
+            assert _GATEWAY_IP in cmd_str, (
+                f"rsync must reference gateway {_GATEWAY_IP}: {cmd_str}"
             )
-            assert DAQNODE_IP not in cmd_str, (
-                f"rsync must NOT use raw daqnode IP {DAQNODE_IP} when PF is active"
+            assert _DAQNODE_IP not in cmd_str, (
+                f"rsync must NOT use raw daqnode IP when PF active: {cmd_str}"
             )
-        monkeypatch.undo()

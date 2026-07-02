@@ -14,8 +14,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import anyio
-from panoseti_grpc.telemetry.logger import get_logger
 from filelock import SoftFileLock, Timeout
+from panoseti_grpc.telemetry.logger import get_logger
 
 from control.transfer.lifecycle import MAX_ATTEMPTS, RETRY_DELAYS
 from control.transfer.models import TransferJob, TransferNodeSpec

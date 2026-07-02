@@ -1,8 +1,9 @@
-"""Tier 2 (Logic): Status truthfulness tests.
-
-Verifies:
-- _sweep_summary correctly reports OK, DEGRADED, or DOWN for Quabos.
 """
+test_status_quabo_report.py — Quabo reachability status reporting.
+
+Ported from ci/software_only/tier2_logic/test_status_quabo_report.py.
+"""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -50,8 +51,8 @@ async def test_status_reports_degraded_when_some_down() -> None:
 @pytest.mark.asyncio
 async def test_status_reports_down_when_all_down() -> None:
     results = [
-        QuaboProbeResult(uid="q1", ip="1.1.1.1", port=60000, reachable=False, error="timeout"),
-        QuaboProbeResult(uid="q2", ip="1.1.1.2", port=60000, reachable=False, error="timeout"),
+        QuaboProbeResult(uid="q1", ip="1.1.1.1", port=60000, reachable=False, error=None),
+        QuaboProbeResult(uid="q2", ip="1.1.1.2", port=60000, reachable=False, error=None),
     ]
     
     with patch("control.utils.config_file.get_daq_config"), \

@@ -1,7 +1,8 @@
 """
-ci/tier2_logic/test_contract_mocks.py
+test_contract_mocks.py — Contract tests for Tier 2 software mocks.
 
-Contract tests to ensure software mocks (Tier 2) remain in sync with 
+Ported from ci/software_only/tier2_logic/test_contract_mocks.py.
+Ensures that the MockDaqNode interface remains in sync with
 gRPC client models and production schemas.
 """
 
@@ -17,9 +18,9 @@ from ci.fixtures.mocks import MockDaqNode
 
 
 @pytest.mark.asyncio
-async def test_when_daq_mock_called_then_params_match_grpc_schema():
+async def test_when_daq_mock_called_then_params_match_grpc_schema() -> None:
     """
-    Intent: Verify that the MockDaqNode interface uses the same parameter 
+    Verify that the MockDaqNode interface uses the same parameter
     structures as the actual gRPC client models.
     """
     mock_node = MockDaqNode("127.0.0.1")
@@ -33,7 +34,7 @@ async def test_when_daq_mock_called_then_params_match_grpc_schema():
     }
     
     # Verify the schema validation passes for these params
-    # This prevents 'mock drift' where we change the production code 
+    # This prevents 'mock drift' where we change the production code
     # but forget to update the mocks.
     GenerateManifestParameters.model_validate(params)
     

@@ -8,6 +8,11 @@ set -e
 # Docker socket permission fix: match 'docker' group GID to host socket GID
 # This is the only runtime 'root' task remaining, and only if the socket is mounted.
 if [ "$(id -u)" = "0" ]; then
+    if [ -n "$LOCAL_UID" ] && [ -n "$LOCAL_GID" ]; then
+        groupmod -o -g "$LOCAL_GID" panoseti 2>/dev/null || true
+        usermod -o -u "$LOCAL_UID" panoseti 2>/dev/null || true
+    fi
+
     if [ -S /var/run/docker.sock ]; then
         DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
         groupmod -o -g "$DOCKER_GID" docker 2>/dev/null || true

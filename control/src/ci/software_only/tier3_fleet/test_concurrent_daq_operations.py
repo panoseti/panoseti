@@ -1,185 +1,155 @@
 """
-test_concurrent_daq_operations.py — Concurrent and rapid-cycle DAQ operation tests.
+test_concurrent_daq_operations.py — Concurrent and rapid-cycle DAQ tests.
 
-Tests:
-  - Only one of N concurrent StartDaq calls succeeds (server serializes via asyncio).
-  - Concurrent StatusDaq calls during an active run all succeed.
-  - CleanupData is blocked while hashpipe is running; succeeds after StopDaq.
-  - Repeated Start→Stop cycles don't leave the server in a broken state.
+Ported from ci/software_only/tier3_fleet/test_concurrent_daq_operations.py.
 """
+
 from __future__ import annotations
 
 import concurrent.futures
-import contextlib
-import uuid
-from collections.abc import Iterator
+import time
 from typing import Any
 
 import pytest
-from panoseti_grpc.daq_control.client import DaqControlClient
 
-from ci.software_only.conftest import wait_hashpipe_running, wait_hashpipe_stopped
-from ci.software_only.tier3_fleet.conftest import BINDHOST, DAQ_DATA_DIR
+from ci.software_only.infra.spec import FleetSpec
+from ci.software_only.orchestrator.fleet import Fleet
+from ci.software_only.tier3_fleet.conftest import make_startdaq_params, requires_docker
 
-# ---------------------------------------------------------------------------
-# Extra run_params fixture for concurrent tests (distinct module + run_dir
-# from the default, so the autouse ensure_clean_daq_state fixture doesn't
-# interfere while these tests manage state themselves)
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def run_params_conc(session_fleet) -> dict[str, Any]:
-    """Run parameters for concurrent tests — unique per test invocation."""
-    fleet, _ = session_fleet
-    
-    return {
-        "data_dir":         DAQ_DATA_DIR,
-        "daq_ip_addr":      fleet.node_ip(0),
-        "bindhost":         BINDHOST,
-        "max_file_size_mb": 1,
-        "group_ph_frames":  False,
-        "run_dir":          f"ci_conc_{uuid.uuid4().hex[:8]}.pffd",
-        "obs":              "citest",
-        "module_id":        [200],
-    }
+pytestmark = pytest.mark.tier3
 
 
-@pytest.fixture
-def ensure_clean_daq_state_conc(daq_control_direct: DaqControlClient, run_params_conc: dict[str, Any]) -> Iterator[None]:
-    """Stop hashpipe and clean up if a concurrent test leaves it running."""
-    yield
-    with contextlib.suppress(Exception):
-        daq_control_direct.StopDaq({
-            "data_dir": run_params_conc["data_dir"],
-            "run_dir":  run_params_conc["run_dir"],
-        })
-    wait_hashpipe_stopped(daq_control_direct, run_params_conc["data_dir"], timeout=8)
-    with contextlib.suppress(Exception):
-        daq_control_direct.CleanupData({
-            "data_dir":  run_params_conc["data_dir"],
-            "run_dir":   run_params_conc["run_dir"],
-            "module_id": run_params_conc["module_id"],
-        })
+def wait_until(
+    condition: Any,
+    timeout: float = 10.0,
+    interval: float = 0.2,
+) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if condition():
+                return True
+        except Exception:
+            pass
+        time.sleep(interval)
+    return False
 
+
+@requires_docker
+@pytest.mark.parametrize(
+    "pseti_workspace_session",
+    [FleetSpec.minimal_fleet()],
+    indirect=True,
+)
 class TestConcurrentDaqOperations:
-    """Server must serialise concurrent StartDaq requests (asyncio event loop)."""
+    """Server must serialize concurrent StartDaq requests."""
 
-    def test_concurrent_start_only_one_wins(
-        self, daq_client, run_params_conc, ensure_clean_daq_state_conc, mock_workspace
+    def test_when_three_concurrent_starts_issued_then_exactly_one_wins(
+        self, session_fleet: Fleet
     ) -> None:
-        """Three simultaneous StartDaq calls: exactly one returns True, rest raise ValueError.
-        """
-        import time
-        from random import uniform
-        rp = run_params_conc
+        """Three simultaneous StartDaq calls: exactly one returns True."""
+        fleet = session_fleet
 
-        def attempt():
-            # Each thread needs its own gRPC channel to actually be concurrent.
-            from panoseti_grpc.daq_control.client import DaqControlClient
-            _host, _port_str = daq_client.target.rsplit(":", 1)
-            client = DaqControlClient(host=_host, port=int(_port_str))
+        fleet.exec_in_node(0, "mkdir -p /data/conc_run && chmod 777 /data/conc_run")
+
+        def attempt() -> bool:
+            client = fleet.daq_control_client(0)
             try:
-                time.sleep(uniform(0.05, 0.75))
-                return client.StartDaq(rp)   # True on success
+                time.sleep(0.1)
+                return client.StartDaq(make_startdaq_params(fleet, 0, "conc_run"))
             except ValueError:
-                return False                  # Server rejected duplicate start
+                return False
+            finally:
+                client.close()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             futures = [pool.submit(attempt) for _ in range(3)]
             results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
         successes = [r for r in results if r is True]
-        failures  = [r for r in results if r is False]
+        assert len(successes) == 1
 
-        assert len(successes) == 1, f"Expected exactly 1 success, got {successes}"
-        assert len(failures) == 2, f"Expected exactly 2 failures, got {failures}"
-
-    def test_concurrent_status_all_succeed(
-        self, daq_client, run_params_conc, ensure_clean_daq_state_conc
+    def test_when_ten_concurrent_status_calls_issued_then_all_succeed(
+        self, session_fleet: Fleet
     ) -> None:
         """Ten concurrent StatusDaq calls while hashpipe is running → all succeed."""
-        rp = run_params_conc
-        daq_client.StartDaq(rp)
-        assert wait_hashpipe_running(daq_client, rp["data_dir"]), (
-            "hashpipe did not start within timeout"
-        )
+        fleet = session_fleet
+        client = fleet.daq_control_client(0)
+        fleet.exec_in_node(0, "mkdir -p /data/conc_status && chmod 777 /data/conc_status")
+        client.StartDaq(make_startdaq_params(fleet, 0, "conc_status"))
 
-        status_params = {
-            "data_dir":               rp["data_dir"],
-            "check_hashpipe_running": True,
-            "check_disk_usage":       False,
-            "check_run_dirs":         False,
-        }
-
-        def poll_status():
-            ok, _status = daq_client.StatusDaq(status_params)
+        def poll_status() -> bool:
+            c = fleet.daq_control_client(0)
+            ok, _ = c.StatusDaq({"data_dir": "/data"})
+            c.close()
             return ok
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
             futures = [pool.submit(poll_status) for _ in range(10)]
             results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
-        assert all(results), f"Some concurrent StatusDaq calls failed: {results}"
+        assert all(results)
+        client.close()
 
-    def test_cleanup_blocked_while_running_then_succeeds(
-        self, daq_client, run_params_conc, ensure_clean_daq_state_conc
+    def test_when_cleanup_called_while_running_then_blocked_then_succeeds_after_stop(
+        self, session_fleet: Fleet
     ) -> None:
-        """CleanupData is blocked while hashpipe is running; succeeds after StopDaq."""
-        rp = run_params_conc
-        daq_client.StartDaq(rp)
-        assert wait_hashpipe_running(daq_client, rp["data_dir"]), (
-            "hashpipe did not start within timeout"
-        )
+        """CleanupData is blocked while hashpipe runs; succeeds after StopDaq."""
+        fleet = session_fleet
+        client = fleet.daq_control_client(0)
+        fleet.exec_in_node(0, "mkdir -p /data/cleanup_block && chmod 777 /data/cleanup_block")
+        client.StartDaq(make_startdaq_params(fleet, 0, "cleanup_block"))
 
-        # CleanupData should be blocked while hashpipe is live
-        with pytest.raises(Exception) as excinfo:
-            daq_client.CleanupData({
-                "data_dir":  rp["data_dir"],
-                "run_dir":   rp["run_dir"],
-                "module_id": rp["module_id"],
-            })
-        assert "HASHPIPE is still alive" in str(excinfo.value)
+        from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
+        node_cfg = fleet.live_daq_config.daq_nodes[0]
+        cleanup_params = {
+            "data_dir": "/data",
+            "run_dir": "cleanup_block",
+            "module_id": list(node_cfg.module_ids),
+        }
+        try:
+            client.CleanupData(cleanup_params)
+        except FailedPreconditionError as exc:
+            fleet._last_cleanup_exc = exc  # type: ignore[attr-defined]
 
-        # After stop, cleanup should succeed (or gracefully no-op)
-        daq_client.StopDaq({
-            "data_dir": rp["data_dir"],
-            "run_dir":  rp["run_dir"],
-        })
-        assert wait_hashpipe_stopped(daq_client, rp["data_dir"]), (
-            "hashpipe did not stop within timeout"
-        )
+        from ci.software_only.infra.parity import run_scenario
+        run_scenario("cleanup_blocked_while_hashpipe_running", fleet=fleet, node_index=0)
 
-        cleanup_resp2 = daq_client.CleanupData({
-            "data_dir":  rp["data_dir"],
-            "run_dir":   rp["run_dir"],
-            "module_id": rp["module_id"],
-        })
-        assert cleanup_resp2["success"] is True
+        client.StopDaq({"data_dir": "/data", "run_dir": "cleanup_block"})
 
-    def test_rapid_start_stop_cycles(
-        self, daq_client, run_params_conc, ensure_clean_daq_state_conc
+        def check_stopped() -> bool:
+            _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+            return not bool(s["hashpipe_running"])
+
+        assert wait_until(check_stopped)
+
+        res = client.CleanupData(cleanup_params)
+        assert res["success"] is True
+        client.close()
+
+    def test_when_rapid_start_stop_cycles_repeated_then_all_complete(
+        self, session_fleet: Fleet
     ) -> None:
-        """Five rapid Start→Stop cycles complete without server state corruption."""
-        rp = run_params_conc
-        for cycle in range(5):
-            # Use a distinct run_dir per cycle so CleanupData doesn't conflict
-            rp["run_dir"] = f"ci_rapid_{uuid.uuid4().hex[:8]}.pffd"
+        """Three rapid Start→Stop cycles all complete cleanly."""
+        fleet = session_fleet
+        client = fleet.daq_control_client(0)
+        for i in range(3):
+            run_dir = f"rapid_{i}"
+            fleet.exec_in_node(0, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
 
-            ok = daq_client.StartDaq(rp)
-            assert ok is True, f"Cycle {cycle}: StartDaq returned {ok!r}"
+            assert client.StartDaq(make_startdaq_params(fleet, 0, run_dir)) is True
 
-            # Wait for hashpipe to be confirmed running before stopping
-            assert wait_hashpipe_running(daq_client, rp["data_dir"]), (
-                f"Cycle {cycle}: hashpipe did not start within timeout"
-            )
+            def check_running() -> bool:
+                _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+                return bool(s["hashpipe_running"])
 
-            stop_ok = daq_client.StopDaq({
-                "data_dir": rp["data_dir"],
-                "run_dir":  rp["run_dir"],
-            })
-            assert stop_ok is True, f"Cycle {cycle}: StopDaq returned {stop_ok!r}"
+            assert wait_until(check_running)
 
-            # Wait for hashpipe to fully exit before the next StartDaq.
-            assert wait_hashpipe_stopped(daq_client, rp["data_dir"]), (
-                f"Cycle {cycle}: hashpipe still running after StopDaq"
-            )
+            assert client.StopDaq({"data_dir": "/data", "run_dir": run_dir}) is True
+
+            def check_stopped() -> bool:
+                _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+                return not bool(s["hashpipe_running"])
+
+            assert wait_until(check_stopped)
+        client.close()

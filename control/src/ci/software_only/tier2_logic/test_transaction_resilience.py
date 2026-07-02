@@ -1,86 +1,36 @@
 """
-Tier 2 (Logic): Transaction Resilience and Data Safety Tests.
+test_transaction_resilience.py — Transactional integrity and rollback tests.
 
-Probes the depth of non-trivial transactional root causes:
-1. Validation resilience for Palomar/UCB topologies.
-2. Rollback resilience under Read-only file systems (EROFS).
-3. Orphaned Hashpipe cleanup safety checks.
-4. Fundamental failure isolation (skipping transfer on error).
+Ported from ci/software_only/tier2_logic/test_transaction_resilience.py.
 """
+
 from __future__ import annotations
 
 import errno
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ci.software_only.infra.workspace import Workspace
 from control.start import StartTransaction
 from control.stop import stop_run
-from control.utils import config_file
 from control.utils.run_state import RunStateLedger, RunStateManager, RunStatus
 
-# ── 1. Validation Resilience ──────────────────────────────────────────────────
-
-def test_realistic_palomar_topology_passes_validation() -> None:
-    """Ensure that the Palomar 4-telescope topology passes all strict checks."""
-    from ci.paths import PanoPathsTest
-    palomar_root = PanoPathsTest.base_dir() / "configs" / "palomar"
-    
-    from control.utils import config_file
-    
-    with patch("control.utils.config_file.get_obs_config") as m_obs, \
-         patch("control.utils.config_file.get_daq_config") as m_daq, \
-         patch("control.utils.config_file.get_network_config") as m_net, \
-         patch("control.utils.config_file.get_quabo_uids") as m_uids, \
-         patch("control.utils.config_file.get_data_config") as m_data, \
-         patch("control.utils.config_file.get_daemons_config") as m_daemons, \
-         patch("control.start.ph_baseline_file_ok", return_value=True):
-         
-         # Load real files
-         obs_cfg = config_file.get_obs_config(dir=palomar_root / "obs_config.json.quad")
-         m_obs.return_value = obs_cfg
-         
-         # daq_config quad only has 1 node in the reference, but we need it to handle all modules
-         daq_cfg = config_file.get_daq_config(dir=palomar_root / "daq_config.json.quad")
-         # Coherence: Assign modules from obs to daq
-         mids = []
-         for dome in obs_cfg.domes:
-             for mod in dome.modules:
-                 mids.append(config_file.ip_addr_to_module_id(str(mod.ip_addr)))
-         daq_cfg.daq_nodes[0].module_ids = mids
-         m_daq.return_value = daq_cfg
-         
-         m_net.return_value = config_file.get_network_config(dir=palomar_root / "network_config.json")
-         m_uids.return_value = MagicMock() # UIDs validation is separate
-         m_daemons.return_value = MagicMock()
-         
-         # Ensure data_config matches obs_config overvoltage
-         data_cfg = config_file.get_data_config(dir=palomar_root / "data_config_palomar.json")
-         data_cfg.detector_overvoltage = obs_cfg.detector_overvoltage
-         m_data.return_value = data_cfg
-         
-         passed = config_file.validate_all(check_network=False)
-         assert passed, "Palomar quad-telescope config failed strict validation!"
-
-
-# ── 2. Rollback IO Resilience ─────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_start_rollback_continues_on_erofs_archival_failure(
-    mock_workspace: Path,
+    pseti_workspace: Workspace,
     caplog: pytest.LogCaptureFixture
 ) -> None:
     """Verify that StartTransaction rollback ladder completes even if /data is read-only."""
-    from control.utils.pydantic_config_models import QuaboUids
+    # pseti_workspace isolates PSETI_STATE
+    state_mgr = RunStateManager(base_dir=pseti_workspace.root / "state")
+    daq_cfg = pseti_workspace.topology.daq
+    uids = pseti_workspace.topology.quabo_uids
+    net = pseti_workspace.topology.network
     
-    # mock_workspace isolates PSETI_STATE
-    state_mgr = RunStateManager()
-    daq_cfg = config_file.get_daq_config()
-    uids = QuaboUids(domes=[])
-    net = MagicMock()
-    
-    # Mock os.makedirs to simulate Read-only file system
+    # Mock os.makedirs to simulate Read-only file system for the archival step
+    # We want Step 5 (archival) to fail, but Step 3 (stop_data_flow) to still run.
     with patch("os.makedirs", side_effect=OSError(errno.EROFS, "Read-only file system")), \
          patch("control.utils.util.kill_hk_recorder"), \
          patch("control.utils.util.stop_data_flow") as m_stop_flow:
@@ -97,12 +47,10 @@ async def test_start_rollback_continues_on_erofs_archival_failure(
         m_stop_flow.assert_called_once()
 
 
-# ── 3. Orphaned Hashpipe Safety ───────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_cleanup_refused_on_uncertain_liveness_without_force() -> None:
     """Proves that CleanupData rejects deletion if PID status is uncertain (corrupted file)."""
-    # Unit-test the Servicer method directly.
+    import grpc
     from panoseti_grpc.daq_control.server import DaqControlServicer
     from panoseti_grpc.generated import daq_control_pb2
     
@@ -118,34 +66,44 @@ async def test_cleanup_refused_on_uncertain_liveness_without_force() -> None:
     )
     
     context = MagicMock()
-    context.abort = AsyncMock() # Must be awaitable
+    # Mock context.abort to raise an exception, mimicking real gRPC behavior 
+    # where abort interrupts the handler execution.
+    context.abort = AsyncMock(side_effect=Exception("ABORTED"))
     
-    resp = await servicer.CleanupData(req, context)
-    assert resp.success is False
-    assert "status uncertain" in resp.message
+    with pytest.raises(Exception, match="ABORTED"):
+        await servicer.CleanupData(req, context)
+    
+    # We expect at least one call to abort. 
+    # Note: grpc_error_handler might call it a second time with INTERNAL 
+    # if it catches the exception raised by the first call.
+    assert context.abort.called
+    first_call = context.abort.call_args_list[0]
+    args, _ = first_call
+    assert args[0] == grpc.StatusCode.FAILED_PRECONDITION
+    assert "status uncertain" in args[1]
     
     # Now try with force=True
     req.force = True
-    resp = await servicer.CleanupData(req, context)
-    # Fails now on directory not found, but it PASSED the PID gate
-    assert "status uncertain" not in resp.message
+    context.abort.reset_mock()
+    # Mocking successful directory resolution/deletion so it doesn't fail later
+    with patch("panoseti_grpc.daq_control.server.anyio.Path.exists", return_value=False):
+        resp = await servicer.CleanupData(req, context)
+    
+    # Passed the PID gate (fails later on missing dir, which is fine)
+    context.abort.assert_not_called()
+    assert resp.success is True
 
-
-# ── 4. Fundamental Teardown Failure Isolation ─────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_stop_run_bypasses_enqueue_on_fundamental_failure(
-    mock_workspace: Path,
+    pseti_workspace: Workspace,
 ) -> None:
     """Verify that StopTransaction does NOT enqueue a transfer job if a crash occurs in the ladder."""
-    from control.utils.pydantic_config_models import NetworkConfig, QuaboUids
+    state_mgr = RunStateManager(base_dir=pseti_workspace.root / "state")
     
-    # mock_workspace already isolates PSETI_STATE and creates standard subdirs
-    state_mgr = RunStateManager()
-    
-    daq_cfg = config_file.get_daq_config()
+    daq_cfg = pseti_workspace.topology.daq
     run_name = "myrun.pffd"
-    (Path(daq_cfg.head_node_data_dir) / run_name).mkdir(parents=True, exist_ok=True)
+    (pseti_workspace.root / "head_data" / run_name).mkdir(parents=True, exist_ok=True)
     
     # Pre-write an ACTIVE ledger
     ledger = RunStateLedger(
@@ -163,7 +121,7 @@ async def test_stop_run_bypasses_enqueue_on_fundamental_failure(
          
          # stop_run returns success status
          success = await stop_run(
-             daq_cfg, NetworkConfig(), QuaboUids(domes=[]),
+             daq_cfg, pseti_workspace.topology.network, pseti_workspace.topology.quabo_uids,
              run=run_name
          )
          

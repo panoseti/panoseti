@@ -1,136 +1,89 @@
 """
 test_two_node_direct.py — Integration tests with two independent DAQ nodes.
 
-Uses daqnode  (192.168.0.10, daq_control) and
-     daqnode-2 (192.168.0.20, daq_control).
-
-Verifies that both nodes can be managed independently — start/stop on one
-does not affect the other, run directories are isolated per node, and
-concurrent StartDaq calls work without interference.
+Ported from ci/software_only/tier3_fleet/test_two_node_direct.py.
+Verifies that both nodes can be managed independently using a two_node_ci fleet.
 """
-from __future__ import annotations
 
-import contextlib
-import uuid
-from collections.abc import Iterator
-from pathlib import Path
-from typing import Any
+from __future__ import annotations
 
 import pytest
 
-from ci.fixtures.fleet import Fleet
-from ci.software_only.conftest import wait_hashpipe_stopped
-from ci.software_only.tier3_fleet.conftest import (
-    BINDHOST,
+from ci.software_only.infra.spec import FleetSpec
+from ci.software_only.orchestrator.fleet import Fleet
+from ci.software_only.tier3_fleet.conftest import make_startdaq_params, requires_docker
+
+pytestmark = pytest.mark.tier3
+
+
+@requires_docker
+@pytest.mark.parametrize(
+    "pseti_workspace_session",
+    [FleetSpec.two_node_ci(tier="tier3")],
+    indirect=True,
 )
-
-# ---------------------------------------------------------------------------
-# Node run parameters
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(scope='module')
-def run_params_node1(session_fleet) -> dict[str, Any]:
-    """Base run parameters for node-1."""
-    fleet, _ = session_fleet
-    return {
-        "data_dir":         "/data",
-        "daq_ip_addr":      fleet.node_ip(0),
-        "bindhost":         BINDHOST,
-        "max_file_size_mb": 1,
-        "group_ph_frames":  True,
-        "run_dir":          f"ci_run1_{uuid.uuid4().hex[:8]}.pffd",
-        "obs":              "citest",
-        "module_id":        [200],
-    }
-
-@pytest.fixture(scope='module')
-def run_params_node2(session_fleet) -> dict[str, Any]:
-    """Fresh run parameters for node-2 — distinct run_dir and module_id."""
-    fleet, _ = session_fleet
-    return {
-        "data_dir":         "/data",
-        "daq_ip_addr":      fleet.node_ip(1),
-        "bindhost":         BINDHOST,
-        "max_file_size_mb": 1,
-        "group_ph_frames":  True,
-        "run_dir":          f"ci_run2_{uuid.uuid4().hex[:8]}.pffd",
-        "obs":              "citest",
-        "module_id":        [201],
-    }
-
-
-@pytest.fixture(autouse=True)
-def ensure_node2_clean(daq_client_2: Any, run_params_node2: dict[str, Any]) -> Iterator[None]:
-    """Stop and cleanup node-2 after each test regardless of outcome."""
-    yield
-    with contextlib.suppress(Exception):
-        daq_client_2.StopDaq({
-            "data_dir": run_params_node2["data_dir"],
-            "run_dir":  run_params_node2["run_dir"],
-        })
-
-    # We must block until it is actually stopped before proceeding to the next test.
-    wait_hashpipe_stopped(daq_client_2, run_params_node2["data_dir"], timeout=8)
-
-    with contextlib.suppress(Exception):
-        for mid in run_params_node2["module_id"]:
-            daq_client_2.CleanupData({
-                "data_dir":  run_params_node2["data_dir"],
-                "run_dir":   run_params_node2["run_dir"],
-                "module_id": mid,
-            })
-
-@pytest.fixture(autouse=True)
-def ensure_node1_clean(daq_client: Any, run_params_node1: dict[str, Any]) -> Iterator[None]:
-    """Stop and cleanup node-1 after each test regardless of outcome."""
-    yield
-    with contextlib.suppress(Exception):
-        daq_client.StopDaq({
-            "data_dir": run_params_node1["data_dir"],
-            "run_dir":  run_params_node1["run_dir"],
-        })
-
-    wait_hashpipe_stopped(daq_client, run_params_node1["data_dir"], timeout=8)
-    with contextlib.suppress(Exception):
-        for mid in run_params_node1["module_id"]:
-            daq_client.CleanupData({
-                "data_dir":  run_params_node1["data_dir"],
-                "run_dir":   run_params_node1["run_dir"],
-                "module_id": mid,
-            })
-
-
-def _prepare_dirs(fleet: Fleet, params: dict, node_idx: int) -> None:
-    """
-    Inject run directories on the host-side temp directory for the specific container.
-    """
-    host_root = Path(fleet.host_data_dirs[node_idx])
-    run_dir = params["run_dir"]
-    
-    # Root run dir
-    main_dir = host_root / run_dir
-    main_dir.mkdir(parents=True, exist_ok=True)
-    
-    for mid in params["module_id"]:
-        mod_dir = host_root / f"module_{mid}" / run_dir
-        mod_dir.mkdir(parents=True, exist_ok=True)
-        # Touch a dummy file so directory isn't empty
-        (mod_dir / "dummy.pff").touch()
-
-
 class TestTwoNodeDirect:
     """Two DAQ nodes can be managed completely independently."""
 
-    def test_node1_starts(self, daq_client, run_params_node1, session_fleet, mock_workspace) -> None:
-        """Node 1 starts hashpipe successfully."""
-        fleet, _ = session_fleet
-        _prepare_dirs(fleet, run_params_node1, 0)
-        ok = daq_client.StartDaq(run_params_node1)
-        assert ok is True
+    def test_nodes_start_and_stop_independently(self, session_fleet: Fleet) -> None:
+        """Both nodes start, run independently, and one stop does not affect the other."""
+        fleet = session_fleet
 
-    def test_node2_starts(self, daq_client_2, run_params_node2, session_fleet, mock_workspace) -> None:
-        """Node 2 starts hashpipe successfully."""
-        fleet, _ = session_fleet
-        _prepare_dirs(fleet, run_params_node2, 1)
-        ok = daq_client_2.StartDaq(run_params_node2)
-        assert ok is True
+        client0 = fleet.daq_control_client(0)
+        client1 = fleet.daq_control_client(1)
+
+        # Prepare run directories inside each container
+        fleet.exec_in_node(0, "mkdir -p /data/run0 && chmod 777 /data/run0")
+        fleet.exec_in_node(1, "mkdir -p /data/run1 && chmod 777 /data/run1")
+
+        from datetime import UTC, datetime
+
+        from control.utils.pydantic_config_models import RunStateLedger, RunStatus
+        from control.utils.run_state import RunStateManager
+        
+        mgr = RunStateManager()
+        mgr.save_state(RunStateLedger(
+            run_name="two_node_direct",
+            status=RunStatus.STARTING,
+            start_time=datetime.now(UTC).isoformat(),
+            nodes=[]
+        ))
+
+        ok0 = client0.StartDaq(make_startdaq_params(fleet, 0, "run0"))
+        assert ok0 is True
+
+        ok1 = client1.StartDaq(make_startdaq_params(fleet, 1, "run1"))
+        assert ok1 is True
+        
+        mgr.transition(RunStatus.ACTIVE)
+
+        _, s0 = client0.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+        _, s1 = client1.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+
+        assert s0["hashpipe_running"] is True
+        assert s1["hashpipe_running"] is True
+
+        # Stop node 0 only; node 1 must remain running
+        client0.StopDaq({"data_dir": "/data", "run_dir": "run0"})
+        mgr.transition(RunStatus.RECORDING_ENDED)
+        _, s0_stopped = client0.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+        _, s1_still_running = client1.StatusDaq(
+            {"data_dir": "/data", "check_hashpipe_running": True}
+        )
+
+        assert s0_stopped["hashpipe_running"] is False
+        assert s1_still_running["hashpipe_running"] is True
+
+        from ci.software_only.infra.parity import run_scenario
+        run_scenario(
+            "two_node_independent_lifecycle",
+            node_0_running=s0_stopped["hashpipe_running"],
+            node_1_running=s1_still_running["hashpipe_running"],
+        )
+        run_scenario(
+            "two_node_start_stop",
+            probe=fleet.workspace.state_probe,
+        )
+
+        client0.close()
+        client1.close()

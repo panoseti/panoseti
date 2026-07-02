@@ -1,150 +1,117 @@
 """
-test_data_collection.py — Integration tests for data collection + cleanup transaction.
+test_data_collection.py — Data collection and cleanup transaction tests.
 
-Transaction invariant:
-    CleanupData on the DAQ node MUST only run after data has been
-    successfully copied to the head node. If the copy fails, the data
-    MUST be preserved on the DAQ node for retry.
+Ported from ci/software_only/tier3_fleet/test_data_collection.py.
 """
+
 from __future__ import annotations
 
-import contextlib
-import os
-import pathlib
+import time
+from typing import Any
 
-from ci.fixtures.workspace_fixtures import prepare_container_dirs
-from ci.software_only.tier4_chaos.conftest import (
-    _cleanup as grpc_cleanup,
+import pytest
+
+from ci.software_only.infra.spec import FleetSpec
+from ci.software_only.orchestrator.fleet import Fleet
+from ci.software_only.tier3_fleet.conftest import make_startdaq_params, requires_docker
+
+pytestmark = pytest.mark.tier3
+
+
+def wait_until(
+    condition: Any,
+    timeout: float = 10.0,
+    interval: float = 0.2,
+) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if condition():
+                return True
+        except Exception:
+            pass
+        time.sleep(interval)
+    return False
+
+
+@requires_docker
+@pytest.mark.parametrize(
+    "pseti_workspace_session",
+    [FleetSpec.minimal_fleet()],
+    indirect=True,
 )
-
-
 class TestDataCollectionTransaction:
     """Happy-path and sad-path collection + cleanup scenarios."""
 
-    def test_cleanup_not_called_if_copy_fails(
-        self, daq_control_direct, run_params, ensure_clean_daq_state, session_fleet
+    def test_when_daq_started_and_stopped_then_hashpipe_exits_cleanly(
+        self, session_fleet: Fleet
     ) -> None:
-        """If data copy fails, CleanupData is not called and data persists."""
-        run_params = dict(run_params)
-        run_params["data_dir"] = "/data"
-        
-        fleet, _ = session_fleet
-        prepare_container_dirs(fleet, run_params["run_dir"])
+        """Start→wait running→stop→wait stopped full lifecycle completes."""
+        fleet = session_fleet
+        client = fleet.daq_control_client(0)
+        run_dir = "happy_run"
 
-        # Simulate copy failure: we just DON'T call copy_run_dir or CleanupData
-        # Verify data still exists on host in the isolated volumes
-        for i, temp_dir in enumerate(fleet._temp_dirs):
-            host_root = pathlib.Path(temp_dir)
-            spec = fleet.specs[i]
-            for mid in spec.module_ids:
-                if mid in run_params["module_id"]:
-                    assert (host_root / f"module_{mid}" / run_params["run_dir"]).exists()
+        fleet.exec_in_node(0, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
 
-    def test_cleanup_idempotent(
-        self, daq_control_direct, run_params, ensure_clean_daq_state, session_fleet
+        ok = client.StartDaq(make_startdaq_params(fleet, 0, run_dir))
+        assert ok is True
+
+        def check_running() -> bool:
+            _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+            return bool(s["hashpipe_running"])
+
+        assert wait_until(check_running), "hashpipe did not start"
+
+        ok = client.StopDaq({"data_dir": "/data", "run_dir": run_dir})
+        assert ok is True
+
+        def check_stopped() -> bool:
+            _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+            return not bool(s["hashpipe_running"])
+
+        assert wait_until(check_stopped), "hashpipe did not stop"
+        client.close()
+
+    def test_when_cleanup_called_twice_then_both_succeed(
+        self, session_fleet: Fleet
     ) -> None:
-        """Calling CleanupData twice on the same run_dir is safe (noop)."""
-        run_params = dict(run_params)
-        run_params["data_dir"] = "/data"
-        
-        # Ensure server state is clean
-        daq_control_direct.StopDaq({"data_dir": "/data", "run_dir": run_params["run_dir"]})
-        
-        fleet, _ = session_fleet
-        prepare_container_dirs(fleet, run_params["run_dir"])
+        """Calling CleanupData twice on the same run dir is idempotent."""
+        fleet = session_fleet
+        client = fleet.daq_control_client(0)
+        run_dir = "cleanup_idempotent"
+        node_cfg = fleet.live_daq_config.daq_nodes[0]
 
-        for mid in run_params["module_id"]:
-            req = {
-                "data_dir":  "/data",
-                "run_dir":   run_params["run_dir"],
-                "module_id": [mid],
-            }
-            ok1, _ = grpc_cleanup(daq_control_direct, req)
-            assert ok1
+        fleet.exec_in_node(0, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
 
-            ok2, _ = grpc_cleanup(daq_control_direct, req)
-            assert ok2
+        cleanup_params = {
+            "data_dir": "/data",
+            "run_dir": run_dir,
+            "module_id": list(node_cfg.module_ids),
+            "mode": "CLEANUP_FULL",
+            "force": True,
+        }
 
+        res1 = client.CleanupData(cleanup_params)
+        assert res1["success"]
 
-class TestCleanupEdgeCases:
-    """Robustness against missing directories."""
+        res2 = client.CleanupData(cleanup_params)
+        assert res2["success"]
+        client.close()
 
-    def test_cleanup_nonexistent_module_dirs_succeeds(
-        self, daq_control_direct, run_params, ensure_clean_daq_state, session_fleet
+    def test_when_cleanup_called_on_nonexistent_run_dir_then_succeeds(
+        self, session_fleet: Fleet
     ) -> None:
-        """CleanupData succeeds even if some module subdirs are missing (already cleaned)."""
-        run_params = dict(run_params)
-        run_params["data_dir"] = "/data"
-        
-        # Ensure server state is clean
-        daq_control_direct.StopDaq({"data_dir": "/data", "run_dir": run_params["run_dir"]})
+        """CleanupData succeeds even if the target run directory does not exist."""
+        fleet = session_fleet
+        client = fleet.daq_control_client(0)
+        node_cfg = fleet.live_daq_config.daq_nodes[0]
 
-        # CRITICAL: Prepare base module directories so DirectoryPath validation passes,
-        # but leave the run_dir subdirectories missing to test the edge case.
-        fleet, _ = session_fleet
-        for temp_dir in fleet._temp_dirs:
-            host_root = pathlib.Path(temp_dir)
-            for mid in run_params["module_id"]:
-                mod_root = host_root / f"module_{mid}"
-                mod_root.mkdir(parents=True, exist_ok=True)
-                with contextlib.suppress(OSError):
-                    os.chmod(mod_root, 0o777)
-
-        # Cleanup should succeed (nothing to do)
-        for mid in run_params["module_id"]:
-            ok, _ = grpc_cleanup(daq_control_direct, {
-                "data_dir":  "/data",
-                "run_dir":   run_params["run_dir"],
-                "module_id": [mid],
-            })
-            assert ok
-
-
-class TestNodeFailureDuringCollection:
-    """Fault-tolerance: node crashes while head node is copying."""
-
-    def test_partial_copy_preserves_daqnode_data(
-        self, daq_control_direct, run_params, ensure_clean_daq_state, session_fleet
-    ) -> None:
-        """If node crashes mid-copy, head node MUST NOT issue CleanupData."""
-        run_params = dict(run_params)
-        run_params["data_dir"] = "/data"
-        
-        fleet, _ = session_fleet
-        prepare_container_dirs(fleet, run_params["run_dir"])
-        
-        # Verify data exists in isolated volumes
-        for i, temp_dir in enumerate(fleet._temp_dirs):
-            host_root = pathlib.Path(temp_dir)
-            spec = fleet.specs[i]
-            for mid in spec.module_ids:
-                if mid in run_params["module_id"]:
-                    assert (host_root / f"module_{mid}" / run_params["run_dir"]).exists()
-
-    def test_cleanup_after_node_restart_succeeds(
-        self, daq_control_direct, run_params, ensure_clean_daq_state, session_fleet
-    ) -> None:
-        """A restarted node can safely cleanup runs from a previous session."""
-        run_params = dict(run_params)
-        run_params["data_dir"] = "/data"
-        
-        # 1. Previous session's data exists
-        fleet, _ = session_fleet
-        prepare_container_dirs(fleet, run_params["run_dir"])
-        
-        # 2. Issue cleanup
-        for mid in run_params["module_id"]:
-            ok, _ = grpc_cleanup(daq_control_direct, {
-                "data_dir":  "/data",
-                "run_dir":   run_params["run_dir"],
-                "module_id": [mid],
-            })
-            assert ok
-        
-        # Verify data is gone from isolated volumes
-        for i, temp_dir in enumerate(fleet._temp_dirs):
-            host_root = pathlib.Path(temp_dir)
-            spec = fleet.specs[i]
-            for mid in spec.module_ids:
-                if mid in run_params["module_id"]:
-                    assert not (host_root / f"module_{mid}" / run_params["run_dir"]).exists()
+        res = client.CleanupData({
+            "data_dir": "/data",
+            "run_dir": "nonexistent_run",
+            "module_id": list(node_cfg.module_ids),
+            "mode": "CLEANUP_FULL",
+            "force": True,
+        })
+        assert res["success"]
+        client.close()

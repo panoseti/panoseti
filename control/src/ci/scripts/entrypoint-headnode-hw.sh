@@ -5,6 +5,11 @@ set -e
 
 # Only perform root-level setup (SSH keys, UID dance) if we are currently root.
 if [ "$(id -u)" = "0" ]; then
+    if [ -n "$LOCAL_UID" ] && [ -n "$LOCAL_GID" ]; then
+        groupmod -o -g "$LOCAL_GID" panoseti 2>/dev/null || true
+        usermod -o -u "$LOCAL_UID" panoseti 2>/dev/null || true
+    fi
+
     TARGET_UID=$(id -u panoseti)
     TARGET_GID=$(id -g panoseti)
 

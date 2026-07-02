@@ -1,115 +1,146 @@
 """
-test_config_validation.py — Integration tests for config validation.
+test_config_validation.py — Config validation tests for v2.
 
-Runs config_file.validate_all() against the CI configs to ensure they
-parse correctly and pass all pydantic/cross-config checks.
-Network ping sweep is skipped (hardware not present in software CI).
+Ported from ci/software_only/tier2_logic/test_config_validation.py.
+
+Two complementary angles:
+ 1. pseti_workspace-generated configs — GlobalConfigValidator must pass against
+    the Pydantic objects already validated at build() time. Tests confirm the
+    JSON round-trip doesn't lose information.
+ 2. Static CI fixture configs (direct/gateway) — regression guard that the
+    checked-in JSON files remain structurally valid as the code evolves.
 """
+
 from __future__ import annotations
 
+import copy
 import json
-import os
-import pathlib
-import shutil
-import tempfile
-from typing import Any
+
+import pytest
 
 from ci.paths import PanoPathsTest
+from ci.software_only.infra.spec import FleetSpec, GatewaySpec
+from ci.software_only.infra.workspace import Workspace
 
 INTEGRATION_CONFIGS = PanoPathsTest.integration_configs_root()
 
-# Common config files (same for both direct and gateway topologies)
-_COMMON_FILES = ["obs_config.json", "data_config.json", "firmware.json", "daemons.json"]
+
+# ---------------------------------------------------------------------------
+# Workspace-generated config validation
+# ---------------------------------------------------------------------------
+
+class TestWorkspaceConfigValidation:
+    """Configs produced by pseti_workspace must pass GlobalConfigValidator."""
+
+    def _validate_topology(self, workspace: Workspace) -> list:
+        """Run GlobalConfigValidator over topology objects; return any ERRORs."""
+        from control.utils.global_validator import GlobalConfigValidator
+        t = workspace.topology
+        v = GlobalConfigValidator({
+            "obs": t.obs,
+            "data": t.data,
+            "daq": copy.deepcopy(t.daq),
+            "network": t.network,
+            "firmware": None,
+            "uids": copy.deepcopy(t.quabo_uids),
+        })
+        v.validate_all_rules()
+        return [r for r in v.report.tests if r["status"] == "ERROR"]
+
+    def test_workspace_seven_config_files(
+        self, pseti_workspace: Workspace
+    ) -> None:
+        from ci.software_only.infra.parity import run_scenario
+        expected = [
+            "obs_config.json", "daq_config.json", "network_config.json",
+            "data_config.json", "firmware.json", "quabo_uids.json", "daemons.json",
+        ]
+        run_scenario("workspace_seven_config_files", 
+                     config_dir=pseti_workspace.config_dir, 
+                     expected_files=expected)
+
+    def test_workspace_json_files_all_readable(
+        self, pseti_workspace: Workspace
+    ) -> None:
+        expected = [
+            "obs_config.json", "daq_config.json", "network_config.json",
+            "data_config.json", "firmware.json", "quabo_uids.json", "daemons.json",
+        ]
+        for fname in expected:
+            path = pseti_workspace.config_dir / fname
+            assert path.exists(), f"Missing config: {fname}"
+            obj = json.loads(path.read_text())
+            assert isinstance(obj, dict), f"{fname} must be a JSON object"
+
+    @pytest.mark.parametrize(
+        "pseti_workspace",
+        [FleetSpec.two_node_ci()],
+        indirect=True,
+    )
+    def test_two_node_ci_workspace_validates(
+        self, pseti_workspace: Workspace
+    ) -> None:
+        errors = self._validate_topology(pseti_workspace)
+        assert not errors, f"two_node_ci workspace configs have ERRORs: {errors}"
+
+    @pytest.mark.parametrize(
+        "pseti_workspace",
+        [
+            FleetSpec(seed=77, name="gw_val_test")
+            .with_headnode(ip="10.0.1.5")
+            .add_dome("d0", lat=37.342, lon=-121.637, alt=1283.0)
+            .add_module(200, version="qfp", timing="wr", ip="192.168.3.32")
+            .add_daq_node(
+                ip="192.168.0.10",
+                modules=[200],
+                gateway=GatewaySpec(ip="10.200.146.13", grpc_port=50051),
+                bindhost="lo",
+            )
+        ],
+        indirect=True,
+    )
+    def test_gateway_workspace_network_config_has_daq_node(
+        self, pseti_workspace: Workspace
+    ) -> None:
+        raw = pseti_workspace.config_as_dict("network_config.json")
+        assert len(raw.get("daq_nodes", [])) == 1
+        pf = raw["daq_nodes"][0]["port_forwarding"]
+        assert pf["status"] is True
+        assert 1 <= pf["grpc_port"] <= 65535
+
+    def test_overvoltage_written_to_both_obs_and_data(
+        self, pseti_workspace: Workspace
+    ) -> None:
+        obs_raw = pseti_workspace.config_as_dict("obs_config.json")
+        data_raw = pseti_workspace.config_as_dict("data_config.json")
+        assert obs_raw["detector_overvoltage"] == data_raw["detector_overvoltage"]
+
+    def test_with_data_overrides_written_correctly(self) -> None:
+        spec = FleetSpec.minimal_unit().with_data(run_type="science", overvoltage=3)
+        t = spec.build()
+        assert t.data.run_type == "science"
+        assert t.data.detector_overvoltage == 3
+        assert t.obs.detector_overvoltage == 3
 
 
-def _run_validation(variant_dir: pathlib.Path) -> bool:
-    """
-    Set up a temp workspace with a configs/ directory containing the CI config
-    files for the given variant (direct or gateway), then run validate_all().
-    Returns True if validation passed.
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = pathlib.Path(tmpdir)
-        configs_dir = tmp_path / "configs"
-        configs_dir.mkdir()
+# ---------------------------------------------------------------------------
+# Static CI fixture configs (structural regression guard)
+# ---------------------------------------------------------------------------
 
-        # Copy common configs
-        for fname in _COMMON_FILES:
-            shutil.copy(INTEGRATION_CONFIGS / fname, configs_dir / fname)
+class TestStaticCiConfigs:
+    """The checked-in CI fixture configs must remain structurally valid."""
 
-        # Copy variant-specific configs
-        for fname in ["daq_config.json", "network_config.json", "obs_config.json", "firmware.json"]:
-            src = variant_dir / fname
-            if src.exists():
-                shutil.copy(src, configs_dir / fname)
+    def test_direct_daq_config_parses(self) -> None:
+        from control.utils.pydantic_config_models import DaqConfig
+        dc = json.loads((INTEGRATION_CONFIGS / "direct" / "daq_config.json").read_text())
+        model = DaqConfig(**dc)
+        assert len(model.daq_nodes) >= 1
 
-        # Create stub firmware files referenced in firmware.json to satisfy existence checks
-        with open(configs_dir / "firmware.json") as f:
-            fw_data = json.load(f)
-            # handle both old structure and new flat structure
-            for val in fw_data.values():
-                if isinstance(val, str) and val.endswith(".bin"):
-                    (tmp_path / val).touch()
-            if "quabo" in fw_data:
-                for val in fw_data["quabo"].values():
-                    if isinstance(val, str) and val.endswith(".bin"):
-                        (tmp_path / val).touch()
-
-        # Generate a dummy quabo_uids.json in tmp_path based on obs_config.json
-        # This prevents the test from using the environment's global tmp dir.
-        from control.utils import config_file
-        with open(configs_dir / "obs_config.json") as f:
-            obs_data = json.load(f)
-        
-        quabo_uids: dict[str, list[dict[str, Any]]] = {"domes": []}
-        for dome in obs_data.get("domes", []):
-            uids_dome: dict[str, list[dict[str, Any]]] = {"modules": []}
-            for module in dome.get("modules", []):
-                uids_module = {
-                    "ip_addr": module["ip_addr"],
-                    "quabos": [{"uid": f"DUMMY_UID_{module['ip_addr']}_{i}"} for i in range(4)]
-                }
-                uids_dome["modules"].append(uids_module)
-            quabo_uids["domes"].append(uids_dome)
-        
-        with open(tmp_path / "quabo_uids.json", "w") as f:
-            json.dump(quabo_uids, f)
-
-        # Run validation with environment overrides
-        old_env = os.environ.copy()
-        os.environ["PSETI_CONFIG"] = str(configs_dir)
-        # We need to tell it where firmware files are (they are in tmpdir root in this test)
-        os.environ["PSETI_FIRMWARE"] = str(tmp_path)
-        # Isolate tmp dir so we don't see chaos UIDs or locks
-        os.environ["PSETI_TMP"] = str(tmp_path)
-        
-        try:
-            from control.utils import config_file
-            # Reload modules if necessary or just call the function.
-            # config_file cache might be an issue, but in pytest it's usually fresh enough
-            # unless it's already imported.
-            passed = config_file.validate_all(check_network=False, debug=True)
-        finally:
-            os.environ.clear()
-            os.environ.update(old_env)
-
-        return passed
-
-
-class TestConfigValidation:
-
-    def test_validate_direct_config(self) -> None:
-        """validate_all() must pass with the direct-connection CI configs."""
-        passed = _run_validation(INTEGRATION_CONFIGS / "direct")
-        assert passed, "Config validation failed for direct topology — check CI config files"
-
-    def test_validate_gateway_config(self) -> None:
-        """validate_all() must pass with the gateway port-forwarding CI configs."""
-        passed = _run_validation(INTEGRATION_CONFIGS / "gateway")
-        assert passed, "Config validation failed for gateway topology — check CI config files"
+    def test_direct_daq_config_head_node_container(self) -> None:
+        dc = json.loads((INTEGRATION_CONFIGS / "direct" / "daq_config.json").read_text())
+        assert dc.get("head_node_container") is True
 
     def test_gateway_network_config_has_grpc_port(self) -> None:
-        """Gateway network_config.json must include grpc_port for gRPC forwarding."""
         nc = json.loads(
             (INTEGRATION_CONFIGS / "gateway" / "network_config.json").read_text()
         )
@@ -119,3 +150,19 @@ class TestConfigValidation:
         assert pf.get("status") is True
         assert "grpc_port" in pf, "gateway network_config must specify grpc_port"
         assert 1 <= pf["grpc_port"] <= 65535
+
+    def test_gateway_network_config_parses(self) -> None:
+        from control.utils.pydantic_config_models import NetworkConfig
+        nc = json.loads(
+            (INTEGRATION_CONFIGS / "gateway" / "network_config.json").read_text()
+        )
+        model = NetworkConfig(**nc)
+        assert len(model.daq_nodes) >= 1
+        assert len(model.modules) >= 1
+
+    def test_direct_obs_config_parses(self) -> None:
+        from control.utils.pydantic_config_models import ObsConfig
+        oc = json.loads((INTEGRATION_CONFIGS / "direct" / "obs_config.json").read_text())
+        model = ObsConfig(**oc)
+        assert len(model.domes) >= 1
+        assert len(model.domes[0].modules) >= 1

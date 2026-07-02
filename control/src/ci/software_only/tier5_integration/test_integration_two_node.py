@@ -1,162 +1,154 @@
 """
-test_integration_two_node.py — Tier 5 Heavy Integration tests with two DAQ nodes.
+tier5_integration/test_integration_two_node.py — Two-node heavy integration tests.
 
 Connects to the STATIC Docker Compose stack.
+Tests start/stop command propagation and isolation across two real daqnodes.
 """
+
 from __future__ import annotations
 
 import os
 import pathlib
+from typing import Any
 
-from ci.software_only.conftest import (
+import pytest
+
+from ci.software_only.tier5_integration.conftest import (
+    DAQ_DATA_DIR,
+    requires_compose_stack,
     wait_hashpipe_running,
     wait_hashpipe_stopped,
 )
 
+pytestmark = [pytest.mark.tier5, requires_compose_stack]
 
-def _prepare_dirs(params: dict) -> None:
-    """Prepare host-side directories mapped to the container's /data."""
-    host_data_root = os.environ.get("DAQ_DATA_DIR")
-    if not host_data_root:
-        return
-        
-    host_root = pathlib.Path(host_data_root)
+
+def _prepare_dirs(params: dict[str, Any]) -> None:
+    """Create host-side directories mapped to the container's /data volume."""
+    host_root = pathlib.Path(DAQ_DATA_DIR)
     run_dir = params["run_dir"]
-    
-    # Root run dir for validator
-    main_dir = host_root / run_dir
-    main_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(main_dir, 0o777)
-    
+
+    (host_root / run_dir).mkdir(parents=True, exist_ok=True)
+    os.chmod(host_root / run_dir, 0o777)
+
     for mid in params["module_id"]:
         mod_dir = host_root / f"module_{mid}" / run_dir
         mod_dir.mkdir(parents=True, exist_ok=True)
         os.chmod(mod_dir, 0o777)
-        dummy_file = mod_dir / "dummy.pff"
-        dummy_file.touch()
-        os.chmod(dummy_file, 0o777)
+        dummy = mod_dir / "dummy.pff"
+        dummy.touch()
+        os.chmod(dummy, 0o777)
+
 
 class TestIntegrationTwoNodeDirect:
-    """Two DAQ nodes managed independently in heavy integration stack."""
+    """Two real daqnodes managed independently via gRPC."""
 
     def test_both_nodes_start_independently(
-        self, daq_control_direct, daq_control_node2, run_params
+        self,
+        daq_control_node1: Any,
+        daq_control_node2: Any,
+        run_params: dict[str, Any],
     ) -> None:
-        """Both nodes can be started simultaneously and both report running."""
-        # Use common run_params but different module_ids for isolation
-        params1 = dict(run_params)
-        params1["module_id"] = [200]
-        params2 = dict(run_params)
-        params2["module_id"] = [201]
+        """Both nodes can be started in parallel and both report hashpipe running."""
+        p1 = {**run_params, "module_id": [200]}
+        p2 = {**run_params, "module_id": [201]}
+        _prepare_dirs(p1)
+        _prepare_dirs(p2)
 
-        _prepare_dirs(params1)
-        _prepare_dirs(params2)
-        
-        assert daq_control_direct.StartDaq(params1) is True
-        assert daq_control_node2.StartDaq(params2) is True
+        assert daq_control_node1.StartDaq(p1) is True
+        assert daq_control_node2.StartDaq(p2) is True
 
         try:
-            assert wait_hashpipe_running(daq_control_direct, "/data"), "hashpipe 1 failed"
-            assert wait_hashpipe_running(daq_control_node2, "/data"), "hashpipe 2 failed"
+            assert wait_hashpipe_running(daq_control_node1, DAQ_DATA_DIR), (
+                "hashpipe did not start on node 1"
+            )
+            assert wait_hashpipe_running(daq_control_node2, DAQ_DATA_DIR), (
+                "hashpipe did not start on node 2"
+            )
 
-            _, s1 = daq_control_direct.StatusDaq({
-                "data_dir":               "/data",
+            _status_params = {
+                "data_dir": DAQ_DATA_DIR,
                 "check_hashpipe_running": True,
-                "check_disk_usage":       False,
-                "check_run_dirs":         False,
-            })
-            _, s2 = daq_control_node2.StatusDaq({
-                "data_dir":               "/data",
-                "check_hashpipe_running": True,
-                "check_disk_usage":       False,
-                "check_run_dirs":         False,
-            })
+                "check_disk_usage": False,
+                "check_run_dirs": False,
+            }
+            _, s1 = daq_control_node1.StatusDaq(_status_params)
+            _, s2 = daq_control_node2.StatusDaq(_status_params)
             assert s1.get("hashpipe_running") is True
             assert s2.get("hashpipe_running") is True
         finally:
-            daq_control_direct.StopDaq(params1)
-            daq_control_node2.StopDaq(params2)
+            daq_control_node1.StopDaq(p1)
+            daq_control_node2.StopDaq(p2)
 
     def test_stop_node1_does_not_affect_node2(
-        self, daq_control_direct, daq_control_node2, run_params
+        self,
+        daq_control_node1: Any,
+        daq_control_node2: Any,
+        run_params: dict[str, Any],
     ) -> None:
-        """Stopping hashpipe on node 1 does not stop it on node 2."""
-        params1 = dict(run_params)
-        params1["module_id"] = [200]
-        params2 = dict(run_params)
-        params2["module_id"] = [201]
+        """Stopping hashpipe on node 1 leaves node 2 running."""
+        p1 = {**run_params, "module_id": [200]}
+        p2 = {**run_params, "module_id": [201]}
+        _prepare_dirs(p1)
+        _prepare_dirs(p2)
 
-        _prepare_dirs(params1)
-        _prepare_dirs(params2)
-        
-        assert daq_control_direct.StartDaq(params1) is True
-        assert daq_control_node2.StartDaq(params2) is True
-        
+        assert daq_control_node1.StartDaq(p1) is True
+        assert daq_control_node2.StartDaq(p2) is True
+
         try:
-            assert wait_hashpipe_running(daq_control_direct, "/data")
-            assert wait_hashpipe_running(daq_control_node2, "/data")
+            assert wait_hashpipe_running(daq_control_node1, DAQ_DATA_DIR)
+            assert wait_hashpipe_running(daq_control_node2, DAQ_DATA_DIR)
 
-            daq_control_direct.StopDaq(params1)
-            assert wait_hashpipe_stopped(daq_control_direct, "/data")
+            daq_control_node1.StopDaq(p1)
+            assert wait_hashpipe_stopped(daq_control_node1, DAQ_DATA_DIR)
 
-            _, s1 = daq_control_direct.StatusDaq({
-                "data_dir":               "/data",
+            _status_params = {
+                "data_dir": DAQ_DATA_DIR,
                 "check_hashpipe_running": True,
-                "check_disk_usage":       False,
-                "check_run_dirs":         False,
-            })
+                "check_disk_usage": False,
+                "check_run_dirs": False,
+            }
+            _, s1 = daq_control_node1.StatusDaq(_status_params)
+            _, s2 = daq_control_node2.StatusDaq(_status_params)
             assert s1.get("hashpipe_running") is False
-            
-            _, s2 = daq_control_node2.StatusDaq({
-                "data_dir":               "/data",
-                "check_hashpipe_running": True,
-                "check_disk_usage":       False,
-                "check_run_dirs":         False,
-            })
             assert s2.get("hashpipe_running") is True
         finally:
-            daq_control_direct.StopDaq(params1)
-            daq_control_node2.StopDaq(params2)
+            daq_control_node1.StopDaq(p1)
+            daq_control_node2.StopDaq(p2)
 
     def test_run_dirs_are_independent(
-        self, daq_control_direct, daq_control_node2, run_params
+        self,
+        daq_control_node1: Any,
+        daq_control_node2: Any,
+        run_params: dict[str, Any],
     ) -> None:
         """Each node tracks its own run_dir independently."""
-        params1 = dict(run_params)
-        params1["run_dir"] = "run1.pffd"
-        params1["module_id"] = [200]
-        params2 = dict(run_params)
-        params2["run_dir"] = "run2.pffd"
-        params2["module_id"] = [201]
-
-        _prepare_dirs(params1)
-        _prepare_dirs(params2)
+        p1 = {**run_params, "run_dir": "t5_run1.pffd", "module_id": [200]}
+        p2 = {**run_params, "run_dir": "t5_run2.pffd", "module_id": [201]}
+        _prepare_dirs(p1)
+        _prepare_dirs(p2)
 
         try:
-            assert daq_control_direct.StartDaq(params1) is True
-            assert daq_control_node2.StartDaq(params2) is True
+            assert daq_control_node1.StartDaq(p1) is True
+            assert daq_control_node2.StartDaq(p2) is True
+            assert wait_hashpipe_running(daq_control_node1, DAQ_DATA_DIR)
+            assert wait_hashpipe_running(daq_control_node2, DAQ_DATA_DIR)
 
-            assert wait_hashpipe_running(daq_control_direct, "/data")
-            assert wait_hashpipe_running(daq_control_node2, "/data")
-
-            _, s1 = daq_control_direct.StatusDaq({
-                "data_dir":               "/data",
+            _s = {
+                "data_dir": DAQ_DATA_DIR,
                 "check_hashpipe_running": False,
-                "check_disk_usage":       False,
-                "check_run_dirs":         True,
-            })
-            _, s2 = daq_control_node2.StatusDaq({
-                "data_dir":               "/data",
-                "check_hashpipe_running": False,
-                "check_disk_usage":       False,
-                "check_run_dirs":         True,
-            })
-            run_dirs_1 = s1.get("run_dirs", [])
-            run_dirs_2 = s2.get("run_dirs", [])
+                "check_disk_usage": False,
+                "check_run_dirs": True,
+            }
+            _, s1 = daq_control_node1.StatusDaq(_s)
+            _, s2 = daq_control_node2.StatusDaq(_s)
 
-            assert any("run1.pffd" in d for d in run_dirs_1)
-            assert any("run2.pffd" in d for d in run_dirs_2)
-            assert not any("run2.pffd" in d and "module_201" in d for d in run_dirs_1)
+            dirs1 = s1.get("run_dirs", [])
+            dirs2 = s2.get("run_dirs", [])
+            assert any("t5_run1.pffd" in d for d in dirs1)
+            assert any("t5_run2.pffd" in d for d in dirs2)
+            # run2 dirs must not appear on node 1 for module_201
+            assert not any("t5_run2.pffd" in d and "module_201" in d for d in dirs1)
         finally:
-            daq_control_direct.StopDaq(params1)
-            daq_control_node2.StopDaq(params2)
+            daq_control_node1.StopDaq(p1)
+            daq_control_node2.StopDaq(p2)

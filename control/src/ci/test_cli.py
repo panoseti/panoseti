@@ -24,7 +24,7 @@ from ci.software_only.qa_utils import (
 )
 from control.utils.paths import PanoPaths
 
-V2_QA_TOML_PATH = PanoPaths.base_dir() / "src" / "ci" / "software_only_v2" / "qa.toml"
+V2_QA_TOML_PATH = PanoPaths.base_dir() / "src" / "ci" / "software_only" / "qa.toml"
 
 console = Console()
 
@@ -150,19 +150,15 @@ app = typer.Typer(
 )
 
 # Sub-apps for organization
-sw_app = typer.Typer(help="Software QA tests (Docker-based CI simulations)", no_args_is_help=True)
-sw2_app = typer.Typer(help="v2 Software QA — topology-driven, realistic containers", no_args_is_help=True)
+sw_app = typer.Typer(help="Software QA tests (topology-driven, realistic containers)", no_args_is_help=True)
 hw_app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True, cls=HwTestLazyGroup)
 grpc_app = typer.Typer(help="gRPC service layer tests", no_args_is_help=True, cls=GrpcTestLazyGroup)
-v2_app = typer.Typer(help="v2 Software QA (topology-driven, realistic containers)", no_args_is_help=True)
 pff_app = typer.Typer(help="Pypff I/O tests", no_args_is_help=True, cls=PypffTestLazyGroup)
 
 app.add_typer(sw_app, name="sw")
-app.add_typer(sw2_app, name="sw2")
 app.add_typer(hw_app, name="hw")
 app.add_typer(grpc_app, name="grpc")
 app.add_typer(pff_app, name="pff")
-sw_app.add_typer(v2_app, name="v2")
 
 @pff_app.callback()
 def pff_test_main(
@@ -317,170 +313,8 @@ def lint_main(
 # SW Subcommands (Software QA)
 # ---------------------------------------------------------------------------
 
-@sw_app.command(name="unit", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_unit(
-    ctx: typer.Context, 
-    jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel jobs"),
-    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
-) -> None:
-    """Tier 1: Parallel unit tests (Logic & Parsing)"""
-    if tool and hasattr(ctx, "obj") and ctx.obj:
-        ctx.obj.container_tool = tool
-    ok = asyncio.run(ctx.obj.run_suite("unit", jobs=jobs, extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-@sw_app.command(name="logic", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_logic(
-    ctx: typer.Context,
-    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
-) -> None:
-    """Tier 2: Subsystem logic (Isolated State, Mocked gRPC)"""
-    if tool and hasattr(ctx, "obj") and ctx.obj:
-        ctx.obj.container_tool = tool
-    ok = asyncio.run(ctx.obj.run_suite("logic", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-@sw_app.command(name="fleet", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_fleet(
-    ctx: typer.Context,
-    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
-) -> None:
-    """Tier 3: Distributed flows (Dynamic Fleets, Real gRPC)"""
-    if tool and hasattr(ctx, "obj") and ctx.obj:
-        ctx.obj.container_tool = tool
-    ok = asyncio.run(ctx.obj.run_suite("fleet", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-@sw_app.command(name="chaos", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_chaos(
-    ctx: typer.Context,
-    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
-) -> None:
-    """Tier 4: Fault injection (Active failure scenarios)"""
-    if tool and hasattr(ctx, "obj") and ctx.obj:
-        ctx.obj.container_tool = tool
-    ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-@sw_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_integration(
-    ctx: typer.Context,
-    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman)."),
-    # clean: bool = typer.Option(True, "--clean/--no-clean", 
-    #     help="Tear down the Docker Compose stack after tests complete. Use --no-clean for debugging."
-    # )
-) -> None:
-    """Tier 5: Heavy Integration (Hashpipe, Static stack)"""
-    if tool and hasattr(ctx, "obj") and ctx.obj:
-        ctx.obj.container_tool = tool
-    ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-@sw_app.command(name="all")
-def sw_all(ctx: typer.Context) -> None:
-    """Run the full software testing suite (Tiers 1-5)"""
-    suites = ["lint", "unit", "logic", "fleet", "chaos", "integration"]
-    success = True
-    for s in suites:
-        ok = asyncio.run(ctx.obj.run_suite(s))
-        success = success and ok
-    if not success:
-        raise typer.Exit(code=1)
-
-@sw_app.command(name="build")
-def sw_build(ctx: typer.Context) -> None:
-    """Rebuild all test images"""
-    asyncio.run(ctx.obj.build_images())
-
-@sw_app.command(name="cleanup")
-def sw_cleanup(ctx: typer.Context) -> None:
-    """Tear down all test containers and volumes"""
-    # TestRunner cleanup logic needed in qa_utils.py
-    pass
-
-
-# ---------------------------------------------------------------------------
-# V2 Subcommands (pseti test sw v2 <tier>)
-# ---------------------------------------------------------------------------
-
-@v2_app.callback()
-def v2_main(
-    ctx: typer.Context,
-    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for v2 tests.", callback=display_tree_callback)] = False,
-) -> None:
-    """v2 Software QA — topology-driven, realistic containers."""
-    old = ctx.obj
-    ctx.obj = TestRunner(V2_QA_TOML_PATH)
-    if old:
-        ctx.obj.no_teardown = old.no_teardown
-        ctx.obj.no_build = old.no_build
-        ctx.obj.container_tool = old.container_tool
-        ctx.obj.dev_mode = old.dev_mode
-
-
-@v2_app.command(name="unit", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def v2_unit(ctx: typer.Context) -> None:
-    """v2 Tier 1: In-process Pydantic validation and config logic"""
-    ok = asyncio.run(ctx.obj.run_suite("unit", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-
-@v2_app.command(name="logic", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def v2_logic(ctx: typer.Context) -> None:
-    """v2 Tier 2: Subsystem logic with isolated workspace"""
-    ok = asyncio.run(ctx.obj.run_suite("logic", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-
-@v2_app.command(name="fleet", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def v2_fleet(ctx: typer.Context) -> None:
-    """v2 Tier 3: Fleet of sim daqnodes with real gRPC"""
-    ok = asyncio.run(ctx.obj.run_suite("fleet", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-
-@v2_app.command(name="chaos", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def v2_chaos(ctx: typer.Context) -> None:
-    """v2 Tier 4: Fault injection and resilience"""
-    ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-
-@v2_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def v2_integration(ctx: typer.Context) -> None:
-    """v2 Tier 5: Real hashpipe binary, static stack"""
-    ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
-    if not ok:
-        raise typer.Exit(code=1)
-
-
-@v2_app.command(name="all")
-def v2_all(ctx: typer.Context) -> None:
-    """Run all v2 tiers (1-5) sequentially"""
-    suites = ["unit", "logic", "fleet", "chaos", "integration"]
-    success = True
-    for s in suites:
-        ok = asyncio.run(ctx.obj.run_suite(s))
-        success = success and ok
-    if not success:
-        raise typer.Exit(code=1)
-
-
-# ---------------------------------------------------------------------------
-# SW2 Subcommands (pseti test sw2 <tier>)  — top-level alias for sw v2
-# ---------------------------------------------------------------------------
-
-@sw2_app.callback()
-def sw2_main(
+@sw_app.callback()
+def sw_main(
     ctx: typer.Context,
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for sw2 tests.", callback=display_tree_callback)] = False,
 ) -> None:
@@ -494,60 +328,60 @@ def sw2_main(
         ctx.obj.dev_mode = old.dev_mode
 
 
-@sw2_app.command(name="unit", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw2_unit(ctx: typer.Context) -> None:
+@sw_app.command(name="unit", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def sw_unit(ctx: typer.Context) -> None:
     """Tier 1: In-process Pydantic validation and config logic"""
     ok = asyncio.run(ctx.obj.run_suite("unit", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 
-@sw2_app.command(name="logic", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw2_logic(ctx: typer.Context) -> None:
+@sw_app.command(name="logic", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def sw_logic(ctx: typer.Context) -> None:
     """Tier 2: Subsystem logic with isolated workspace"""
     ok = asyncio.run(ctx.obj.run_suite("logic", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 
-@sw2_app.command(name="fleet", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw2_fleet(ctx: typer.Context) -> None:
+@sw_app.command(name="fleet", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def sw_fleet(ctx: typer.Context) -> None:
     """Tier 3: Fleet of sim daqnodes with real gRPC"""
     ok = asyncio.run(ctx.obj.run_suite("fleet", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 
-@sw2_app.command(name="chaos", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw2_chaos(ctx: typer.Context) -> None:
+@sw_app.command(name="chaos", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def sw_chaos(ctx: typer.Context) -> None:
     """Tier 4: Fault injection and resilience"""
     ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 
-@sw2_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw2_integration(ctx: typer.Context) -> None:
+@sw_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def sw_integration(ctx: typer.Context) -> None:
     """Tier 5: Real hashpipe binary, static stack"""
     ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 
-@sw2_app.command(name="build")
-def sw2_build(ctx: typer.Context) -> None:
+@sw_app.command(name="build")
+def sw_build(ctx: typer.Context) -> None:
     """Rebuild all test images"""
     asyncio.run(ctx.obj.build_images())
 
 
-@sw2_app.command(name="cleanup")
-def sw2_cleanup(ctx: typer.Context) -> None:
+@sw_app.command(name="cleanup")
+def sw_cleanup(ctx: typer.Context) -> None:
     """Tear down all test containers and volumes"""
     asyncio.run(ctx.obj.run_suite("cleanup"))
 
 
-@sw2_app.command(name="all")
-def sw2_all(ctx: typer.Context) -> None:
+@sw_app.command(name="all")
+def sw_all(ctx: typer.Context) -> None:
     """Run all v2 tiers (1-5) sequentially"""
     suites = ["unit", "logic", "fleet", "chaos", "integration"]
     success = True

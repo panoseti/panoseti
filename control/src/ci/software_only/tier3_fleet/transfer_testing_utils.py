@@ -1,49 +1,23 @@
-"""Shared utilities and fixtures for transfer queue tests."""
+"""Shared utilities and fixtures for transfer queue tests in v2."""
+from __future__ import annotations
+
 import asyncio
+import fnmatch
 import os
 import shutil
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient
-
-from ci.fixtures.fleet import Fleet
+from ci.software_only.orchestrator.fleet import Fleet
 from control.start import start_run
 from control.stop import stop_run
 from control.utils import config_file
 from control.utils.paths import PanoPaths
 
 
-def _prepare_container_dirs(fleet: Fleet, run_name: str, data_dir: str = "/data") -> None:
-    """Create run and module directories on all testcontainers fleet nodes via docker exec."""
-    for i, spec in enumerate(fleet.specs):
-        container = fleet.containers[i].get_wrapped_container()
-        container.exec_run(f"mkdir -p {data_dir}/{run_name}")
-        for mid in spec.module_ids:
-            mod_dir = f"{data_dir}/module_{mid}/{run_name}"
-            container.exec_run(f"mkdir -p {mod_dir}")
-            container.exec_run(f"touch {mod_dir}/dummy.pff")
-
-
-def setup_isolated_transfer_env(tmp_path: Path, monkeypatch: Any, daq_cfg_dict: dict[str, Any]) -> tuple[Path, config_file.DaqConfig]:
-    """Isolates the PSETI state and config for a transfer test."""
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
-    head_data_dir = tmp_path / "head_data"
-    head_data_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_dir))
-    PanoPaths.ensure_state_dirs()
-    
-    # Update daq_config with isolated head_data_dir and persist to disk
-    daq_config = config_file.DaqConfig.model_validate(daq_cfg_dict)
-    daq_config.head_node_data_dir = str(head_data_dir)
-    config_dir = Path(os.environ["PSETI_CONFIG"])
-    (config_dir / "daq_config.json").write_text(daq_config.model_dump_json())
-    
-    return head_data_dir, daq_config
-
 def get_mapped_client_factory(daq_config: config_file.DaqConfig):
     """Returns a factory function for AsyncDaqControlClient that handles port forwarding."""
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     def _get_mapped_client(host, port=50051):
         for node in daq_config.daq_nodes:
             # Match by internal IP (if non-forwarded) OR by gateway IP + port (if forwarded)
@@ -54,22 +28,20 @@ def get_mapped_client_factory(daq_config: config_file.DaqConfig):
         return AsyncDaqControlClient(host=host, port=port)
     return _get_mapped_client
 
+
+def _should_exclude(filename: str) -> bool:
+    """Returns True if the file should be excluded from rsync (e.g. manifests)."""
+    patterns = ["dp_manifest.node_*.txt", "manifest.*"]
+    return any(fnmatch.fnmatch(filename, p) for p in patterns)
+
 def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -> None:
-    """Simulates the effect of rsync by copying files from the fleet's host paths to the head node.
-    
-    Respects manifest exclusion rules to ensure integrity tests accurately reflect real rsync behavior.
-    """
+    """Simulates the effect of rsync by copying files from the fleet's host paths to the head node."""
     head_run_dir.mkdir(parents=True, exist_ok=True)
     
-    exclude_patterns = ["dp_manifest.node_*.txt", "manifest.*"]
-
-    def _should_exclude(name: str) -> bool:
-        import fnmatch
-        return any(fnmatch.fnmatch(name, pat) for pat in exclude_patterns)
-
+    # In v2, self._temp_dirs matches the order of self.daq_nodes
     for _i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
-        # 1. Root contents (hp_stdout, pss, meta.json)
+        # 1. Root contents (hp_stdout, pss, meta.json, manifests)
         daq_run_dir = host_root / run_name
         if daq_run_dir.is_dir():
             for f in daq_run_dir.iterdir():
@@ -84,10 +56,7 @@ def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -
                         shutil.copy2(f, head_run_dir / f.name)
 
 async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, run_name: str, file_size_kb: int = 1) -> dict[str, bytes]:
-    """Starts a run, generates fake .pff files and metadata on containers, and stops the run.
-    
-    Relies on production make_run_dirs logic (via start_run) to create the directory structure.
-    """
+    """Starts a run, generates fake .pff files and metadata on containers, and stops the run."""
     obs_config = config_file.get_obs_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
@@ -98,60 +67,66 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
     import json
     dummy_data = {
         "date": "2024-01-01T00:00:00",
-        "quabos": [] # Empty list is valid according to schema
+        "quabos": []
     }
     ph_baseline_path.write_text(json.dumps(dummy_data))
 
-    # Note: start_run calls make_run_dirs, which creates directories on DAQ nodes via docker exec.
-    # We don't need to manually mock it if we're in the Docker CI environment.
+    from ci.fixtures.adapters.fake_adapters import FakeFileSystemManager, FakeProcessManager
+    from control.adapters.real_adapters import RealNetworkClient
+    process_mgr = FakeProcessManager()
+    net_client = RealNetworkClient(daq_config)
+    fs_mgr = FakeFileSystemManager()
+
     with patch("control.start.ph_baseline_file_ok", return_value=True), \
-         patch("control.start._check_daq_reachability"), \
          patch("control.start._check_quabo_reachability"), \
-         patch("control.start.start_data_flow"), \
-         patch("control.start.util.start_hk_recorder"), \
-         patch("control.start.util.write_run_name"):
+         patch("control.start.start_data_flow"):
          
          actual_run_name = await start_run(
              obs_config, daq_config, quabo_uids, data_config, net_config,
-             run_name=run_name, no_hv=True, no_redis=True, no_data=False, no_check_daq=True
+             no_hv=True, no_redis=True, no_data=False,
+             run_name=run_name, no_check_daq=False,
+             process_mgr=process_mgr, net_client=net_client, fs_mgr=fs_mgr
          )
          assert actual_run_name == run_name
+         
+    # Manually create the head node run directory since make_run_dirs was patched
+    head_run_dir = Path(daq_config.head_node_data_dir) / run_name
+    head_run_dir.mkdir(parents=True, exist_ok=True)
 
     expected_data = {}
     for i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
-        spec = fleet.specs[i]
-        container = fleet.containers[i].get_wrapped_container()
-        
+
         # 1. Add metadata to root run dir
         meta_file = host_root / run_name / "meta.json"
         meta_file.parent.mkdir(parents=True, exist_ok=True)
         meta_file.write_text('{"test": true}')
-        
-        for mid in spec.module_ids:
-            # The directory should ALREADY exist thanks to make_run_dirs
+
+        node_spec = fleet.workspace.topology.daq.daq_nodes[i]
+        for mid in node_spec.module_ids:
             host_mod_run_dir = host_root / f"module_{mid}" / run_name
             host_mod_run_dir.mkdir(parents=True, exist_ok=True)
-            
+
             for f_idx in range(2):
                 filename = f"{run_name}.dp_ph256.module_{mid}.seqno_{f_idx}.pff"
-                content = os.urandom(file_size_kb * 1024) 
+                content = os.urandom(file_size_kb * 1024)
                 f_path = host_mod_run_dir / filename
                 f_path.write_bytes(content)
                 expected_data[filename] = content
-                
-                # Ensure the container-side process can read it
-                container.exec_run(f"chmod 666 /data/module_{mid}/{run_name}/{filename}")
-        
-        # Final safety sync
-        container.exec_run("sync")
+
+                fleet.exec_in_node(i, f"chmod 666 /data/module_{mid}/{run_name}/{filename}")
+
+        fleet.exec_in_node(i, "sync")
     
     await asyncio.sleep(0.5)
 
-    # --- Step 4: Stop Run (Enqueue) ---
     with patch("control.stop.util.stop_data_flow"), \
          patch("control.stop.util.kill_hk_recorder"):
-        stop_ok = await stop_run(daq_config, net_config, quabo_uids, run=run_name)
+        stop_ok = await stop_run(
+            daq_config, net_config, quabo_uids,
+            process_mgr, net_client, fs_mgr,
+            run=run_name
+        )
         assert stop_ok
         
     return expected_data

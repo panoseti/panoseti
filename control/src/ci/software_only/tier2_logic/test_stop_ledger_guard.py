@@ -1,9 +1,9 @@
-"""Tier 2 (Logic): Stop respects the ledger.
-
-Verifies:
-- stop_run refuses to stop if ledger status is not in the stoppable set.
-- --force-cleanup bypasses the ledger check.
 """
+test_stop_ledger_guard.py — Ledger-based stop validation.
+
+Ported from ci/software_only/tier2_logic/test_stop_ledger_guard.py.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -40,15 +40,28 @@ async def test_stop_refuses_if_already_finished(mock_state_mgr: MagicMock, mock_
     ledger.status = RunStatus.RECORDING_ENDED
     mock_state_mgr.load_state.return_value = ledger
     
+    from ci.fixtures.adapters.fake_adapters import (
+        FakeFileSystemManager,
+        FakeNetworkClient,
+        FakeProcessManager,
+    )
+    process_mgr = FakeProcessManager()
+    net_client = FakeNetworkClient()
+    fs_mgr = FakeFileSystemManager()
+
     with patch("control.utils.util.is_local", return_value=True), \
          patch("control.utils.util.read_run_name", return_value="r1"), \
          patch("control.stop.RunStateManager", return_value=mock_state_mgr), \
+         patch("control.stop.config_file.get_data_config", return_value=MagicMock()), \
          caplog.at_level(logging.WARNING):
         
         res = await stop_run(
             daq_config=mock_daq_config, 
             network_config=MagicMock(),
             quabo_uids=MagicMock(),
+            process_mgr=process_mgr,
+            net_client=net_client,
+            fs_mgr=fs_mgr,
             run="r1", 
             force_cleanup=False
         )
@@ -63,9 +76,19 @@ async def test_stop_proceeds_with_force_cleanup(mock_state_mgr: MagicMock, mock_
     ledger.status = RunStatus.RECORDING_ENDED
     mock_state_mgr.load_state.return_value = ledger
     
+    from ci.fixtures.adapters.fake_adapters import (
+        FakeFileSystemManager,
+        FakeNetworkClient,
+        FakeProcessManager,
+    )
+    process_mgr = FakeProcessManager()
+    net_client = FakeNetworkClient()
+    fs_mgr = FakeFileSystemManager()
+
     with patch("control.utils.util.is_local", return_value=True), \
          patch("control.utils.util.read_run_name", return_value="r1"), \
          patch("control.stop.RunStateManager", return_value=mock_state_mgr), \
+         patch("control.stop.config_file.get_data_config", return_value=MagicMock()), \
          patch("control.stop.StopTransaction") as mock_tx_cls:
         
         # We need mock_tx to be an async context manager
@@ -78,12 +101,13 @@ async def test_stop_proceeds_with_force_cleanup(mock_state_mgr: MagicMock, mock_
             daq_config=mock_daq_config, 
             network_config=MagicMock(),
             quabo_uids=MagicMock(),
+            process_mgr=process_mgr,
+            net_client=net_client,
+            fs_mgr=fs_mgr,
             run="r1", 
             force_cleanup=True
         )
         assert res is True
-        # Verify transition to STOPPING or manual set
-        # (The actual implementation details might vary, but force_cleanup should bypass ValidationError)
 
 @pytest.mark.asyncio
 async def test_stop_proceeds_if_active(mock_state_mgr: MagicMock, mock_daq_config: MagicMock) -> None:
@@ -92,9 +116,19 @@ async def test_stop_proceeds_if_active(mock_state_mgr: MagicMock, mock_daq_confi
     ledger.status = RunStatus.ACTIVE
     mock_state_mgr.load_state.return_value = ledger
     
+    from ci.fixtures.adapters.fake_adapters import (
+        FakeFileSystemManager,
+        FakeNetworkClient,
+        FakeProcessManager,
+    )
+    process_mgr = FakeProcessManager()
+    net_client = FakeNetworkClient()
+    fs_mgr = FakeFileSystemManager()
+
     with patch("control.utils.util.is_local", return_value=True), \
          patch("control.utils.util.read_run_name", return_value="r1"), \
          patch("control.stop.RunStateManager", return_value=mock_state_mgr), \
+         patch("control.stop.config_file.get_data_config", return_value=MagicMock()), \
          patch("control.stop.StopTransaction") as mock_tx_cls:
         
         mock_tx = mock_tx_cls.return_value
@@ -106,6 +140,9 @@ async def test_stop_proceeds_if_active(mock_state_mgr: MagicMock, mock_daq_confi
             daq_config=mock_daq_config, 
             network_config=MagicMock(),
             quabo_uids=MagicMock(),
+            process_mgr=process_mgr,
+            net_client=net_client,
+            fs_mgr=fs_mgr,
             run="r1", 
             force_cleanup=False
         )

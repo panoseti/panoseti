@@ -1,4 +1,4 @@
-"""Pytest fixtures for the tier 1 unit tests"""
+"""Tier 1 unit test fixtures — zero containers, no hardware required."""
 
 import os
 import struct
@@ -18,23 +18,21 @@ from control.utils.pydantic_config_models import (
     ObsConfig,
 )
 
+# ---------------------------------------------------------------------------
 # Quabo driver fixtures
+# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def quabo_and_sock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_network: Any) -> tuple[QUABO, Any]:
     """Yield (quabo, fake_sock).  All socket I/O is captured in fake_sock."""
     from control import driver
     from control.driver.quabo_driver import QUABO_CONFIG_FILE
-    
-    # mock_network already monkeypatches socket.socket
+
     fake_sock = mock_network
     monkeypatch.setattr("socket.gethostbyname", lambda x: x)
-
-    # Suppress log-file creation — tests don't need a real log file
     monkeypatch.setattr("control.driver.quabo_driver.get_logger", lambda *a, **kw: MagicMock())
 
     tmp_quabo_cfg_path = tmp_path / QUABO_CONFIG_FILE
-    # Copy the real quabo_config.txt into tmp so send_maroc_params_file() works
     real_cfg = Path(driver.__file__) / QUABO_CONFIG_FILE
     if os.path.exists(real_cfg):
         with open(real_cfg) as f:
@@ -48,6 +46,7 @@ def quabo_and_sock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_network
     )
     return q, fake_sock
 
+
 def _make_hk_packet(
     boardloc: int = 0,
     hvmon0: int = 0,
@@ -56,25 +55,13 @@ def _make_hk_packet(
     uid: tuple = (0, 0, 0, 0),
     status_pcbrev: int = 0,
 ) -> bytes:
-    """Build a synthetic 64-byte HK packet with specified field values.
-
-    All uint16 LE pairs start at byte 2.  Array index mapping:
-      array[ 0] bytes[ 2: 4] — BOARDLOC (unsigned)
-      array[ 1] bytes[ 4: 6] — HVMON0   (unsigned)
-      array[17] bytes[36:38] — TEMP1    (signed)
-      array[18] bytes[38:40] — TEMP2    (unsigned)
-      array[21] bytes[44:46] — UID[0]   (unsigned)
-      array[22] bytes[46:48] — UID[1]
-      array[23] bytes[48:50] — UID[2]
-      array[24] bytes[50:52] — UID[3]
-      array[25] bytes[52:54] — status (low byte) | PCBrev (high byte)
-    """
+    """Build a synthetic 64-byte HK packet with specified field values."""
     pkt = bytearray(64)
-    pkt[0] = 0x20   # PANOSETI HK packet magic
-    pkt[1] = 0x00   # not a startup packet
+    pkt[0] = 0x20
+    pkt[1] = 0x00
     struct.pack_into("<H", pkt, 2, boardloc & 0xFFFF)
     struct.pack_into("<H", pkt, 4, hvmon0 & 0xFFFF)
-    struct.pack_into("<h", pkt, 36, temp1_raw)          # signed int16
+    struct.pack_into("<h", pkt, 36, temp1_raw)
     struct.pack_into("<H", pkt, 38, temp2_raw & 0xFFFF)
     for i, u in enumerate(uid):
         struct.pack_into("<H", pkt, 44 + i * 2, u & 0xFFFF)
@@ -113,22 +100,21 @@ def _minimal_maroc_config() -> dict:
     return config
 
 
-
-# Global Validator Fixtures
+# ---------------------------------------------------------------------------
+# Global Validator fixtures
+# ---------------------------------------------------------------------------
 
 def _make_validator(
     obs: dict[str, Any] | None = None,
     data: dict[str, Any] | None = None,
     daq: dict[str, Any] | None = None,
     net: dict[str, Any] | None = None,
-    firmware: dict[str, Any] | None = None
+    firmware: dict[str, Any] | None = None,
 ) -> GlobalConfigValidator:
     """Build a GlobalConfigValidator with sensible defaults, overrideable per-test."""
-    # Build minimal valid dictionaries to satisfy model requirements
     obs_dict: dict[str, Any] = {"name": "test", "domes": []}
     if obs:
         obs_dict.update(obs)
-        # Ensure domes have required fields if provided
         domes = cast(list[dict[str, Any]], obs_dict.get("domes", []))
         for dome in domes:
             if "obsalt" not in dome:
@@ -139,7 +125,6 @@ def _make_validator(
     data_dict: dict[str, Any] = {"run_type": "sci"}
     if data:
         data_dict.update(data)
-        # Ensure image mode has pe_threshold if provided
         if data_dict.get("image"):
             image_conf = cast(dict[str, Any], data_dict["image"])
             if "pe_threshold" not in image_conf:
@@ -148,11 +133,11 @@ def _make_validator(
     daq_dict: dict[str, Any] = {"head_node_data_dir": "/data", "head_node_ip_addr": "10.0.0.1", "daq_nodes": []}
     if daq:
         daq_dict.update(daq)
-    
+
     net_dict: dict[str, Any] = {"modules": [], "daq_nodes": []}
     if net:
         net_dict.update(net)
-    
+
     fw_dict: dict[str, Any] = firmware or {}
 
     return GlobalConfigValidator({

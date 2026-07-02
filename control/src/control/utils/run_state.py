@@ -2,16 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
-import pathlib
-from pathlib import Path
-import tempfile
-import time
-import tomllib
-from typing import Any
 import logging
-
-from panoseti_grpc.telemetry.logger import get_logger
+import os
+import tempfile
+import tomllib
+from pathlib import Path
+from typing import Any
 
 from filelock import SoftFileLock, Timeout
 

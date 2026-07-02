@@ -1,77 +1,94 @@
 """
-test_pseti_commands.py
+test_pseti_commands.py — CLI command smoke tests for 'pseti val', 'pseti show', etc.
 
-Integration tests for the pseti CLI commands, focusing on validation and topology features.
+Ported from ci/software_only/tier2_logic/test_pseti_commands.py.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import os
+from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
+from ci.software_only.infra.workspace import Workspace
 from control.pseti import app
 
-runner = CliRunner()
 
-def test_pseti_validate_basic():
-    """Verify that pseti validate runs without crashing on current configs."""
-    # The callback in pseti.py calls config_file.validate_all
-    with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
+@pytest.fixture
+def runner() -> CliRunner:
+    return CliRunner()
+
+
+class TestPsetiVal:
+    """Smoke tests for the 'pseti val' command group."""
+
+    def test_when_pseti_val_runs_then_schema_and_global_checks_pass(
+        self, pseti_workspace: Workspace, runner: CliRunner
+    ) -> None:
+        """pseti val: isolated workspace passes both schema and global validators."""
         result = runner.invoke(app, ["val"])
         assert result.exit_code == 0
-        mock_val.assert_called()
+        assert "✔ Tier-1 File Syntax & Schema Validation Passed." in result.output
+        assert "✔ Tier-2 Global Cross-Config Validation Passed." in result.output
 
-
-def test_pseti_validate_graph():
-    """Verify that pseti validate triggers the network engine with graph=True."""
-    with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
+    def test_when_pseti_val_graph_runs_then_topology_files_are_written(
+        self, pseti_workspace: Workspace, runner: CliRunner
+    ) -> None:
+        """pseti val graph: topology JSON and HTML files are written to PSETI_TMP."""
         result = runner.invoke(app, ["val", "graph"])
-        assert result.exit_code == 0, f"{result=}"
-        mock_val.assert_called_once_with(graph=True)
-
-
-def test_pseti_validate_all_modes():
-    """Verify pseti validate all enables everything."""
-    with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
-        result = runner.invoke(app, ["val", "all"])
         assert result.exit_code == 0
-        mock_val.assert_called_once_with(check_network=True, debug=True, graph=True)
+
+        # pseti val graph writes to PSETI_TMP (not pseti_workspace.root/"tmp")
+        pseti_tmp = Path(os.environ["PSETI_TMP"])
+        assert (pseti_tmp / "topology.json").exists(), (
+            f"topology.json missing from {pseti_tmp}"
+        )
+        assert (pseti_tmp / "topology.html").exists(), (
+            f"topology.html missing from {pseti_tmp}"
+        )
+
+    def test_when_pseti_val_all_runs_then_all_checks_complete(
+        self, pseti_workspace: Workspace, runner: CliRunner
+    ) -> None:
+        """pseti val all: schema, global, network, and graph checks all run."""
+        from unittest.mock import AsyncMock, patch
+        with (
+            patch("control.utils.config_validator._check_reachability", return_value=(True, "OK")),
+            patch(
+                "control.start._quabo_reachability_report",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            result = runner.invoke(app, ["val", "all"])
+            assert result.exit_code == 0
 
 
-def test_structural_integrity_integrated_in_validate():
-    """
-    Verify that pseti validate actually calls our new _check_topology_structural_integrity.
-    We test this by patching GlobalConfigValidator._check_topology_structural_integrity.
-    """
-    from control.utils.global_validator import GlobalConfigValidator
-    
-    # We need real loaders to return mock configs so validate_all can proceed to Tier-2
-    mock_daq = MagicMock()
-    mock_obs = MagicMock()
-    
-    with patch("control.utils.config_file.get_daq_config", return_value=mock_daq), \
-         patch("control.utils.config_file.get_obs_config", return_value=mock_obs), \
-         patch("control.utils.config_file.get_firmware_config"), \
-         patch("control.utils.config_file.get_daemons_config"), \
-         patch("control.utils.config_file.get_network_config"), \
-         patch("control.utils.config_file.get_data_config"), \
-         patch("control.utils.global_validator.GlobalConfigValidator._check_topology_structural_integrity"):
-         
-        runner.invoke(app, ["val"])
-        # Tier-1 might fail if mock_daq/obs are empty, but we check if mock_struct was called if it got to Tier-2
-        # To be sure it gets to Tier-2, we can just patch the whole rule execution
-        pass
+class TestPsetiSystemInfo:
+    """Smoke tests for root-level system information commands."""
 
-    # A better test: check if the rule exists in GlobalConfigValidator
-    validator = GlobalConfigValidator({})
-    assert hasattr(validator, "_check_topology_structural_integrity")
+    def test_when_pseti_paths_runs_then_env_keys_are_displayed(
+        self, pseti_workspace: Workspace, runner: CliRunner
+    ) -> None:
+        """pseti paths: PSETI_CONFIG and PSETI_STATE keys appear in output."""
+        result = runner.invoke(app, ["paths"])
+        assert result.exit_code == 0
+        # Check for env var key names — stable regardless of Rich line-wrapping
+        assert "PSETI_CONFIG" in result.output
+        assert "PSETI_STATE" in result.output
 
-
-# # @pytest.mark.skip(reason="invalid unless in proper test environment")
-# def test_pseti_start_validation_trigger():
-#     """Verify pseti start triggers validation (logical check)."""
-#     with patch("control.start.main") as mock_start:
-#         result = runner.invoke(app, ["start", "-y"])
-#         assert result.exit_code == 0
-#         mock_start.assert_called_once()
+    def test_when_pseti_show_config_runs_then_topology_module_ids_are_shown(
+        self, pseti_workspace: Workspace, runner: CliRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """pseti cfg show: module ID from the topology appears in config output."""
+        import logging
+        with caplog.at_level(logging.INFO):
+            result = runner.invoke(app, ["cfg", "show"])
+        assert result.exit_code == 0
+        # Derive the expected module ID from the materialized topology rather
+        # than hard-coding it (minimal_unit uses module_id=200, not 0).
+        expected_id = pseti_workspace.topology.daq.daq_nodes[0].module_ids[0]
+        assert "module ID" in caplog.text
+        assert f"module ID {expected_id}" in caplog.text

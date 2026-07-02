@@ -8,15 +8,12 @@ switch Quabo FPGA and MAROC registers between different observing modes.
 """
 
 import argparse
-import contextlib
-import os
 import signal
 import sys
 import time
 from typing import Any
 
 import numpy as np
-import psutil
 from panoseti_grpc.telemetry.logger import get_logger
 
 import control.config as pano_config

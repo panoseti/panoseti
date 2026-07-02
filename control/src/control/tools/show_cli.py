@@ -21,7 +21,6 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from control.utils import config_file
 from control.utils.paths import PanoPaths
 
 app = typer.Typer(help="Inspect and visualize PSETI system state.", no_args_is_help=True)

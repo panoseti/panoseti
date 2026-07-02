@@ -1,128 +1,118 @@
-"""
-test_transfer_manifest_integrity.py
-
-Verifies that the manifest used for verification is NOT simply copied from the 
-DAQ node via rsync, which would defeat the purpose of independent verification.
-"""
+from __future__ import annotations
 
 import asyncio
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ci.fixtures.fleet import Fleet
 from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.software_only.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
-    get_mapped_client_factory,
     simulate_rsync_from_fleet,
 )
 from control.transfer.daemon import _process_job
-from control.transfer.models import TransferJob
+from control.transfer.models import TransferJob, TransferStatus
 from control.transfer.queue import TransferQueue
-from control.utils import config_file
 from control.utils.run_state import RunStateManager
 
+# Mark tests as requiring docker
+requires_docker = pytest.mark.requires_docker
 
+@requires_docker
 @pytest.mark.asyncio
-async def test_manifest_not_overwritten_by_rsync(
-    session_fleet: Any,
-    ensure_clean_daq_state: Any,
+async def test_when_poisoned_manifest_on_daq_node_then_grpc_content_wins(
+    session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
-    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
     transfer_job_factory: Callable[..., TransferJob],
     transfer_queue: TransferQueue,
 ) -> None:
+    """Manifest on head node must reflect GetManifest RPC content, not rsync copy.
+
+    Scenario: a "poisoned" manifest file is written to the DAQ node disk before
+    the transfer starts.  GetManifest returns independently-generated content.
+    Expectation: the head node's manifest file contains the RPC content and
+    NOT the poisoned content.  (rsync already excludes manifest files, but
+    this test confirms the RPC path is what the daemon trusts.)
     """
-    Scenario: A 'poisoned' manifest exists on the DAQ node disk.
-    Expectation: The TransferDaemon should either ignore it or ensure the 
-    manifest obtained via gRPC (source of truth) takes precedence and is NOT
-    overwritten by rsync's recursive copy.
-    """
-    fleet, _ = session_fleet
-    head_data_dir, daq_config = isolated_transfer_env
+    fleet = session_fleet
+    daq_config = fleet.live_daq_config
+    head_data_dir = Path(daq_config.head_node_data_dir)
     run_name = f"manifest_test_{uuid.uuid4().hex[:8]}.pffd"
-    
-    # 1. Generate real run data
+
     await generate_mocked_run(fleet, daq_config, run_name)
-    
-    # 2. Poison the DAQ node with a fake manifest file
+
+    # Poison: write a fake manifest file on each DAQ node before the transfer.
     poison_content = "POISONED_MANIFEST_CONTENT"
-    
-    for i, container in enumerate(fleet.containers):
-        node = daq_config.daq_nodes[i]
-        res = container.get_wrapped_container().exec_run("hostname")
-        hostname = res.output.decode().strip()
-        manifest_name = f"dp_manifest.node_{hostname}.algo_blake3.txt"
-        
-        # Create the poison file
-        container.get_wrapped_container().exec_run(
-            f"sh -c 'echo \"{poison_content}\" > {node.data_dir}/{run_name}/{manifest_name}'"
+    for i, node in enumerate(daq_config.daq_nodes):
+        fleet.exec_in_node(
+            i,
+            f"sh -c 'echo \"{poison_content}\" "
+            f"> {node.data_dir}/{run_name}/dp_manifest.node_poisoned.algo_blake3.txt'",
         )
 
     mgr = RunStateManager()
     tq = transfer_queue
-    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir)
 
-    def rsync_side_effect(*args, **kwargs):
-        # This will copy everything, including our poison manifest!
+    # stop_run auto-enqueued a job. We remove it so we can enqueue our
+    # custom one with the right config.
+    pending_path = tq._job_path(TransferStatus.PENDING, run_name)
+    if pending_path.exists():
+        pending_path.unlink()
+
+    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir, daq_config=daq_config)
+    assert tq.enqueue(job) is True
+
+    def rsync_side_effect(*args: object, **kwargs: object) -> None:
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
-        return None
 
     mock_rsync_transfer.side_effect = rsync_side_effect
 
-    # Mock GenerateManifest and GetManifest to return something ELSE (the 'real' secure manifest)
-    
-    # We need a custom mock for the client that handles the stream
-    class MockClient:
-        def __init__(self, real_client):
-            self.real_client = real_client
-            
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        
-        async def GenerateManifest(self, *args, **kwargs):
-            return {"success": True, "manifest_path": "mocked_path"}
-            
-        async def GetManifest(self, *args, **kwargs):
-            # Return a single entry that matches our 'secure' content
+    # Intercept GetManifest to return a well-known secure value.
+    _SECURE_CONTENT = "REAL_SECURE_MANIFEST_CONTENT"
+    _SECURE_FILE = "secure_file.pff"
+
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient as RealADCC
+
+    def wrapped_client_factory(host: str, port: int = 50051) -> object:
+        mock_client = AsyncMock(spec=RealADCC)
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.GenerateManifest.return_value = {"success": True, "manifest_path": "mocked_path"}
+
+        async def mock_get_manifest(*a: object, **kw: object):  # type: ignore
             yield {
-                "digest_hex": "REAL_SECURE_MANIFEST_CONTENT",
+                "digest_hex": _SECURE_CONTENT,
                 "size_bytes": 123,
                 "mtime_ns": 456,
-                "relative_path": "secure_file.pff"
+                "relative_path": _SECURE_FILE,
             }
-        
-        # Delegate other calls to real client
-        def __getattr__(self, name):
-            return getattr(self.real_client, name)
+        mock_client.GetManifest.side_effect = mock_get_manifest
+        return mock_client
 
-    def mocked_client_factory(daq_config):
-        real_factory = get_mapped_client_factory(daq_config)
-        def _get_mocked(host, port=50051):
-            return MockClient(real_factory(host, port))
-        return _get_mocked
+    with patch(
+        "panoseti_grpc.daq_control.client.AsyncDaqControlClient",
+        side_effect=wrapped_client_factory,
+    ):
+        await asyncio.wait_for(
+            _process_job(job, asyncio.Event(), mgr),  # type: ignore[arg-type]
+            timeout=30.0,
+        )
 
-    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=mocked_client_factory(daq_config)):
-         
-         # Execute the transfer job
-         _success, _ = await asyncio.wait_for(_process_job(job, asyncio.Event(), mgr), timeout=30.0)
-         
-         # The head node should now have exactly one manifest file per node,
-         # and its content should be what we returned via GetManifest.
-         
-         head_run_dir = head_data_dir / run_name
-         manifest_files = list(head_run_dir.glob("dp_manifest.node_*.txt"))
-         
-         assert len(manifest_files) > 0, "No manifest files found on head node!"
-         
-         for mf in manifest_files:
-             content = mf.read_text().strip()
-             # If this fails, it proves the manifest WAS copied from the DAQ node disk (poisoned)
-             # rather than being generated independently/securely.
-             assert poison_content not in content, f"Manifest {mf.name} contains poisoned content!"
-             assert "REAL_SECURE_MANIFEST_CONTENT" in content, f"Manifest {mf.name} missing secure RPC content."
-             assert "secure_file.pff" in content, f"Manifest {mf.name} missing entry from GetManifest stream."
+    head_run_dir = head_data_dir / run_name
+    manifest_files = list(head_run_dir.glob("dp_manifest.node_*.txt"))
+
+    assert len(manifest_files) > 0, "No manifest files found on head node"
+    for mf in manifest_files:
+        content = mf.read_text().strip()
+        assert poison_content not in content, (
+            f"Manifest {mf.name} contains poisoned content — rsync exclusion failed"
+        )
+        assert _SECURE_CONTENT in content, (
+            f"Manifest {mf.name} missing secure RPC content"
+        )
+        assert _SECURE_FILE in content, (
+            f"Manifest {mf.name} missing entry from GetManifest stream"
+        )

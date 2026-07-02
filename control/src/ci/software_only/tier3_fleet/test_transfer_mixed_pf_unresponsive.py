@@ -1,7 +1,9 @@
 """
-test_transfer_mixed_pf_unresponsive.py — Edge cases for the transfer queue.
+tier3_fleet/test_transfer_mixed_pf_unresponsive.py — Edge cases for the transfer queue.
 Covers mixed port-forwarding topologies and unresponsive node failures.
 """
+
+from __future__ import annotations
 
 import asyncio
 import contextlib
@@ -15,6 +17,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from ci.fixtures.rsync_fixtures import RsyncMock
+from ci.software_only.orchestrator.fleet import Fleet
+from ci.software_only.tier3_fleet.conftest import requires_docker
 from ci.software_only.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
     get_mapped_client_factory,
@@ -24,24 +28,26 @@ from control.transfer.daemon import _process_job, run_daemon
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.utils import config_file
-from control.utils.config_file import DaqNode
 from control.utils.pydantic_config_models import PortForwarding
 from control.utils.run_state import RunStateManager, RunStatus
 
+pytestmark = pytest.mark.tier3
 
+
+@requires_docker
 @pytest.mark.parametrize("num_nodes", [2, 4, 8])
 @pytest.mark.asyncio
 @pytest.mark.timeout(120)
 async def test_transfer_queue_mixed_port_forwarding(
+    pseti_workspace: Any,
     num_nodes: int,
-    monkeypatch: pytest.MonkeyPatch,
     mock_rsync_transfer: RsyncMock,
-    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
     transfer_job_factory: Callable[..., TransferJob],
     transfer_queue: TransferQueue,
 ) -> None:
     """Verify transfer succeeds with a mix of direct and port-forwarded DAQ nodes."""
-    head_data_dir, _ = isolated_transfer_env
+    head_data_dir = pseti_workspace.root / "head_data"
+    head_data_dir.mkdir(parents=True, exist_ok=True)
     
     nodes = []
     for i in range(num_nodes):
@@ -51,7 +57,7 @@ async def test_transfer_queue_mixed_port_forwarding(
             pf = PortForwarding(status=True, gw_ip=f"10.0.1.{10+i}", port=2200+i)
             
         nodes.append(
-            DaqNode(
+            config_file.DaqNode(
                 ip_addr=f"192.168.100.{10+i}",
                 username="panoseti",
                 data_dir="/data",
@@ -67,7 +73,7 @@ async def test_transfer_queue_mixed_port_forwarding(
         head_data_dir=head_data_dir,
         daq_nodes=[
             TransferNodeSpec(
-                ip_addr=n.ip_addr,
+                ip_addr=str(n.ip_addr),
                 username="panoseti",
                 data_dir=n.data_dir,
                 module_ids=n.module_ids,
@@ -107,7 +113,7 @@ async def test_transfer_queue_mixed_port_forwarding(
         mock_client.__aenter__.return_value = mock_client
         mock_client_cls.return_value = mock_client
 
-        mgr = RunStateManager()
+        mgr = RunStateManager(base_dir=pseti_workspace.root / "state")
         success, err = await asyncio.wait_for(_process_job(active_job, asyncio.Event(), mgr), timeout=10.0)
         assert success, err
         
@@ -116,21 +122,21 @@ async def test_transfer_queue_mixed_port_forwarding(
         assert rsync_ips == expected_ips
 
 
+@requires_docker
 @pytest.mark.asyncio
-@pytest.mark.timeout(60)  # Smaller timeout
+@pytest.mark.timeout(60)
 async def test_transfer_queue_unresponsive_node_fails_transfer(
-    session_fleet: Any,
-    ensure_clean_daq_state: Any,
+    session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
-    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
     transfer_queue: TransferQueue,
 ) -> None:
-    """Transfer must not complete if a node becomes unresponsive. It must return to pending and ultimately failed."""
-    fleet, _ = session_fleet
-    head_data_dir, daq_config = isolated_transfer_env
+    """Transfer must not complete if a node becomes unresponsive."""
+    fleet = session_fleet
+    daq_config = fleet.live_daq_config
+    head_data_dir = Path(daq_config.head_node_data_dir)
     run_name = f"unresponsive_{uuid.uuid4().hex[:8]}.pffd"
     
-    # 1. Valid start and stop condition -> data generated and transfer enqueued
+    # 1. Valid start and stop condition
     await generate_mocked_run(fleet, daq_config, run_name)
     
     mgr = RunStateManager()
