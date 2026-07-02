@@ -30,7 +30,7 @@ services:
 
   alloy:
     image: grafana/alloy:latest
-    profiles: ["headnode", "daqnode"]
+    profiles: ["headnode"]
     network_mode: host
     restart: always
     volumes:
