@@ -28,6 +28,16 @@ services:
     network_mode: host
     restart: always
 
+  alloy:
+    image: grafana/alloy:latest
+    profiles: ["headnode", "daqnode"]
+    network_mode: host
+    restart: always
+    volumes:
+      - ${PSETI_ROOT_BUILD}/grpc/deploy/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/log/panoseti:/var/log/panoseti:ro
+    command: ["run", "/etc/alloy/config.alloy"]
+
   grafana:
     image: grafana/grafana:latest
     profiles: ["headnode"]

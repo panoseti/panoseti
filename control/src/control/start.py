@@ -1183,7 +1183,10 @@ async def start_run(
                 try:
                     await _check_daq_data_status(daq_config, network_config, do_init=init_snapshot)
                 except Exception as e:
-                    logger.warning(f"DaqData service pre-flight check failed: {e}. Proceeding anyway.")
+                    if "UNIMPLEMENTED" in str(e):
+                        logger.info("No DaqData service detected on gateway port (UNIMPLEMENTED). Skipping pre-flight.")
+                    else:
+                        logger.warning(f"DaqData service pre-flight check failed: {e}. Proceeding anyway.")
             
             # Mark ACTIVE in ledger
             ledger = state_mgr.load_state()
