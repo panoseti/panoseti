@@ -144,7 +144,7 @@ async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode
         containers = client.containers.list(filters={"label": f"com.docker.compose.project={project_name}"})
         daq_containers = [c for c in containers if "daqnode" in c.name]
         
-        from ci.software_only.conftest import PCAP_GLOB
+        from ci.software_only.tier5_integration.conftest import PCAP_GLOB
         replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=lo {PCAP_GLOB}'"
         
         for c in daq_containers:
