@@ -53,7 +53,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tier: ["sw2 unit", "sw2 logic", "sw2 fleet", "sw2 chaos", "sw2 integration"]
+        tier: ["sw unit", "sw logic", "sw fleet", "sw chaos", "sw integration"]
     steps:
       - uses: actions/checkout@v4
 
