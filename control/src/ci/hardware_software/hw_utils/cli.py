@@ -34,6 +34,10 @@ _COMPOSE_FILE = _CONTROL_DIR / "src/ci/docker-compose.hw-sw.yml"
 
 # Default configuration path for HITL tests
 _HW_CONFIGS_DIR = _HW_SW_DIR / "configs"
+# Sibling directory holding the data_config.json variants that configs/data_config.json
+# symlinks to (relatively) -- must be mounted alongside PSETI_CONFIG so that symlink
+# resolves inside containers too, not just on the host.
+_HW_CORE_OBS_CONFIGS_DIR = _HW_SW_DIR / "core_obs_configs"
 
 _STATE_FILE = Path.home() / ".pseti" / "hw_runtime_state.json"
 
@@ -67,6 +71,7 @@ def _compose_env() -> dict[str, str]:
         "PSETI_ROOT_BUILD": str(_PSETI_ROOT),
         "PSETI_CONTROL_BUILD": str(_CONTROL_DIR),
         "PSETI_CONFIG": os.environ.get("PSETI_CONFIG", str(_HW_CONFIGS_DIR)),
+        "PSETI_CORE_OBS_CONFIGS": str(_HW_CORE_OBS_CONFIGS_DIR),
         "HOST_UID": str(uid),
         "HOST_GID": str(gid),
     }

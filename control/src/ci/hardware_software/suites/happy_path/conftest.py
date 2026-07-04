@@ -149,10 +149,12 @@ def active_data_config(request, runner, topology):
     if not src.exists():
         pytest.skip(f"Data config variant not found: {src}")
 
-    # Swap the symlink
+    # Swap the symlink. Relative (not resolve()/absolute) so it stays valid
+    # inside containers that bind-mount configs/ and core_obs_configs/ as
+    # siblings under a different absolute path than the host's.
     if dst.is_symlink() or dst.exists():
         dst.unlink()
-    dst.symlink_to(src.resolve())
+    dst.symlink_to(os.path.relpath(src, dst.parent))
     logger.info("active_data_config: configs/data_config.json → %s", src.name)
 
     # Re-apply hardware config for this variant
@@ -170,5 +172,5 @@ def active_data_config(request, runner, topology):
     if dst.is_symlink() or dst.exists():
         dst.unlink()
     if default_src.exists():
-        dst.symlink_to(default_src.resolve())
+        dst.symlink_to(os.path.relpath(default_src, dst.parent))
         logger.info("active_data_config: restored configs/data_config.json → data_config_dual_anytrig_stim-q0.json")

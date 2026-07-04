@@ -76,6 +76,7 @@ services:
       - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
       - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
       - ${PSETI_CONFIG}:/mnt/config:ro
+      - ${PSETI_CORE_OBS_CONFIGS}:/mnt/core_obs_configs:ro
     environment:
       REDIS_HOST: "127.0.0.1"
       LOKI_URL: "http://127.0.0.1:3100/loki/api/v1/push"
@@ -112,6 +113,7 @@ services:
     volumes:
       - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
       - ${PSETI_CONFIG}:/mnt/config:ro
+      - ${PSETI_CORE_OBS_CONFIGS}:/mnt/core_obs_configs:ro
     environment:
       HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
       GRPC_PORT: "50051"
