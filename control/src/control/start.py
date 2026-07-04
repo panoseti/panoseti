@@ -973,6 +973,7 @@ async def start_run(
     process_mgr: Any = None,
     net_client: Any = None,
     fs_mgr: Any = None,
+    force_clean_semaphores: bool = False,
 ) -> str | None:
     """Main transactional run coordinator.
 
@@ -1279,7 +1280,8 @@ def main(
         
     success = asyncio.run(async_main_logic(
         no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset, no_check_daq,
-        strict=strict, force_restart=force_restart, init_snapshot=init_snapshot
+        strict=strict, force_restart=force_restart, init_snapshot=init_snapshot,
+        force_clean_semaphores=force_clean_semaphores,
     ))
     if not success:
         raise typer.Exit(code=1)
@@ -1296,6 +1298,7 @@ async def async_main_logic(
     strict: bool | None = None,
     force_restart: bool = False,
     init_snapshot: bool = True,
+    force_clean_semaphores: bool = False,
 ) -> bool:
 
     # load config files
@@ -1324,7 +1327,8 @@ async def async_main_logic(
         init_snapshot=init_snapshot,
         process_mgr=process_mgr,
         net_client=net_client,
-        fs_mgr=fs_mgr
+        fs_mgr=fs_mgr,
+        force_clean_semaphores=force_clean_semaphores,
     )
     
     if not success_run_name:
