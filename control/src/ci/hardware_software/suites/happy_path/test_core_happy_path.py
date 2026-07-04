@@ -138,6 +138,14 @@ def test_happy_path(booted_calibrated, active_data_config, runner, topology) -> 
         boardlocs = [a.boardloc for a in quabo_addrs]
         hk.redis_populated(boardlocs, timeout=30)
 
+        # Step 3b.5: Hashpipe must be running AND past its stuck-at-init window.
+        # A live PID is not sufficient: Hashpipe can block forever during
+        # shared-memory/semaphore init without ever spawning its pipeline
+        # threads, and the disk-growing check below would only catch this
+        # indirectly ~10s later as "no bytes written" (misleading -- it looks
+        # like a data-rate/trigger-config issue, not a stuck process).
+        daq.hashpipe_healthy(node=first_node, daq_config=daq_cfg, run_name=run_name)
+
         # Step 3c: DAQ node should be writing data
         daq.disk_growing(
             node=first_node,

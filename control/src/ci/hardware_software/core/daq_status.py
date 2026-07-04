@@ -3,6 +3,11 @@ DAQ node status helpers.
 
 Uses the gRPC DaqControl service (GetTransferStatus) to measure filesystem
 free space before and after a window, confirming Hashpipe is writing data.
+Also uses StatusDaq to check Hashpipe's live thread count: a PID existing is
+not sufficient evidence Hashpipe is actually working -- it can block forever
+inside hashpipe_databuf_create() during shared-memory/semaphore init without
+ever spawning net_thread/compute_thread/output_thread (see
+panoseti_grpc.daq_control.util.cleanup_stale_hashpipe_semaphores).
 """
 
 from __future__ import annotations
@@ -92,4 +97,64 @@ def assert_disk_growing(
     logger.info(
         "[DAQ-STATUS] disk growing OK: %d bytes written in %.0fs for run=%s",
         delta_used, window_s, run_name,
+    )
+
+
+def assert_hashpipe_healthy(
+    node: DaqNode,
+    daq_config: DaqConfig,
+    run_name: str,
+) -> None:
+    """Assert Hashpipe is not just running, but past its stuck-at-init window.
+
+    A live PID is not sufficient evidence: Hashpipe can block forever inside
+    hashpipe_databuf_create() during shared-memory/semaphore init -- before
+    it ever spawns net_thread/compute_thread/output_thread -- and look
+    identical to a healthy process under a plain PID-existence check. This
+    calls StatusDaq and checks the thread-count-derived hashpipe_healthy
+    flag (server-side default is unhealthy only when running with a thread
+    count below EXPECTED_HASHPIPE_THREADS).
+
+    Args:
+        node: The DaqNode model (supplies data_dir and IP address).
+        daq_config: Full DaqConfig (used to resolve the correct gRPC endpoint).
+        run_name: Current run name (for logging).
+
+    Raises:
+        AssertionError: If Hashpipe is not running, or is running but unhealthy.
+    """
+    from control.utils.util import daq_grpc_endpoint
+    from panoseti_grpc.daq_control.client import DaqControlClient
+
+    host, port = daq_grpc_endpoint(node, daq_config)
+
+    client = DaqControlClient(host=host, port=port)
+    try:
+        result = client.StatusDaq(
+            {"data_dir": node.data_dir, "check_hashpipe_running": True,
+             "check_disk_usage": False, "check_run_dirs": False},
+            timeout=10.0,
+        )
+    finally:
+        client.close()
+
+    running = result.get("hashpipe_running")
+    pid = result.get("hashpipe_pid")
+    thread_count = result.get("hashpipe_thread_count", 0)
+    healthy = result.get("hashpipe_healthy", True)
+
+    logger.info(
+        "[DAQ-STATUS] %s:%d run=%s hashpipe_running=%s pid=%s thread_count=%s healthy=%s",
+        host, port, run_name, running, pid, thread_count, healthy,
+    )
+
+    assert running, (
+        f"DAQ node {host}:{port} reports Hashpipe not running for run={run_name!r}."
+    )
+    assert healthy, (
+        f"DAQ node {host}:{port} Hashpipe (pid={pid}) is stuck at {thread_count} "
+        f"thread(s) for run={run_name!r} -- net_thread/compute_thread/output_thread "
+        "never fully came up. Likely a leaked shared-memory semaphore from a prior "
+        "process that was killed rather than stopped cleanly; retry `pseti start "
+        "--force-clean-semaphores`."
     )

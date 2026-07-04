@@ -19,3 +19,12 @@ def disk_growing(
 ) -> None:
     """Assert the DAQ node is actively writing data."""
     _daq.assert_disk_growing(node, daq_config, run_name, min_bytes=min_bytes, window_s=window_s)
+
+
+def hashpipe_healthy(
+    node: DaqNode,
+    daq_config: DaqConfig,
+    run_name: str,
+) -> None:
+    """Assert Hashpipe is running AND past its stuck-at-init window (thread count)."""
+    _daq.assert_hashpipe_healthy(node, daq_config, run_name)

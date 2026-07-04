@@ -149,7 +149,15 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
             hp_style = "green" if hp_running else "red"
             pid = status.get('hashpipe_pid')
             pid_str = f" (PID:{pid})" if pid else ""
-            hp_text = Text.assemble((f"HP: {hp_state}", hp_style), f"{pid_str}")
+            hp_parts: list[Any] = [(f"HP: {hp_state}", hp_style), f"{pid_str}"]
+            if hp_running:
+                thread_count = status.get("hashpipe_thread_count", 0)
+                healthy = status.get("hashpipe_healthy", True)
+                if healthy:
+                    hp_parts.append((f" [{thread_count}/4 threads]", "dim green"))
+                else:
+                    hp_parts.append((f" [STUCK: {thread_count}/4 threads]", "bold red"))
+            hp_text = Text.assemble(*hp_parts)
             
             # 3. Disk Usage
             disk_usage = status.get("disk_usage", {})

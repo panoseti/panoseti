@@ -527,7 +527,8 @@ async def start_recording(
     tx: StartTransaction,
     net_client: NetworkClient,
     startdaq_timeout: float = 10.0,
-    startdaq_retries: int = 3
+    startdaq_retries: int = 3,
+    force_clean_semaphores: bool = False,
 ) -> None:
     """
     Asynchronously starts recording on DAQ nodes and performs heartbeat liveness checks.
@@ -583,6 +584,7 @@ async def start_recording(
             'run_dir':          run_name,
             'obs':              obs_config.name,
             'module_id':        node_validator.module_ids,
+            'force_clean_semaphores': force_clean_semaphores,
         }
         
         last_err = ""
@@ -1177,7 +1179,8 @@ async def start_run(
                 logger.info('starting recording (Phase 3: Transactional)')
                 await start_recording(
                     obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx, net_client,
-                    startdaq_timeout=10.0, startdaq_retries=heartbeat_timeout if heartbeat_timeout is not None else 15
+                    startdaq_timeout=10.0, startdaq_retries=heartbeat_timeout if heartbeat_timeout is not None else 15,
+                    force_clean_semaphores=force_clean_semaphores,
                 )
                 # Init & check daq_data servers
                 try:
@@ -1243,6 +1246,13 @@ def main(
     init_snapshot: bool = typer.Option(
         True, "--init-snapshot/--no-init-snapshot",
         help="Automatically initialize the snapshot (DaqData) gRPC service on each node for real-time streaming.",
+    ),
+    force_clean_semaphores: bool = typer.Option(
+        False, "--force-clean-semaphores",
+        help="Recovery action: clear stale hashpipe shared-memory semaphores on each DAQ node "
+             "before starting. Only needed if a prior Hashpipe process was killed (not stopped "
+             "cleanly) and left one behind, blocking new instances from ever spawning their "
+             "worker threads. No-op if no hashpipe instance is currently running and none is stale.",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
 ) -> None:
