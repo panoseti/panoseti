@@ -40,13 +40,22 @@ def get_docker_context_for_node(host: str) -> str:
         pass
     return f"pseti-daq-{host.replace('.', '-')}"
 
+def resolve_target_nodes(nodes: str) -> list[str]:
+    """Expand a comma-separated node list, resolving 'all' from daq_config.json."""
+    target_nodes = [n.strip() for n in nodes.split(",")]
+    if "all" in target_nodes:
+        from control.utils.config_file import get_daq_config
+        daq_config = get_daq_config()
+        target_nodes = [str(node.ip_addr) for node in daq_config.daq_nodes]
+    return target_nodes
+
 async def deploy_node(host: str, mode: str) -> None:
     """Deploy the DAQ node software using the specified strategy."""
-    
+
     if mode == "docker":
         # We use docker --context to build and deploy natively over SSH
         context = get_docker_context_for_node(host)
-        
+
         # We assume the context is already created by the user, just like in hw-sw tests.
         # Check if the context exists
         res = subprocess.run(["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True)
@@ -54,27 +63,35 @@ async def deploy_node(host: str, mode: str) -> None:
             console.print(f"[[yellow]{host}[/yellow]] Docker context '{context}' not found. Please create it first:")
             console.print(f"    docker context create {context} --docker \"host=ssh://<user>@{host}\"")
             return
-            
+
+        env = os.environ.copy()
+        env["LOCAL_UID"] = str(os.getuid())
+        env["LOCAL_GID"] = str(os.getgid())
+
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
         cmd = [
             "docker", "--context", context,
             "compose", "-f", str(compose_file),
             "up", "-d", "--build"
         ]
-        
-        env = os.environ.copy()
-        env["LOCAL_UID"] = str(os.getuid())
-        env["LOCAL_GID"] = str(os.getgid())
-        
         run_cmd(host, cmd, env=env)
-        
+
+        # Grafana Alloy (log shipping) is a separate host-network container on the same node.
+        alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+        alloy_cmd = [
+            "docker", "--context", context,
+            "compose", "-f", str(alloy_compose_file),
+            "up", "-d", "--build"
+        ]
+        run_cmd(host, alloy_cmd, env=env)
+
     elif mode == "bare-metal":
         # For bare-metal, we just SSH in, install from PyPI, and restart the service
         # Ensure we have the SSH key available or it will prompt
-        remote_cmd = "pip install --upgrade panoseti-grpc && sudo systemctl restart panoseti_grpc"
-        cmd = ["ssh", host, remote_cmd]
+        remote_cmd = "source ~/miniconda3/etc/profile.d/conda.sh && conda activate grpc-py314 && pip install --upgrade panoseti-grpc && echo panoseti | sudo -S systemctl restart panoseti_grpc"
+        cmd = ["ssh", host, f"bash -c '{remote_cmd}'"]
         run_cmd(host, cmd)
-        
+
     else:
         console.print(f"[red]Unknown deployment mode: {mode}[/red]")
 
@@ -88,11 +105,8 @@ def deploy(
         console.print("[bold red]Error:[/] --mode must be either 'docker' or 'bare-metal'.")
         raise typer.Exit(1)
         
-    target_nodes = [n.strip() for n in nodes.split(",")]
-    if "all" in target_nodes:
-        console.print("[yellow]Deploying to 'all' nodes is mocked to [daq01, daq02] for now.[/yellow]")
-        target_nodes = ["daq01", "daq02"]
-        
+    target_nodes = resolve_target_nodes(nodes)
+
     console.print(f"[bold]Starting {mode} deployment on: {', '.join(target_nodes)}[/bold]")
     
     # Run sequentially or concurrently? Subprocess stdout interleaves if concurrent.
@@ -107,16 +121,18 @@ def status(
     mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker"
 ) -> None:
     """Check the status of the DAQ node services."""
-    target_nodes = [n.strip() for n in nodes.split(",")]
-    if "all" in target_nodes:
-        target_nodes = ["daq01", "daq02"]
-        
+    target_nodes = resolve_target_nodes(nodes)
+
     for host in target_nodes:
         if mode == "docker":
             context = get_docker_context_for_node(host)
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
             cmd = ["docker", "--context", context, "compose", "-f", str(compose_file), "ps"]
             run_cmd(host, cmd)
+
+            alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+            alloy_cmd = ["docker", "--context", context, "compose", "-f", str(alloy_compose_file), "ps"]
+            run_cmd(host, alloy_cmd)
         else:
             cmd = ["ssh", host, "systemctl is-active panoseti_grpc panoseti_alloy"]
             run_cmd(host, cmd)
