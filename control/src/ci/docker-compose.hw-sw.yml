@@ -5,6 +5,8 @@ services:
     profiles: ["headnode"]
     network_mode: host
     restart: always
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 1s
@@ -16,6 +18,8 @@ services:
     profiles: ["headnode"]
     network_mode: host
     restart: always
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/influxdb:/var/lib/influxdb
     healthcheck:
       test: ["CMD", "influx", "-execute", "show databases"]
       interval: 1s
@@ -27,6 +31,8 @@ services:
     profiles: ["headnode"]
     network_mode: host
     restart: always
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/loki:/loki
 
   alloy:
     image: grafana/alloy:latest
