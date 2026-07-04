@@ -4,7 +4,7 @@
 [submodule "grpc"]
 	path = grpc
 	url = https://github.com/panoseti/panoseti_grpc.git
-	branch = feat/ml-inference-service
+	branch = dev
 [submodule "web"]
 	path = web
 	url = https://github.com/panoseti/panoseti_web.git
