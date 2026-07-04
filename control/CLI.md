@@ -116,6 +116,29 @@ Primary software QA suite. Run `pseti test sw2 -h` for all options.
 ### `pseti grpc`
 PSETI unified gRPC CLI. Connects to the unified server and issues RPCs.
 
+### `pseti admin`
+Admin/deployment tools for remote DAQ nodes — manages the containerized (or bare-metal)
+gRPC server + Hashpipe stack and Grafana Alloy log shipping on each node from the head node.
+
+- **`pseti admin deploy <nodes> [--mode docker|bare-metal]`**: Deploy the DAQ node stack.
+  `<nodes>` is a comma-separated list of IPs/hostnames, or `all` (resolved from the
+  `daq_nodes` list in `daq_config.json`).
+  - `--mode docker` (default): builds and starts the gRPC server **and** Grafana Alloy
+    containers on the node via `docker --context <ctx> compose -f grpc/deploy/…yml up -d
+    --build`. The docker context comes from the node's `docker_context` field in
+    `daq_config.json` (falls back to `pseti-daq-<ip-with-dashes>` if unset) and must
+    already exist — create it once per node with:
+    ```bash
+    docker context create <ctx> --docker "host=ssh://<user>@<node-ip>"
+    ```
+  - `--mode bare-metal`: SSHes into the node, activates the `grpc-py314` conda env,
+    upgrades `panoseti-grpc` from PyPI, and restarts the `panoseti_grpc` systemd service
+    (installed by `grpc/scripts/setup_panoseti_grpc.sh`). Assumes that conda env and a
+    `panoseti` sudo password already exist on the target node.
+- **`pseti admin status <nodes> [--mode docker|bare-metal]`**: Report whether the gRPC
+  server and Alloy are running on each node (`docker compose ps`, or
+  `systemctl is-active panoseti_grpc panoseti_alloy` in bare-metal mode).
+
 ---
 
 ## Developer Guide: Adding & Editing Commands
