@@ -31,10 +31,13 @@ services:
     profiles: ["headnode"]
     network_mode: host
     restart: always
-    # Run as root: ${PSETI_DATA_DIR}/loki is root-owned on the host and Loki's
-    # default non-root image user can't mkdir /loki/rules under it, so the
-    # container crash-loops on "permission denied" without this.
-    user: "0:0"
+    # The grafana/loki image runs as UID/GID 10001 by default (not root).
+    # Pin it explicitly so it's self-documenting, and so a host where the
+    # bind-mount source gets auto-created by a *different* root-run
+    # container (Docker creates missing bind-mount sources as root:root)
+    # fails loudly instead of silently reintroducing the permission bug --
+    # `chown -R 10001:10001 ${PSETI_DATA_DIR}/loki` on the host fixes it.
+    user: "10001:10001"
     volumes:
       - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/loki:/loki
 
