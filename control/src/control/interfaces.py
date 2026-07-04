@@ -39,8 +39,8 @@ class NetworkClient(typing.Protocol):
         """Send the StartDaq command to a specific node."""
         ...
         
-    async def stop_daq_node(self, node: Any, timeout_s: float = 15.0) -> bool:
-        """Send the StopDaq command to a specific node."""
+    async def stop_daq_node(self, node: Any, timeout_s: float = 20.0, retries: int = 2) -> bool:
+        """Send the StopDaq command to a specific node. Idempotent; safe to retry."""
         ...
         
     async def get_daq_status(self, node: Any, timeout_s: float = 5.0) -> Any:

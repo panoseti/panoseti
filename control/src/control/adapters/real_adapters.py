@@ -5,6 +5,7 @@ These classes implement the protocols in `control.interfaces` using
 the real OS, filesystem, and network tools (psutil, grpc, etc.).
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -79,13 +80,29 @@ class RealNetworkClient(NetworkClient):
         async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
             return await client.StartDaq(params, timeout=timeout_s)
 
-    async def stop_daq_node(self, node: DaqNode, timeout_s: float = 15.0) -> bool:
+    async def stop_daq_node(self, node: DaqNode, timeout_s: float = 20.0, retries: int = 2) -> bool:
         from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
         from control.utils import util
         grpc_host, grpc_port = util.daq_grpc_endpoint(node, self.daq_config)
-        async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-            return await client.StopDaq({'data_dir': node.data_dir}, timeout=timeout_s)
+        # StopDaq is idempotent (returns success=True immediately if nothing is
+        # running), so retrying on a transient RPC failure/timeout is safe.
+        # The server's own graceful-then-SIGKILL wait sequence can take up to
+        # ~11s before it even replies, plus lock contention if a concurrent
+        # Start/StopDaq call is in flight, so a single narrow-timeout attempt
+        # can spuriously fail and leave Hashpipe running undetected.
+        last_result = False
+        for attempt in range(1, retries + 1):
+            try:
+                async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                    last_result = await client.StopDaq({'data_dir': node.data_dir}, timeout=timeout_s)
+                if last_result:
+                    return True
+            except Exception:
+                last_result = False
+            if attempt < retries:
+                await asyncio.sleep(2.0)
+        return last_result
 
     async def get_daq_status(self, node: DaqNode, timeout_s: float = 5.0) -> dict[str, Any]:
         from panoseti_grpc.daq_control.client import AsyncDaqControlClient

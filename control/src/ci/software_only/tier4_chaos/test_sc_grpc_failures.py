@@ -104,12 +104,12 @@ class TestScGrpcFailures:
         from control.adapters.real_adapters import RealNetworkClient
 
         class ChaosNetworkClient(RealNetworkClient):
-            async def stop_daq_node(self, node: Any, timeout_s: float = 15.0) -> bool:
+            async def stop_daq_node(self, node: Any, timeout_s: float = 20.0, retries: int = 2) -> bool:
                 ip = str(node.ip_addr)
                 stop_called_ips.add(ip)
                 if ip == str(daq_config.daq_nodes[0].ip_addr):
                     raise grpc.RpcError("Injected failure")
-                return await super().stop_daq_node(node, timeout_s)
+                return await super().stop_daq_node(node, timeout_s, retries)
 
         net_client = ChaosNetworkClient(daq_config)
         process_mgr = FakeProcessManager()

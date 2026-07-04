@@ -162,7 +162,7 @@ class StopTransaction:
             try:
                 async def stop_node_task(node: DaqNode) -> None:
                     try:
-                        ok = await self.net_client.stop_daq_node(node, timeout_s=15.0)
+                        ok = await self.net_client.stop_daq_node(node, timeout_s=20.0, retries=2)
                         if not ok:
                             self.all_errors.append(f"StopDaq failed for {node.ip_addr}")
                     except Exception as e:

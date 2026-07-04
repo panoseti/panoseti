@@ -51,7 +51,7 @@ class FakeNetworkClient:
         self.last_params[ip] = params
         return True
 
-    async def stop_daq_node(self, node: Any, timeout_s: float = 15.0) -> bool:
+    async def stop_daq_node(self, node: Any, timeout_s: float = 20.0, retries: int = 2) -> bool:
         ip = str(node.ip_addr)
         self.stop_calls[ip] = self.stop_calls.get(ip, 0) + 1
         return True

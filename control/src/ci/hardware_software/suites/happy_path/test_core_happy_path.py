@@ -61,12 +61,33 @@ def _invoke(runner, args: list[str]) -> str:
 
 
 def _stop_if_active(runner) -> None:
-    """Stop the run if the ledger is currently ACTIVE (teardown helper)."""
+    """Stop the run if the ledger is currently ACTIVE (teardown helper).
+
+    This runs on the exception path (a mid-run assertion failed), so the
+    normal ledger-status precondition `pseti stop` relies on may not hold.
+    A silently-swallowed failure here leaves Hashpipe running on the DAQ
+    node, which then blocks every subsequent test in the session with
+    "Found N hashpipe instances running" -- so we check the result and
+    escalate to --force-stop rather than assume the first attempt worked.
+    """
     try:
         current = ledger_core.load()
         if current and str(current.status) in ("ACTIVE", "STARTING"):
             logger.warning("[HAPPY-PATH] teardown: stopping active run")
-            runner.invoke(app, ["stop", "-y"])
+            result = runner.invoke(app, ["stop", "-y"])
+            if result.exit_code != 0:
+                logger.warning(
+                    "[HAPPY-PATH] teardown: 'pseti stop -y' failed (exit %s), "
+                    "escalating to --force-stop: %s",
+                    result.exit_code, result.output,
+                )
+                forced = runner.invoke(app, ["stop", "-y", "--force-stop"])
+                if forced.exit_code != 0:
+                    logger.error(
+                        "[HAPPY-PATH] teardown: 'pseti stop -y --force-stop' also "
+                        "failed (exit %s); DAQ node Hashpipe may still be running: %s",
+                        forced.exit_code, forced.output,
+                    )
     except Exception as exc:
         logger.warning("[HAPPY-PATH] teardown: stop attempt failed: %s", exc)
 
