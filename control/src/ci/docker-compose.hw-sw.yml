@@ -31,6 +31,10 @@ services:
     profiles: ["headnode"]
     network_mode: host
     restart: always
+    # Run as root: ${PSETI_DATA_DIR}/loki is root-owned on the host and Loki's
+    # default non-root image user can't mkdir /loki/rules under it, so the
+    # container crash-loops on "permission denied" without this.
+    user: "0:0"
     volumes:
       - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/loki:/loki
 
