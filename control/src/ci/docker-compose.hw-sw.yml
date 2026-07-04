@@ -75,10 +75,11 @@ services:
       - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
       - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
       - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
+      - ${PSETI_CONFIG}:/mnt/config:ro
     environment:
       REDIS_HOST: "127.0.0.1"
       LOKI_URL: "http://127.0.0.1:3100/loki/api/v1/push"
-      PSETI_CONFIG: "/app/src/ci/hardware_software/configs"
+      PSETI_CONFIG: "/mnt/config"
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
@@ -110,11 +111,12 @@ services:
     shm_size: '2gb'
     volumes:
       - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
+      - ${PSETI_CONFIG}:/mnt/config:ro
     environment:
       HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
       GRPC_PORT: "50051"
       HEADNODE_GRPC_PORT: "50051"
-      PSETI_CONFIG: "/app/src/ci/hardware_software/configs"
+      PSETI_CONFIG: "/mnt/config"
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
       DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-test}"

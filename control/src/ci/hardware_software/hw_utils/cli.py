@@ -66,7 +66,7 @@ def _compose_env() -> dict[str, str]:
     return {
         "PSETI_ROOT_BUILD": str(_PSETI_ROOT),
         "PSETI_CONTROL_BUILD": str(_CONTROL_DIR),
-        "PSETI_CONFIG": str(_HW_CONFIGS_DIR),
+        "PSETI_CONFIG": os.environ.get("PSETI_CONFIG", str(_HW_CONFIGS_DIR)),
         "HOST_UID": str(uid),
         "HOST_GID": str(gid),
     }
@@ -139,7 +139,7 @@ def hw_build(
         available_contexts = set(res.stdout.splitlines())
 
         for node in topo.daq_nodes():
-            context = f"pseti-daq-{node.host.replace('.', '-')}"
+            context = node.docker_context or f"pseti-daq-{node.host.replace('.', '-')}"
             if context not in available_contexts:
                 console.print(f"[yellow]Skipping daqnode build on {node.host}: context '{context}' not found.[/yellow]")
                 continue
@@ -176,7 +176,7 @@ def hw_deploy(
     try:
         topo = _get_topology()
         for node in topo.daq_nodes():
-            context = f"pseti-daq-{node.host.replace('.', '-')}"
+            context = node.docker_context or f"pseti-daq-{node.host.replace('.', '-')}"
             console.print(f"[cyan]Deploying daqnode profile to {node.host} (context: {context})...[/cyan]")
             _run_compose(tool, context, "daqnode", "up", args=args, env=env)
     except Exception as exc:
@@ -213,7 +213,7 @@ def hw_down(
     try:
         topo = _get_topology()
         for node in topo.daq_nodes():
-            context = f"pseti-daq-{node.host.replace('.', '-')}"
+            context = node.docker_context or f"pseti-daq-{node.host.replace('.', '-')}"
             console.print(f"[yellow]Stopping daqnode profile on {node.host} (context: {context})...[/yellow]")
             ret = _run_compose(tool, context, "daqnode", "down", args=args, env=env)
             if verbose:
@@ -669,7 +669,7 @@ def hw_check_env(
             r = subprocess.run(["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True, check=True)
             contexts = r.stdout.splitlines()
             for node in topo.daq_nodes():
-                expected_context = f"pseti-daq-{node.host.replace('.', '-')}"
+                expected_context = node.docker_context or f"pseti-daq-{node.host.replace('.', '-')}"
                 if expected_context not in contexts:
                     console.print(f"[red]✗ Pre-deploy failed: Missing docker context '{expected_context}' for DAQ node {node.host}.[/red]")
                     all_ok = False

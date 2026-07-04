@@ -291,6 +291,7 @@ class DaqNode(BaseModel):
     ip_addr: IPvAnyAddress
     module_ids: list[int]
     bindhost: str | None = Field("0.0.0.0")
+    docker_context: str | None = Field(None, description="Docker context for remote deployment")
     port_forwarding: PortForwarding | None = None
     modules: list[Any] = Field(default_factory=list)
 

@@ -29,12 +29,23 @@ def run_cmd(host: str, cmd: list[str], env: dict[str, str] | None = None) -> boo
     console.print(f"[[bold green]{host}[/bold green]] Command succeeded.")
     return True
 
+def get_docker_context_for_node(host: str) -> str:
+    from control.utils.config_file import get_daq_config
+    daq_config = get_daq_config()
+    try:
+        node = daq_config.get_node_by_ip(host)
+        if node.docker_context:
+            return node.docker_context
+    except Exception:
+        pass
+    return f"pseti-daq-{host.replace('.', '-')}"
+
 async def deploy_node(host: str, mode: str) -> None:
     """Deploy the DAQ node software using the specified strategy."""
     
     if mode == "docker":
         # We use docker --context to build and deploy natively over SSH
-        context = f"pseti-daq-{host.replace('.', '-')}"
+        context = get_docker_context_for_node(host)
         
         # We assume the context is already created by the user, just like in hw-sw tests.
         # Check if the context exists
@@ -102,7 +113,7 @@ def status(
         
     for host in target_nodes:
         if mode == "docker":
-            context = f"pseti-daq-{host.replace('.', '-')}"
+            context = get_docker_context_for_node(host)
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
             cmd = ["docker", "--context", context, "compose", "-f", str(compose_file), "ps"]
             run_cmd(host, cmd)

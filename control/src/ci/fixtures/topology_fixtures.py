@@ -39,6 +39,7 @@ class DaqNode:
     data_dir: str      # DAQ-side data root (e.g. /data)
     module_ids: list[int]
     username: str = "panoseti"
+    docker_context: str | None = None
 
 
 @dataclass
@@ -118,6 +119,7 @@ class ObservatoryTopology:
                 data_dir=str(node.data_dir),
                 module_ids=node.module_ids,
                 username=node.username,
+                docker_context=node.docker_context,
             ))
         return result
 
