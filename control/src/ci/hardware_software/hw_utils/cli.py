@@ -682,8 +682,29 @@ def hw_check_env(
                     console.print(f"[green]✓ Docker context '{expected_context}' exists.[/green]")
         except Exception as exc:
              console.print(f"[yellow]⚠ Failed to fully check docker contexts: {exc}[/yellow]")
-             # We don't fail immediately here in case they use podman or local deploy, 
+             # We don't fail immediately here in case they use podman or local deploy,
              # but the topology check above should catch structural issues.
+
+        # 3. Smoke-check `pseti admin status` against real infrastructure.
+        # This is read-only (docker context connect + `compose ps`) and
+        # exercises the actual docker_context resolution + connectivity path
+        # that `pseti admin deploy` uses in production, which nothing else
+        # in this suite covers -- hw_build/hw_deploy above deploy via a
+        # different path (Dockerfile.ci + local editable source) so they
+        # can't stand in for it. Non-fatal: `pseti admin` targets production
+        # infra that may not be configured for CI-only environments.
+        console.print("[dim]Smoke-checking 'pseti admin status' (docker_context resolution)...[/dim]")
+        admin_res = subprocess.run(
+            ["pseti", "admin", "status", "all", "--mode", "docker"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if admin_res.returncode != 0:
+            console.print(
+                f"[yellow]⚠ 'pseti admin status all --mode docker' failed (exit {admin_res.returncode}):[/yellow]\n"
+                f"{admin_res.stdout}\n{admin_res.stderr}"
+            )
+        else:
+            console.print("[green]✓ 'pseti admin status' reached all configured DAQ nodes.[/green]")
 
         if not all_ok:
              raise typer.Exit(code=1)
