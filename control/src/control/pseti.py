@@ -14,6 +14,7 @@ class PanoLazyGroup(BaseLazyGroup):
             "val": ("control.config", "validate_app", "Configuration and topology validation tools."),
             "start": ("control.start", "app", "Start a new recording run."),
             "stat": ("control.status", "app", "Show observatory health, acquisition status, and ledger."),
+            "health": ("control.health", "app", "Unified all-systems-green check: config, WPS, Quabos, gRPC, containers."),
             "stop": ("control.stop", "app", "Stop and finish the current recording run."),
             "xfr": ("control.transfer.cli", "app", "Inspect and manage the background transfer queue."),
             "session-start": ("control.session_start", "app", "Initialize hardware/power for an observing session."),
@@ -27,7 +28,7 @@ class PanoLazyGroup(BaseLazyGroup):
         }
         # Explicit order to ensure consistent UX regardless of mapping insertion order
         command_order = [
-            "power", "uids", "cfg", "val", "start", "stat", "stop", "xfr",
+            "power", "uids", "cfg", "val", "start", "stat", "health", "stop", "xfr",
             "session-start", "session-stop", "show", "paths", "test", "grpc", "admin"
         ]
         super().__init__(

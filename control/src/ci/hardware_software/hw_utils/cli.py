@@ -7,6 +7,7 @@ safe-down, list-classes, explain, check-env.
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
 import os
 import shutil
@@ -794,6 +795,8 @@ def hw_check_env(
         # concurrently via a thread pool -- same pattern config.py's
         # do_reboot() already uses for parallel module reboots -- and print
         # results back in topology order afterward so output stays stable.
+        import tempfile
+        import uuid
         from concurrent.futures import ThreadPoolExecutor
         from control.driver.quabo_tftp import tftpw
 
@@ -804,12 +807,21 @@ def hw_check_env(
             ping_ok = r.returncode == 0
 
             tftp_ok = False
+            # get_flashuid() defaults to a fixed 'flashuid' filename in the
+            # cwd -- fine for a single sequential caller (get_uids.py), but
+            # every quabo running this check concurrently would race on the
+            # same path ("Failed to acquire write lock", or silently reading
+            # back a different quabo's UID). Give each check its own file.
+            tmp_path = os.path.join(tempfile.gettempdir(), f"flashuid_{uuid.uuid4().hex}")
             try:
                 x = tftpw(q.real_ip, q.reboot_port)
-                x.get_flashuid()
+                x.get_flashuid(tmp_path)
                 tftp_ok = True
             except Exception:
                 pass
+            finally:
+                with contextlib.suppress(OSError):
+                    os.remove(tmp_path)
             return ping_ok, tftp_ok
 
         with ThreadPoolExecutor(max_workers=max(1, len(quabo_addrs))) as pool:
