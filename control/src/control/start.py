@@ -288,8 +288,6 @@ class StartTransaction:
         finally:
             await asyncio.to_thread(self.state_mgr.release_lock)
 
-verbose = False
-
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
 def ph_baseline_file_ok(path: pathlib.Path | str | None = None) -> bool:
@@ -934,7 +932,12 @@ async def _check_daq_data_status(
         if not status or not status.hp_io_initialized:
             if do_init:
                 logger.info("Requesting DaqData gateway re-initialization...")
+                # The gateway proxies InitHpIo to each edge node as-is, so
+                # data_dir must be a real, non-empty path (InitHpIoParameters
+                # requires it) even though edge nodes normally auto-init on
+                # their own startup and ignore this unless force=True.
                 hp_io_cfg = {
+                    "data_dir": daq_config.daq_nodes[0].data_dir,
                     "update_interval_seconds": 0.1,
                     "force": False,
                     "simulate_daq": False,
@@ -969,7 +972,6 @@ async def start_run(
     strict: bool | None = None,
     force_restart: bool = False,
     init_snapshot: bool = True,
-    heartbeat_timeout: int | None = None,
     process_mgr: Any = None,
     net_client: Any = None,
     fs_mgr: Any = None,
@@ -977,31 +979,39 @@ async def start_run(
 ) -> str | None:
     """Main transactional run coordinator.
 
+    Runs the full pre-flight/start sequence inside a ``StartTransaction``
+    (lock + rollback ladder): validates config and hardware reachability,
+    initializes the run-state ledger, creates run directories, starts data
+    flow from the Quabos, and issues ``StartDaq`` + heartbeat/liveness
+    checks against every configured DAQ node.
+
     Args:
-        obs_config (ObsConfig): _description_
-        daq_config (DaqConfig): _description_
-        quabo_uids (QuaboUids): _description_
-        data_config (DataConfig): _description_
-        network_config (NetworkConfig): _description_
-        no_hv (bool): _description_
-        no_redis (bool): _description_
-        no_data (bool): _description_
-        force_reset (bool, optional): _description_. Defaults to False.
-        run_name (str | None, optional): _description_. Defaults to None.
-        no_check_daq (bool, optional): Skip DAQ reachability check. Defaults to False.
+        obs_config: Observatory layout and naming.
+        daq_config: DAQ node assignments and head-node identity.
+        quabo_uids: Discovered hardware UIDs.
+        data_config: Acquisition mode parameters.
+        network_config: Port-forwarding / routing overrides.
+        no_hv: Skip enabling detector high voltage.
+        no_redis: Tolerate Redis daemons not already running.
+        no_data: Set up run bookkeeping only; skip data flow and DAQ start.
+        force_reset: Archive a stale STARTING/ACTIVE/STOPPING ledger instead
+            of refusing to start.
+        run_name: Explicit run name; defaults to a generated one.
+        no_check_daq: Skip the pre-flight gRPC reachability sweep.
+        strict: Override strict-mode resolution (see ``_resolve_strict_mode``).
+        force_restart: Stop any already-running Hashpipe instances instead
+            of refusing to start.
+        init_snapshot: Auto-initialize the DaqData gateway's snapshot stream.
+        process_mgr, net_client, fs_mgr: Dependency-injected adapters (real
+            implementations are constructed if not supplied).
+        force_clean_semaphores: Forwarded to ``StartDaq`` — see its docstring.
 
     Raises:
-        ValidationError: _description_
-        ValidationError: _description_
-        ValidationError: _description_
-        ValidationError: _description_
-        ValidationError: _description_
-        ValidationError: _description_
-        asyncio.CancelledError: _description_
-        asyncio.CancelledError: _description_
+        ValidationError: Any pre-flight check fails in strict mode, or a
+            non-stale run is already in progress.
 
     Returns:
-        str | None: _description_
+        The run name on success, or ``None`` if the transaction failed.
     """
     
     # --- Resolve strict mode ---
@@ -1180,7 +1190,7 @@ async def start_run(
                 logger.info('starting recording (Phase 3: Transactional)')
                 await start_recording(
                     obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx, net_client,
-                    startdaq_timeout=10.0, startdaq_retries=heartbeat_timeout if heartbeat_timeout is not None else 15,
+                    startdaq_timeout=10.0, startdaq_retries=15,
                     force_clean_semaphores=force_clean_semaphores,
                 )
                 # Init & check daq_data servers
@@ -1338,13 +1348,12 @@ async def async_main_logic(
         await asyncio.sleep(nsecs)
         import control.stop as stop
         await stop.stop_run(
-            daq_config, 
-            network_config, 
+            daq_config,
+            network_config,
             quabo_uids,
             process_mgr,
             net_client,
             fs_mgr,
-            verbose=verbose
         )
         if stop_session:
             session_stop.session_stop(obs_config)

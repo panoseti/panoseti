@@ -76,7 +76,7 @@ def hw_safety_net(runner):
 
     try:
         logger.info("[SAFETY NET] Stopping active runs...")
-        runner.invoke(app, ["stop", "--yes", "--force-cleanup"])
+        runner.invoke(app, ["stop", "--yes", "--force-stop"])
     except Exception as exc:
         logger.warning("[SAFETY NET] pseti stop failed: %s", exc)
 

@@ -9,7 +9,6 @@
 # - if a run is in progress, copy data files to head and delete from DAQs
 #
 # options:
-#   --verbose           print details
 #   --no_collect        don't copy data files to head node
 #   --no_cleanup        don't delete files from DAQ nodes
 #   --run X             clean up run X (default: read from current_run)
@@ -22,18 +21,12 @@ import signal
 import sys
 import time
 from datetime import UTC, datetime
-from glob import glob
 from typing import Any
 
 import typer
 
-try:
-    from panoseti_grpc.telemetry.logger import get_logger
-except ImportError:
-    # fallback for development/CI environments
-    from panoseti_grpc.telemetry.logger import get_logger
-
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+from panoseti_grpc.telemetry.logger import get_logger
 
 from control.interfaces import FileSystemManager, NetworkClient, ProcessManager
 from control.tools.interleave import INTERLEAVE_LOCK_PATH
@@ -98,9 +91,7 @@ class StopTransaction:
         no_cleanup: bool,
         no_transfer: bool,
         skip_verify: bool,
-        force_cleanup: bool,
         force_stop: bool,
-        verbose: bool,
         cancel_event: asyncio.Event,
         process_mgr: ProcessManager,
         net_client: NetworkClient,
@@ -116,9 +107,7 @@ class StopTransaction:
         self.no_cleanup = no_cleanup
         self.no_transfer = no_transfer
         self.skip_verify = skip_verify
-        self.force_cleanup = force_cleanup
         self.force_stop = force_stop
-        self.verbose = verbose
         self.cancel_event = cancel_event
         self.process_mgr = process_mgr
         self.net_client = net_client
@@ -282,93 +271,16 @@ def complete_file_exists(run_dir: str, filename: str) -> bool:
     return os.path.exists(f"{run_dir}/{filename}")
 
 
-def stop_interleave(retry_limit: int = 10) -> None:
+def stop_interleave() -> None:
     """Inform the interleave manager that an observation is ending."""
     if not INTERLEAVE_LOCK_PATH.exists():
         return
-    
+
     logger.info("Signal interleave manager: Observation ending.")
     try:
         INTERLEAVE_LOCK_PATH.unlink()
     except Exception as e:
         logger.warning(f"Failed to remove interleave lock {INTERLEAVE_LOCK_PATH}: {e}")
-
-
-async def cleanup_daq(daq_config: DaqConfig, run: str, verbose: bool, force: bool = False) -> list[str]:
-    """
-    (Legacy/Direct Cleanup)
-    Remove run directory from all DAQ nodes.
-    Now primarily used by Transfer Daemon; this version remains for --force-cleanup.
-    """
-    errors: list[str] = []
-
-    def log_error(msg: str, head_run_dir: str | None) -> None:
-        logger.error(msg)
-        if head_run_dir:
-            try:
-                with open(f"{head_run_dir}/cleanup_errors.txt", "a") as f:
-                    f.write(f"{now_str()}: {msg}\n")
-            except Exception:
-                pass
-
-    import anyio
-    # ...
-    head_run_path = anyio.Path(f"{daq_config.head_node_data_dir}/{run}")
-    head_run_dir_exists = await head_run_path.exists()
-    head_run_dir = str(head_run_path) if head_run_dir_exists else None
-
-    async def cleanup_node(node: DaqNode) -> None:
-        ip_addr = str(node.ip_addr)
-        
-        # Guard: check if collection succeeded for this node if not forced
-        # In this legacy mode, we don't have a manifest readily available,
-        # so we rely on the existence of the head-side directory.
-        collection_dir = anyio.Path(f"{head_run_dir}/module_{node.module_ids[0]}")
-        if not force and head_run_dir and not await collection_dir.is_dir():
-            logger.warning(f"Skipping cleanup for node {ip_addr} due to collection failure.")
-            return
-            
-        if util.is_local(node.ip_addr, daq_config):
-            # Head node is also DAQ node: local rm -rf
-            module_dirs = glob(f'{node.data_dir}/module_*/{run}')
-            if verbose:
-                logger.info(f"Removing local directories: {module_dirs}")
-            for d in module_dirs:
-                try:
-                    shutil.rmtree(d)
-                except Exception as err:
-                    msg = f'cleanup_daq (local): failed to remove {d}: {err}'
-                    log_error(msg, head_run_dir)
-                    errors.append(msg)
-        else:
-            grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
-            if verbose:
-                logger.info(f'CleanupData via gRPC: {grpc_host}:{grpc_port} run_dir={run} force={force}')
-            try:
-                async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                    cleanup_resp = await client.CleanupData({
-                        'data_dir':  node.data_dir,
-                        'run_dir':   run,
-                        'module_id': node.module_ids,
-                        'force':     force
-                    }, timeout=30.0)
-
-                    if not cleanup_resp['success']:
-                        msg = f'CleanupData failed for node {ip_addr}: {cleanup_resp.get("message")}'
-                        log_error(msg, head_run_dir) 
-                        errors.append(msg)
-            except Exception as e:
-                msg = f'CleanupData error for node {ip_addr}: {e}'
-                log_error(msg, head_run_dir)
-                errors.append(msg)
-
-    async with asyncio.TaskGroup() as tg:
-        for node in daq_config.daq_nodes:
-            if not node.module_ids:
-                continue
-            tg.create_task(cleanup_node(node))
-
-    return errors
 
 
 async def stop_run(
@@ -378,11 +290,9 @@ async def stop_run(
     process_mgr: ProcessManager | None = None,
     net_client: NetworkClient | None = None,
     fs_mgr: FileSystemManager | None = None,
-    verbose: bool = False,
     no_cleanup: bool = False,
     no_collect: bool = False,
     run: str | None = None,
-    force_cleanup: bool = False,
     no_transfer: bool = False,
     skip_verify: bool = False,
     force_stop: bool = False,
@@ -400,14 +310,14 @@ async def stop_run(
         process_mgr: Dependency-injected process manager.
         net_client: Dependency-injected network client.
         fs_mgr: Dependency-injected filesystem manager.
-        verbose: Log extra details.
         no_cleanup: Keep DAQ ``.pff`` files after transfer (sets job flag).
         no_collect: Skip rsync to head node (sets job flag).
         run: Run name to stop; defaults to the current run from ledger.
-        force_cleanup: Force cleanup even on uncertain hashpipe state.
         no_transfer: Skip enqueueing entirely (data stays on DAQ nodes).
         skip_verify: Skip manifest digest verification (job flag).
-        force_stop: Force teardown ladder regardless of ledger state.
+        force_stop: Bypass ledger-state validation (stop even if the ledger
+            says the run already finished, or names a different run) and
+            run the full teardown ladder regardless.
     """
 
     if process_mgr is None:
@@ -435,7 +345,7 @@ async def stop_run(
         async with StopTransaction(
             state_mgr, daq_config, network_config, quabo_uids, data_config,
             run, no_collect, no_cleanup, no_transfer, skip_verify,
-            force_cleanup, force_stop, verbose, cancel_event,
+            force_stop, cancel_event,
             process_mgr, net_client, fs_mgr
         ) as tx:
             # Pre-flight Validation
@@ -464,15 +374,15 @@ async def stop_run(
             # Refuse to stop if already finished, unless forced
             if ledger:
                 stoppable = {RunStatus.STARTING, RunStatus.ACTIVE, RunStatus.STOPPING}
-                if ledger.status not in stoppable and not tx.force_cleanup and not tx.force_stop:
+                if ledger.status not in stoppable and not tx.force_stop:
                     raise ValidationError(
                         f"Ledger says run '{ledger.run_name}' is in '{ledger.status}'; "
-                        "nothing to stop. Use --force-stop or --force-cleanup to run the full ladder anyway."
+                        "nothing to stop. Use --force-stop to run the full ladder anyway."
                     )
 
             # Validation: prevent orphaning the current run
-            if ledger and tx.run != ledger.run_name and not tx.force_cleanup and not tx.force_stop:
-                 raise ValidationError(f"Warning: Requested run '{tx.run}' does not match ledger run '{ledger.run_name}'. Use --force-stop is you are sure.")
+            if ledger and tx.run != ledger.run_name and not tx.force_stop:
+                 raise ValidationError(f"Warning: Requested run '{tx.run}' does not match ledger run '{ledger.run_name}'. Use --force-stop if you are sure.")
 
             # Update status to STOPPING
             state_mgr.transition(RunStatus.STOPPING)
@@ -502,9 +412,7 @@ def main(
     no_transfer: bool = typer.Option(False, "--no-transfer", help="Skip transfer entirely; data stays on DAQ nodes until manually recovered."),
     skip_verify: bool = typer.Option(False, "--skip-verify", help="[Discouraged] Skip manifest digest verification during transfer."),
     run: str | None = typer.Option(None, "--run", help="Stop/Cleanup specific run."),
-    force_cleanup: bool = typer.Option(False, "--force-cleanup", help="Force cleanup on DAQ nodes even if hashpipe liveness is uncertain."),
     force_stop: bool = typer.Option(False, "--force-stop", help="Force teardown ladder regardless of ledger state."),
-    verbose: bool = typer.Option(False, "--verbose", help="Print details."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
 ) -> None:
     """Stop an in-progress recording run and enqueue it for background transfer.
@@ -544,7 +452,7 @@ def main(
 
     # Pre-stop interleave
     try:
-        stop_interleave(retry_limit=10)
+        stop_interleave()
     except Exception as e:
         logger.critical(f'Failed to stop interleave: {e}')
 
@@ -563,7 +471,7 @@ def main(
     success = asyncio.run(stop_run(
         daq_config, network_config, quabo_uids,
         process_mgr, net_client, fs_mgr,
-        verbose, effective_no_cleanup, no_collect, run, force_cleanup,
+        effective_no_cleanup, no_collect, run,
         no_transfer=no_transfer,
         skip_verify=skip_verify,
         force_stop=force_stop

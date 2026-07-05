@@ -177,7 +177,7 @@ Managed via `async with StopTransaction(...) as tx:`.
 ### 1. `__aenter__` (Pre-flight Ledger Guard)
 - Acquires the control advisory lock.
 - **Ledger Validation**: Proactively loads the run ledger. If the ledger indicates the run is already in a terminal state (e.g., `ARCHIVED`, `TRANSFER_FAILED`), the transaction refuses to proceed with hardware commands and raises a `ValidationError`. This prevents redundant hardware teardown on runs that have already been cleanly stopped and enqueued for transfer.
-- **Force Override**: The `--force-cleanup` flag bypasses all ledger status checks, allowing a full hardware teardown attempt even if the ledger is missing or in an unexpected state.
+- **Force Override**: The `--force-stop` flag bypasses all ledger status checks, allowing a full hardware teardown attempt even if the ledger is missing or in an unexpected state.
 
 ### 2. `__aexit__` (Teardown sequence)
 Ensures **resilient best-effort hardware shutdown**. All steps execute even if previous ones fail. Bulk I/O is NOT in this sequence:
@@ -243,7 +243,7 @@ flowchart TD
 | `--no-transfer` | Skip enqueue entirely; data stays on DAQ nodes. |
 | `--keep-daq-data` | Sets `no_cleanup=True` on the job (.pff files preserved after archive). |
 | `--skip-verify` | Sets `skip_verify=True` on the job (manifest re-hash skipped). Discouraged — CLI prints a warning. |
-| `--force-cleanup` | Force cleanup even if hashpipe liveness is uncertain. |
+| `--force-stop` | Force teardown ladder regardless of ledger state. |
 | `--yes / -y` | Auto-confirm safety prompts including daemon-down warning. |
 
 **Daemon-down warning**: before enqueuing, `pseti stop` checks the heartbeat at `state/transfer/daemon.heartbeat`. If the daemon is stale (>30 s since last write):

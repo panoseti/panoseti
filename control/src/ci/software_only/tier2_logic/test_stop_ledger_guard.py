@@ -63,14 +63,14 @@ async def test_stop_refuses_if_already_finished(mock_state_mgr: MagicMock, mock_
             net_client=net_client,
             fs_mgr=fs_mgr,
             run="r1", 
-            force_cleanup=False
+            force_stop=False
         )
         
         assert "is in 'RECORDING_ENDED'" in caplog.text
         assert res is True  # stop_run returns True when it completes (even if aborted by validation)
 
 @pytest.mark.asyncio
-async def test_stop_proceeds_with_force_cleanup(mock_state_mgr: MagicMock, mock_daq_config: MagicMock) -> None:
+async def test_stop_proceeds_with_force_stop(mock_state_mgr: MagicMock, mock_daq_config: MagicMock) -> None:
     ledger = MagicMock()
     ledger.run_name = "r1"
     ledger.status = RunStatus.RECORDING_ENDED
@@ -105,7 +105,7 @@ async def test_stop_proceeds_with_force_cleanup(mock_state_mgr: MagicMock, mock_
             net_client=net_client,
             fs_mgr=fs_mgr,
             run="r1", 
-            force_cleanup=True
+            force_stop=True
         )
         assert res is True
 
@@ -144,6 +144,6 @@ async def test_stop_proceeds_if_active(mock_state_mgr: MagicMock, mock_daq_confi
             net_client=net_client,
             fs_mgr=fs_mgr,
             run="r1", 
-            force_cleanup=False
+            force_stop=False
         )
         assert res is True

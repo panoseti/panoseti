@@ -455,7 +455,7 @@ def test_white_rabbit_timing(runner) -> None:
 @pytest.mark.slow_hw
 @pytest.mark.timeout(180)
 def test_hashpipe_crash_rollback(runner) -> None:
-    """SIGKILL hashpipe mid-run, then verify pseti stop --force-cleanup."""
+    """SIGKILL hashpipe mid-run, then verify pseti stop --force-stop."""
     import subprocess
 
     from control.utils import util
@@ -476,7 +476,7 @@ def test_hashpipe_crash_rollback(runner) -> None:
     )
     assert result.returncode in (0, 1), f"ssh pkill failed: {result.stderr}"
 
-    out = _invoke_pseti(runner, ["stop", "--yes", "--force-cleanup"])
+    out = _invoke_pseti(runner, ["stop", "--yes", "--force-stop"])
     assert "done" in out.lower() or "aborted" in out.lower()
 
     from control.utils.transfer.ledger import RunStateLedger
