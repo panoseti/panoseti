@@ -35,6 +35,15 @@ def run_cmd(cmd: list[str], cwd: Path | str = _CONTROL_DIR) -> int:
     if "PSETI_CONFIG" not in env:
         env["PSETI_CONFIG"] = str(_CONTROL_DIR / "src/ci/hardware_software/configs")
 
+    # Required by docker-compose.hw-sw.yml's ${PSETI_CORE_OBS_CONFIGS}:...
+    # volume mount -- without it, *any* `docker compose` subcommand against
+    # that file (even `exec`, which doesn't need volumes at runtime) fails
+    # at compose-file interpolation with "invalid spec: empty section
+    # between colons", since Compose parses the whole file regardless of
+    # which subcommand is being run.
+    if "PSETI_CORE_OBS_CONFIGS" not in env:
+        env["PSETI_CORE_OBS_CONFIGS"] = str(_CONTROL_DIR / "src/ci/hardware_software/core_obs_configs")
+
     return subprocess.run(cmd, cwd=cwd, env=env).returncode
 
 def main():
