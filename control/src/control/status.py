@@ -93,14 +93,16 @@ def _local_summary() -> list[Text]:
     return lines
 
 
-async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None = None) -> list[Text]:
+async def _remote_summary(
+    daq_config: Any = None, clients: dict[str, Any] | None = None, hashpipe_detail: bool = False
+) -> list[Text]:
     """Query each DAQ node via gRPC and return detailed rows per node."""
     import os
 
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
     lines: list[Text] = []
-    
+
     if daq_config is None:
         try:
             from control.utils import config_file, util
@@ -117,6 +119,7 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
                 "check_hashpipe_running": True,
                 "check_disk_usage": True,
                 "check_run_dirs": True,
+                "check_status_buffer": hashpipe_detail,
             }),
             timeout=5.0,
         )
@@ -183,7 +186,7 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
                 runs_str = "none"
 
             # Combine
-            return Text.assemble(
+            summary = Text.assemble(
                 f"  • {ip_str:<14} | ",
                 hp_text,
                 " " * max(0, 16 - len(hp_text.plain)),
@@ -192,6 +195,18 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
                 " " * max(0, 28 - len(disk_str)),
                 f" | {runs_str}"
             )
+
+            # 5. Hashpipe status buffer detail (--hashpipe-detail)
+            if hashpipe_detail:
+                buf = status.get("hashpipe_status_buffer", {})
+                if not hp_running:
+                    summary.append("\n      (hashpipe not running -- no status buffer)", style="dim")
+                elif not buf:
+                    summary.append("\n      (status buffer empty or unreadable)", style="dim")
+                else:
+                    for key in sorted(buf):
+                        summary.append(f"\n      {key:<14}= {buf[key]}", style="dim cyan")
+            return summary
 
         except Exception as exc:
             return Text.assemble(f"  • {ip_str:<14} | ", (f"UNREACHABLE: {exc}", "red"))
@@ -274,17 +289,17 @@ def _render(local: list[Text], remote: list[Text] | None, sweep: list[Text] | No
     return res
 
 
-def status(no_remote: bool = False, sweep_mode: bool = False) -> None:
+def status(no_remote: bool = False, sweep_mode: bool = False, hashpipe_detail: bool = False) -> None:
     """Synchronous single-shot status render."""
     local = _local_summary()
-    remote_lines = None if no_remote else asyncio.run(_remote_summary())
+    remote_lines = None if no_remote else asyncio.run(_remote_summary(hashpipe_detail=hashpipe_detail))
     sweep_lines = asyncio.run(_sweep_summary()) if sweep_mode else None
-    
+
     console = Console()
     console.print(_render(local, remote_lines, sweep_lines))
 
 
-async def _watch_loop(interval: float, no_remote: bool) -> None:
+async def _watch_loop(interval: float, no_remote: bool, hashpipe_detail: bool = False) -> None:
     """Continuously fetch and display status, maintaining persistent gRPC connections."""
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
@@ -315,7 +330,9 @@ async def _watch_loop(interval: float, no_remote: bool) -> None:
         with Live(console=console, auto_refresh=True) as live:
             while True:
                 local = _local_summary()
-                remote_lines = None if no_remote else await _remote_summary(daq_config, clients)
+                remote_lines = None if no_remote else await _remote_summary(
+                    daq_config, clients, hashpipe_detail=hashpipe_detail
+                )
                 output = _render(local, remote_lines, None)
                 
                 live.update(output)
@@ -347,6 +364,14 @@ def main(
     no_remote: Annotated[bool, typer.Option("--no-remote", help="Skip querying DAQ nodes via gRPC.")] = False,
     watch: Annotated[bool, typer.Option("--watch", "-w", help="Refresh continuously.")] = False,
     interval: Annotated[float, typer.Option("--interval", "-i", help="Refresh interval in seconds (requires --watch).")] = 1.0,
+    hashpipe_detail: Annotated[
+        bool,
+        typer.Option(
+            "--hashpipe-detail", "-d",
+            help="Show hashpipe's live status shared-memory buffer per DAQ node "
+                 "(packet/drop counts, per-thread state) in addition to the thread-count summary.",
+        ),
+    ] = False,
 ) -> None:
     """Query and display the current status of the observatory control plane."""
     if ctx.invoked_subcommand is not None:
@@ -355,9 +380,9 @@ def main(
     if watch:
         with suppress(KeyboardInterrupt):
             # We now pass the interval variable directly
-            asyncio.run(_watch_loop(interval=interval, no_remote=no_remote))
+            asyncio.run(_watch_loop(interval=interval, no_remote=no_remote, hashpipe_detail=hashpipe_detail))
     else:
-        status(no_remote=no_remote)
+        status(no_remote=no_remote, hashpipe_detail=hashpipe_detail)
 
 
 @app.command("sweep")
