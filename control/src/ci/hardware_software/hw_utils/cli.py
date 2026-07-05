@@ -696,7 +696,7 @@ def hw_check_env(
         console.print("[dim]Smoke-checking 'pseti admin status' (docker_context resolution)...[/dim]")
         admin_res = subprocess.run(
             ["pseti", "admin", "status", "all", "--mode", "docker"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, env={**os.environ, **_compose_env()},
         )
         if admin_res.returncode != 0:
             console.print(
@@ -711,11 +711,12 @@ def hw_check_env(
 
     if post_deploy:
         console.print("[dim]Running post-deploy checks...[/dim]")
-        
+        post_deploy_env = {**os.environ, **_compose_env()}
+
         # 1. Verify headnode is running
         r = subprocess.run(
             ["docker", "compose", "-f", str(_COMPOSE_FILE), "--profile", "headnode", "ps", "--format", "json"],
-            capture_output=True, text=True
+            capture_output=True, text=True, env=post_deploy_env
         )
         if "headnode-server" not in r.stdout:
             console.print("[red]✗ Post-deploy failed: headnode-server container is not running.[/red]")
@@ -727,7 +728,7 @@ def hw_check_env(
         console.print("[dim]Executing 'pseti val' inside headnode-server...[/dim]")
         val_res = subprocess.run(
             ["docker", "compose", "-f", str(_COMPOSE_FILE), "exec", "-T", "headnode-server", "pseti", "val"],
-            capture_output=True, text=True
+            capture_output=True, text=True, env=post_deploy_env
         )
         if val_res.returncode != 0:
             console.print(f"[red]✗ Post-deploy failed: 'pseti val' returned errors.[/red]\n{val_res.stdout}\n{val_res.stderr}")
