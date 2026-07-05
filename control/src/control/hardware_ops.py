@@ -16,6 +16,8 @@ import os
 import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
+from ipaddress import ip_address
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -61,51 +63,59 @@ def start_data_flow(
         verbose: Print each command as it's issued.
     """
     daq_params = quabo_driver.get_daq_params(data_config)
-    for dome in quabo_uids.domes:
-        for module in dome.modules:
-            # Note: QuaboUidModule has 'ip_addr'
-            base_ip_addr = str(module.ip_addr)
-            module_id = config_file.ip_addr_to_module_id(base_ip_addr)
-            try:
-                # daq_config.model_dump() is still needed for config_file.module_id_to_daq_node
-                # until that is also fully refactored to take the model.
-                # Actually I refactored it to take both.
-                daq_node = config_file.module_id_to_daq_node(daq_config, module_id)
-            except Exception:
+    head_node_ip_addr = str(daq_config.head_node_ip_addr)
+
+    def _configure_module(module: object) -> None:
+        # Note: QuaboUidModule has 'ip_addr'
+        base_ip_addr = str(module.ip_addr)  # type: ignore[attr-defined]
+        module_id = config_file.ip_addr_to_module_id(base_ip_addr)
+        try:
+            daq_node = config_file.module_id_to_daq_node(daq_config, module_id)
+        except Exception:
+            return
+        daq_node_ip_addr = str(daq_node.ip_addr)
+        for i in range(4):
+            if module.quabos[i].uid == '':  # type: ignore[attr-defined]
                 continue
-            daq_node_ip_addr = str(daq_node.ip_addr)
-            head_node_ip_addr = str(daq_config.head_node_ip_addr)
-            for i in range(4):
-                if module.quabos[i].uid == '':
-                    continue
-                ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
-                ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
-                real_ip = ip_ports.ip_addr
-                cmd_port = ip_ports.cmd_port
-                logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
-                from ipaddress import ip_address
-                quabo = quabo_driver.QUABO(real_ip, cmd_port)
-                if verbose:
-                    print(f'setting HK packet dest to {head_node_ip_addr} on quabo {ip_addr}')
-                quabo.hk_packet_destination(ip_address(head_node_ip_addr))
-                if verbose:
-                    print(f'setting data packet dest to {daq_node_ip_addr} on quabo {ip_addr}')
-                quabo.data_packet_destination(ip_address(daq_node_ip_addr))
-                if verbose:
-                    print(f'setting DAQ mode on quabo {ip_addr}')
-                quabo.send_daq_params(daq_params)
-                quabo.close()
-            # send software 1PPS
-            time.sleep(0.5)
-            logger.info(f'Send software 1PPS to {base_ip_addr}')
-            ip_ports = util.get_quabo_ip_port(module.ip_addr, 0, network_config)
+            ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)  # type: ignore[attr-defined]
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
-            quabo.swpps()
+            if verbose:
+                print(f'setting HK packet dest to {head_node_ip_addr} on quabo {ip_addr}')
+            quabo.hk_packet_destination(ip_address(head_node_ip_addr))
+            if verbose:
+                print(f'setting data packet dest to {daq_node_ip_addr} on quabo {ip_addr}')
+            quabo.data_packet_destination(ip_address(daq_node_ip_addr))
+            if verbose:
+                print(f'setting DAQ mode on quabo {ip_addr}')
+            quabo.send_daq_params(daq_params)
             quabo.close()
+        # send software 1PPS
+        time.sleep(0.5)
+        logger.info(f'Send software 1PPS to {base_ip_addr}')
+        ip_ports = util.get_quabo_ip_port(module.ip_addr, 0, network_config)  # type: ignore[attr-defined]
+        real_ip = ip_ports.ip_addr
+        cmd_port = ip_ports.cmd_port
+        quabo = quabo_driver.QUABO(real_ip, cmd_port)
+        quabo.swpps()
+        quabo.close()
+
+    # Modules are independent (each has its own quabos, DAQ node assignment,
+    # and WR/GNSS timing already established by session-start's reboot
+    # sequence) -- configuring them one at a time was also actively working
+    # against the point of the per-module software-PPS sync step above: at
+    # more than one module, sequential sends meant the last module's
+    # acquisition-start sync landed measurably later than the first's,
+    # exactly the kind of cross-module skew a PPS sync exists to avoid.
+    # Parallel, same pattern as config.py's do_reboot().
+    all_modules = [module for dome in quabo_uids.domes for module in dome.modules]
+    with ThreadPoolExecutor(max_workers=max(1, len(all_modules))) as pool:
+        list(pool.map(_configure_module, all_modules))
 
 
 def make_run_dirs(

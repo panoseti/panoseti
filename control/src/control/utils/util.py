@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from ipaddress import ip_address
 from typing import Any
 
@@ -789,17 +790,25 @@ def stop_data_flow(
         network_config: The validated network configuration model.
     """
     daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
-    for dome in quabo_uids.domes:
-        for module in dome.modules:
-            for i in range(4):
-                if module.quabos[i].uid == '':
-                    continue
-                ip_ports = get_quabo_ip_port(module.ip_addr, i, network_config)
-                real_ip = ip_ports.ip_addr
-                cmd_port = ip_ports.cmd_port
-                quabo = quabo_driver.QUABO(real_ip, cmd_port)
-                quabo.send_daq_params(daq_params)
-                quabo.close()
+
+    def _stop_module(module: object) -> None:
+        for i in range(4):
+            if module.quabos[i].uid == '':  # type: ignore[attr-defined]
+                continue
+            ip_ports = get_quabo_ip_port(module.ip_addr, i, network_config)  # type: ignore[attr-defined]
+            real_ip = ip_ports.ip_addr
+            cmd_port = ip_ports.cmd_port
+            quabo = quabo_driver.QUABO(real_ip, cmd_port)
+            quabo.send_daq_params(daq_params)
+            quabo.close()
+
+    # Modules are independent -- parallel shutdown matters here more than at
+    # start, since this runs on the stop/rollback critical path and every
+    # module waited on sequentially is time hardware spends in an
+    # inconsistent, still-acquiring state.
+    all_modules = [module for dome in quabo_uids.domes for module in dome.modules]
+    with ThreadPoolExecutor(max_workers=max(1, len(all_modules))) as pool:
+        list(pool.map(_stop_module, all_modules))
 
 
 def attach_daq_config(
