@@ -12,6 +12,7 @@
 # - start the Redis daemons
 # - copy software to DAQ nodes
 
+import sys
 import time
 from typing import Any
 
@@ -103,7 +104,7 @@ def session_start(
         logger.info('starting Redis daemons')
         util.start_redis_daemons()
         logger.info('starting transfer daemon')
-        util.start_daemon(["python", "-m", "control.transfer"], name="transfer_daemon")
+        util.start_daemon([sys.executable, "-m", "control.transfer"], name="transfer_daemon")
     
     if stage == 'maroc_config':
         stage = 'mask_config'

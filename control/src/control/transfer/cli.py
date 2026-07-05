@@ -5,6 +5,7 @@ import contextlib
 import json
 import os
 import signal
+import sys
 import time
 from typing import Annotated
 
@@ -212,7 +213,7 @@ def start_daemon() -> None:
     if _daemon_alive():
         typer.echo("Transfer daemon is already running.")
         return
-    util.start_daemon(["python", "-m", "control.transfer"])
+    util.start_daemon([sys.executable, "-m", "control.transfer"])
     typer.echo("Transfer daemon started.")
 
 
