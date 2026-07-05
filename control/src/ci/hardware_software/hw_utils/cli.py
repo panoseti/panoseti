@@ -776,7 +776,7 @@ def hw_check_env(
 
     # ── Quabo reachability ──────────────────────────────────────────────────
     if topo is not None:
-        console.print("[dim]Checking quabo reachability (all configured modules)...[/dim]")
+        console.print("[dim]Checking quabo reachability (all configured modules, in parallel)...[/dim]")
         # NOTE: quabo's command protocol (cmd_port, 60000-60003) is
         # fire-and-forget -- there's no ack packet to wait for, so sending a
         # command and blocking on recvfrom() always times out regardless of
@@ -786,15 +786,23 @@ def hw_check_env(
         # (the same request/response call `pseti uids` already relies on)
         # is the one protocol quabo actually acks over UDP, so it's the
         # real liveness signal here.
+        #
+        # Each check (ping + a TFTP round-trip with its own internal
+        # retry/timeout loop) takes a few seconds; done one quabo at a time
+        # this is the dominant cost of check-env once you're past a single
+        # module (4 quabos -> 16 across a 4-dome fleet). Run them
+        # concurrently via a thread pool -- same pattern config.py's
+        # do_reboot() already uses for parallel module reboots -- and print
+        # results back in topology order afterward so output stays stable.
+        from concurrent.futures import ThreadPoolExecutor
         from control.driver.quabo_tftp import tftpw
-        for q in topo.quabo_ips():
-            # 1. ICMP ping (raw IP)
+
+        quabo_addrs = topo.quabo_ips()
+
+        def _check_one(q: Any) -> tuple[bool, bool]:
             r = subprocess.run(["ping", "-c1", "-W1", q.ip], capture_output=True, timeout=3)
             ping_ok = r.returncode == 0
-            ping_icon = "[green]✓[/green]" if ping_ok else "[red]✗[/red]"
 
-            # 2. TFTP round-trip (real_ip:reboot_port) -- the only quabo
-            # protocol with a real acknowledged response.
             tftp_ok = False
             try:
                 x = tftpw(q.real_ip, q.reboot_port)
@@ -802,8 +810,14 @@ def hw_check_env(
                 tftp_ok = True
             except Exception:
                 pass
-            tftp_icon = "[green]✓[/green]" if tftp_ok else "[red]✗[/red]"
+            return ping_ok, tftp_ok
 
+        with ThreadPoolExecutor(max_workers=max(1, len(quabo_addrs))) as pool:
+            results = list(pool.map(_check_one, quabo_addrs))
+
+        for q, (ping_ok, tftp_ok) in zip(quabo_addrs, results, strict=True):
+            ping_icon = "[green]✓[/green]" if ping_ok else "[red]✗[/red]"
+            tftp_icon = "[green]✓[/green]" if tftp_ok else "[red]✗[/red]"
             console.print(f"  {ping_icon} ICMP {q.ip:15} | {tftp_icon} TFTP {q.real_ip}:{q.reboot_port} (loc={q.boardloc})")
             if not tftp_ok:
                 # During CI/Deployment, Quabos might be unpowered.
