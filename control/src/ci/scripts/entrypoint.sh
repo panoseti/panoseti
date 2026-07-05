@@ -24,6 +24,15 @@ if [ "$(id -u)" = "0" ]; then
     echo "Syncing ownership of /app /grpc /pypff /opt/venv /tmp..."
     chown -R panoseti:panoseti /app /grpc /pypff /opt/venv /tmp 2>/dev/null || true
 
+    # get_logger() writes {service}.jsonl under here (tailed by Alloy). It's a
+    # bind mount from the host, so Docker auto-creates it as root:root the
+    # first time -- without this, every service silently falls back to
+    # /tmp/panoseti_logs (container-local, invisible to Alloy) instead of
+    # erroring, which is easy to miss.
+    if [ -d /var/log/panoseti ]; then
+        chown -R panoseti:panoseti /var/log/panoseti 2>/dev/null || true
+    fi
+
     # Recursively claim the entire data mount point if it exists
     # This aligns files created by rsync (root) to the runtime user.
     DATA_DIR="${DAQ_DATA_DIR:-/mnt/panoseti-test}"

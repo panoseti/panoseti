@@ -141,6 +141,10 @@ services:
       - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
       - ${PSETI_CONFIG}:/mnt/config:ro
       - ${PSETI_CORE_OBS_CONFIGS}:/mnt/core_obs_configs:ro
+      # Shared with the headnode alloy service (read-only there) -- was
+      # missing entirely, so this service's own logs never reached the
+      # host path Alloy tails (same bug fixed for daqnode-server).
+      - /var/log/panoseti:/var/log/panoseti
     environment:
       REDIS_HOST: "127.0.0.1"
       LOKI_URL: "http://127.0.0.1:3100/loki/api/v1/push"
