@@ -1,3 +1,56 @@
+# Alloy's config is declared inline (not bind-mounted from
+# grpc/deploy/alloy/config.alloy) so it also works for the DAQ node profile,
+# which is deployed to a *remote* Docker context: bind-mount sources resolve
+# against the remote daemon's filesystem, which has no mirrored repo
+# checkout (unlike the headnode, where the bind mount happens to work
+# because it's the same machine). Inline config content ships over the
+# Docker API regardless of context. Keep this in sync with
+# grpc/deploy/alloy/config.alloy if you change one.
+configs:
+  alloy_config:
+    content: |
+      // Unified log aggregation for PANOSETI components.
+      // Reads per-host .jsonl files written by panoseti_grpc get_logger().
+      // Directory layout: /var/log/panoseti/{hostname}/{service}.jsonl
+
+      local.file_match "panoseti" {
+        path_targets = [{ "__path__" = "/var/log/panoseti/*/*.jsonl", "job" = "panoseti" }]
+      }
+
+      loki.source.file "panoseti" {
+        targets    = local.file_match.panoseti.targets
+        forward_to = [loki.process.panoseti.receiver]
+      }
+
+      loki.process "panoseti" {
+        stage.json {
+          expressions = {
+            message    = "message",
+            service    = "service",
+            level      = "level",
+            hostname   = "hostname",
+            git_commit = "git_commit",
+            run_id     = "run_id",
+          }
+        }
+        stage.labels {
+          values = {
+            service    = "service",
+            level      = "level",
+            hostname   = "hostname",
+            git_commit = "git_commit",
+          }
+        }
+        forward_to = [loki.write.headnode.receiver]
+      }
+
+      loki.write "headnode" {
+        // network_mode: host on both profiles, so the bridge-network DNS
+        // name "loki" never resolves -- always go via the headnode's real IP.
+        endpoint { url = string.format("http://%s:3100/loki/api/v1/push", sys.env("HEADNODE_IP")) }
+        external_labels = { cluster = "panoseti" }
+      }
+
 services:
   # ── Head Node Profile ──────────────────────────────────────────────────────
   redis:
@@ -46,9 +99,13 @@ services:
     profiles: ["headnode"]
     network_mode: host
     restart: always
+    configs:
+      - source: alloy_config
+        target: /etc/alloy/config.alloy
     volumes:
-      - ${PSETI_ROOT_BUILD}/grpc/deploy/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/log/panoseti:/var/log/panoseti:ro
+    environment:
+      HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
     command: ["run", "/etc/alloy/config.alloy"]
 
   grafana:
@@ -99,6 +156,24 @@ services:
     restart: always
 
   # ── DAQ Node Profile ───────────────────────────────────────────────────────
+  alloy-daqnode:
+    image: grafana/alloy:latest
+    profiles: ["daqnode"]
+    network_mode: host
+    restart: always
+    configs:
+      - source: alloy_config
+        target: /etc/alloy/config.alloy
+    volumes:
+      - /var/log/panoseti:/var/log/panoseti:ro
+    environment:
+      # Ships this DAQ node's own daq_control/daq_data logs to the
+      # headnode's Loki directly, in parallel with (eventually replacing)
+      # the legacy grpc_logging Log RPC forward path. See
+      # wiki_docs/Deploying-the-Modernized-Control-System.md §6.
+      HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
+    command: ["run", "/etc/alloy/config.alloy"]
+
   daqnode-server:
     image: pseti-daqnode:hitl
     build:
@@ -121,6 +196,11 @@ services:
       - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
       - ${PSETI_CONFIG}:/mnt/config:ro
       - ${PSETI_CORE_OBS_CONFIGS}:/mnt/core_obs_configs:ro
+      # Shared with alloy-daqnode (read-only there) so its jsonl logs are
+      # actually visible to ship -- previously this mount was missing
+      # entirely and log_dir pointed at a container-local /tmp path, so
+      # this service's logs never reached the host at all.
+      - /var/log/panoseti:/var/log/panoseti
     environment:
       HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
       GRPC_PORT: "50051"

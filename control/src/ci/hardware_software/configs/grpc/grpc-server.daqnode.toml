@@ -2,8 +2,12 @@
 # PANOSETI Unified gRPC Server — CI DAQ Node Config
 #
 # Runs daq_data + daq_control on a single port (50051).
-# Telemetry is disabled locally; log records are forwarded
-# to the CI headnode Telemetry service via gRPC.
+# Telemetry is disabled locally. Logs are shipped two ways in parallel
+# during the Alloy migration: (1) jsonl files under log_dir, tailed by
+# the alloy-daqnode container and pushed to the headnode's Loki, and
+# (2) the legacy grpc_logging Log RPC forward to the headnode's
+# Telemetry service. log_dir must match the host path the daqnode
+# profile's alloy-daqnode service mounts (docker-compose.hw-sw.yml).
 #
 # Usage:
 #   pseti-grpc server --config /app/src/ci/integration/configs/grpc/daqnode/server.toml
@@ -17,7 +21,7 @@
 [server]
 port = 50051
 shutdown_grace_period = 5.0
-log_dir = "/tmp/panoseti_logs"
+log_dir = "/var/log/panoseti"
 grpc_logging = true            # forward log records to HEADNODE_IP:HEADNODE_GRPC_PORT
 
 [server.services]
