@@ -22,11 +22,27 @@ from control.pseti import app
 logger = logging.getLogger(__name__)
 
 # Paths used by the data-config swap fixture.
-# CONFIGS is where pseti reads data_config.json (set via $PSETI_CONFIG).
-# CORE_OBS_CONFIGS is where our variant JSON files live.
+# CONFIGS is where pseti reads data_config.json (set via $PSETI_CONFIG) --
+# must be resolved the same way PanoPaths.config_dir() resolves it, NOT via
+# __file__. Inside the headnode-server container, this module's own __file__
+# lives under /app/src/ci/... (a build-time COPY baked into the image),
+# which is a completely different mount (different device/inode) than the
+# live /mnt/config bind mount `pseti` actually reads through $PSETI_CONFIG.
+# Swapping the symlink at the __file__-relative path was a silent no-op from
+# `pseti`'s point of view -- it kept reading whatever data_config.json
+# happened to already be at /mnt/config, so every variant test was
+# unknowingly running against the same (usually first/default) config. Only
+# the "interleave" variant's hard `interleave.enable` gate ever surfaced
+# this, since the other variants' assertions didn't depend on which exact
+# variant was active. CORE_OBS_CONFIGS has the same host-vs-container-build
+# split, via $PSETI_CORE_OBS_CONFIGS.
 _HW_SW_DIR = Path(__file__).parent.parent.parent
-CONFIGS = _HW_SW_DIR / "configs"
-CORE_OBS_CONFIGS = _HW_SW_DIR / "core_obs_configs"
+CONFIGS = Path(os.environ["PSETI_CONFIG"]) if os.environ.get("PSETI_CONFIG") else _HW_SW_DIR / "configs"
+CORE_OBS_CONFIGS = (
+    Path(os.environ["PSETI_CORE_OBS_CONFIGS"])
+    if os.environ.get("PSETI_CORE_OBS_CONFIGS")
+    else _HW_SW_DIR / "core_obs_configs"
+)
 
 # Ordered list of data-config variant names to parametrize.
 # Add new entries here when more variants are validated.
@@ -156,6 +172,25 @@ def active_data_config(request, runner, topology):
         dst.unlink()
     dst.symlink_to(os.path.relpath(src, dst.parent))
     logger.info("active_data_config: configs/data_config.json → %s", src.name)
+
+    # Verify the swap actually took effect from `pseti`'s own point of view
+    # (i.e. resolve $PSETI_CONFIG the same way PanoPaths.config_dir() does),
+    # not just that *this* path's symlink looks right. CONFIGS is meant to
+    # already equal that resolution (see the module-level comment above),
+    # but a future refactor could silently reintroduce the mismatch that
+    # made every dual_anytrig_stim-qN test silently run against whichever
+    # config was already active -- this catches that class of bug at the
+    # point of the swap, with a clear message, instead of several steps
+    # downstream as a confusing "Interleaving is disabled" or similarly
+    # unrelated-looking failure.
+    from control.utils.paths import PanoPaths
+    resolved = (PanoPaths.config_dir() / "data_config.json").resolve()
+    assert resolved == src.resolve(), (
+        f"active_data_config({name}): symlink swap didn't take effect where "
+        f"pseti actually reads from. Wrote to {dst} (resolves to {dst.resolve()}), "
+        f"but PanoPaths.config_dir()/data_config.json resolves to {resolved}. "
+        "These must be the same file/mount."
+    )
 
     # Re-apply hardware config for this variant
     from control.pseti import app

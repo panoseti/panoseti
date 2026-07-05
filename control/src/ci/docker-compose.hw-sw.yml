@@ -139,7 +139,12 @@ services:
       - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
       - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
       - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
-      - ${PSETI_CONFIG}:/mnt/config:ro
+      # Read-write: the happy_path test suite's active_data_config fixture
+      # swaps data_config.json's symlink between variants from inside this
+      # container (see suites/happy_path/conftest.py) -- it needs to write
+      # through the same mount `pseti` reads via $PSETI_CONFIG, not a
+      # separate read-only view.
+      - ${PSETI_CONFIG}:/mnt/config
       - ${PSETI_CORE_OBS_CONFIGS}:/mnt/core_obs_configs:ro
       # Shared with the headnode alloy service (read-only there) -- was
       # missing entirely, so this service's own logs never reached the

@@ -111,7 +111,10 @@ def test_happy_path(booted_calibrated, active_data_config, runner, topology) -> 
     daq_cfg = config_file.get_daq_config()
     network_cfg = config_file.get_network_config()
     util.attach_daq_config(daq_cfg, network_cfg)
-    first_node = daq_cfg.daq_nodes[0]
+    # Check every configured node, not just the first -- this suite currently
+    # only runs against a 1-node fleet, but daq_nodes[0] would silently stop
+    # covering nodes 2-N the moment the topology grows past that.
+    active_nodes = [n for n in daq_cfg.daq_nodes if n.module_ids]
     quabo_addrs = topology.quabo_ips()
 
     # Step 1: isolate queue (stop daemon — idempotent if already stopped)
@@ -138,22 +141,25 @@ def test_happy_path(booted_calibrated, active_data_config, runner, topology) -> 
         boardlocs = [a.boardloc for a in quabo_addrs]
         hk.redis_populated(boardlocs, timeout=30)
 
-        # Step 3b.5: Hashpipe must be running AND past its stuck-at-init window.
-        # A live PID is not sufficient: Hashpipe can block forever during
-        # shared-memory/semaphore init without ever spawning its pipeline
-        # threads, and the disk-growing check below would only catch this
-        # indirectly ~10s later as "no bytes written" (misleading -- it looks
-        # like a data-rate/trigger-config issue, not a stuck process).
-        daq.hashpipe_healthy(node=first_node, daq_config=daq_cfg, run_name=run_name)
+        # Step 3b.5: Hashpipe must be running AND past its stuck-at-init window,
+        # on every configured DAQ node. A live PID is not sufficient: Hashpipe
+        # can block forever during shared-memory/semaphore init without ever
+        # spawning its pipeline threads, and the disk-growing check below
+        # would only catch this indirectly ~10s later as "no bytes written"
+        # (misleading -- it looks like a data-rate/trigger-config issue, not
+        # a stuck process).
+        for node in active_nodes:
+            daq.hashpipe_healthy(node=node, daq_config=daq_cfg, run_name=run_name)
 
-        # Step 3c: DAQ node should be writing data
-        daq.disk_growing(
-            node=first_node,
-            daq_config=daq_cfg,
-            run_name=run_name,
-            min_bytes=500_000,
-            window_s=10,
-        )
+        # Step 3c: every DAQ node should be writing data
+        for node in active_nodes:
+            daq.disk_growing(
+                node=node,
+                daq_config=daq_cfg,
+                run_name=run_name,
+                min_bytes=500_000,
+                window_s=10,
+            )
 
         # Step 4: let it record for a while, then stop explicitly
         logger.info("[HAPPY-PATH] sleeping %ds then stopping", _RUN_DURATION_S)

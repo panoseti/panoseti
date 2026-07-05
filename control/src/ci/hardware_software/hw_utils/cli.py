@@ -18,26 +18,18 @@ from typing import Annotated, Any
 import typer
 from rich.console import Console
 
-from control.utils.paths import PanoPaths
+from ci.compose_env import CONTROL_DIR as _CONTROL_DIR
+from ci.compose_env import HW_CONFIGS_DIR as _HW_CONFIGS_DIR
+from ci.compose_env import HW_CORE_OBS_CONFIGS_DIR as _HW_CORE_OBS_CONFIGS_DIR
+from ci.compose_env import compose_env
 
 app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True)
 console = Console()
 
 # Directory containing hw_tests.toml and the suites/ tree
 _HW_SW_DIR = Path(__file__).parent.parent
-# control/ root (contains pyproject.toml — needed for `uv run`)
-_CONTROL_DIR = PanoPaths.base_dir()
-# panoseti-software/ root (needed for compose env vars)
-_PSETI_ROOT = PanoPaths.software_root_dir()
 # Compose file for headnode/daqnode services (Redis, InfluxDB, etc.)
 _COMPOSE_FILE = _CONTROL_DIR / "src/ci/docker-compose.hw-sw.yml"
-
-# Default configuration path for HITL tests
-_HW_CONFIGS_DIR = _HW_SW_DIR / "configs"
-# Sibling directory holding the data_config.json variants that configs/data_config.json
-# symlinks to (relatively) -- must be mounted alongside PSETI_CONFIG so that symlink
-# resolves inside containers too, not just on the host.
-_HW_CORE_OBS_CONFIGS_DIR = _HW_SW_DIR / "core_obs_configs"
 
 _STATE_FILE = Path.home() / ".pseti" / "hw_runtime_state.json"
 
@@ -58,23 +50,8 @@ def _read_state() -> str | None:
 
 
 def _compose_env() -> dict[str, str]:
-    """Env vars required by docker-compose.hw-sw.yml."""
-    # Inject host UID/GID so that files created in the container have host-compatible ownership
-    uid = os.getuid()
-    gid = os.getgid()
-    # If run via sudo, attempt to use the original user's IDs
-    if uid == 0:
-        uid = int(os.environ.get("SUDO_UID", 0))
-        gid = int(os.environ.get("SUDO_GID", 0))
-
-    return {
-        "PSETI_ROOT_BUILD": str(_PSETI_ROOT),
-        "PSETI_CONTROL_BUILD": str(_CONTROL_DIR),
-        "PSETI_CONFIG": os.environ.get("PSETI_CONFIG", str(_HW_CONFIGS_DIR)),
-        "PSETI_CORE_OBS_CONFIGS": str(_HW_CORE_OBS_CONFIGS_DIR),
-        "HOST_UID": str(uid),
-        "HOST_GID": str(gid),
-    }
+    """Env vars required by docker-compose.hw-sw.yml. See ci.compose_env."""
+    return compose_env()
 
 
 def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -530,7 +507,10 @@ def hw_status() -> None:
 
     try:
         topo = _get_topology()
-        for q in topo.quabo_ips()[:4]:  # show first module only
+        # Every configured quabo, not just the first module -- a status
+        # summary that silently only covers 1/N modules is misleading once
+        # the topology has more than one.
+        for q in topo.quabo_ips():
             import subprocess as sp
             r = sp.run(["ping", "-c1", "-W1", q.ip], capture_output=True, timeout=3)
             reachable = "[green]✓[/green]" if r.returncode == 0 else "[red]✗[/red]"
@@ -796,42 +776,37 @@ def hw_check_env(
 
     # ── Quabo reachability ──────────────────────────────────────────────────
     if topo is not None:
-        console.print("[dim]Checking quabo reachability (first module)...[/dim]")
-        from control.driver.quabo_driver import QUABO
-        for q in topo.quabo_ips()[:4]:
+        console.print("[dim]Checking quabo reachability (all configured modules)...[/dim]")
+        # NOTE: quabo's command protocol (cmd_port, 60000-60003) is
+        # fire-and-forget -- there's no ack packet to wait for, so sending a
+        # command and blocking on recvfrom() always times out regardless of
+        # whether the quabo is actually up. This used to report every
+        # quabo unreachable unconditionally (a permanent false negative),
+        # which trained people to ignore this check. TFTP's get_flashuid
+        # (the same request/response call `pseti uids` already relies on)
+        # is the one protocol quabo actually acks over UDP, so it's the
+        # real liveness signal here.
+        from control.driver.quabo_tftp import tftpw
+        for q in topo.quabo_ips():
             # 1. ICMP ping (raw IP)
             r = subprocess.run(["ping", "-c1", "-W1", q.ip], capture_output=True, timeout=3)
             ping_ok = r.returncode == 0
             ping_icon = "[green]✓[/green]" if ping_ok else "[red]✗[/red]"
-            
-            # 2. UDP Echo (real_ip:cmd_port)
-            udp_ok = False
-            try:
-                drv = QUABO(q.real_ip, port=q.cmd_port)
-                drv.send(drv.make_cmd(0x01))
-                drv.sock.settimeout(1.0)
-                data, _ = drv.sock.recvfrom(1024)
-                if data:
-                    udp_ok = True
-                drv.close()
-            except (TimeoutError, OSError):
-                pass
-            udp_icon = "[green]✓[/green]" if udp_ok else "[red]✗[/red]"
-            
-            # 3. Reboot port check (TFTP/UDP 69 or forwarded)
-            reboot_ok = False
-            import contextlib
-            with contextlib.suppress(Exception):
-                # We can't easily "ping" TFTP without a request, but we can try to open a socket 
-                # or just check if it's reachable. For simplicity, we check if we can bind/connect.
-                # Since it's UDP, we just log it as a separate check.
-                reboot_ok = udp_ok # If cmd port works, we assume network path is okay; 
-                                   # but let's be more specific if possible.
-            reboot_icon = "[green]✓[/green]" if reboot_ok else "[red]✗[/red]"
 
-            console.print(f"  {ping_icon} ICMP {q.ip:15} | {udp_icon} CMD {q.real_ip}:{q.cmd_port} | {reboot_icon} REBOOT {q.real_ip}:{q.reboot_port} (loc={q.boardloc})")
-            if not udp_ok:
-                # During CI/Deployment, Quabos might be unpowered. 
+            # 2. TFTP round-trip (real_ip:reboot_port) -- the only quabo
+            # protocol with a real acknowledged response.
+            tftp_ok = False
+            try:
+                x = tftpw(q.real_ip, q.reboot_port)
+                x.get_flashuid()
+                tftp_ok = True
+            except Exception:
+                pass
+            tftp_icon = "[green]✓[/green]" if tftp_ok else "[red]✗[/red]"
+
+            console.print(f"  {ping_icon} ICMP {q.ip:15} | {tftp_icon} TFTP {q.real_ip}:{q.reboot_port} (loc={q.boardloc})")
+            if not tftp_ok:
+                # During CI/Deployment, Quabos might be unpowered.
                 # We only fail if we are in a state that EXPLICITLY requires them to be reachable.
                 if not pre_deploy and not post_deploy:
                     all_ok = False

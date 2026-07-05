@@ -16,6 +16,9 @@ _CONTROL_DIR = Path(__file__).parent.parent.parent
 if str(_CONTROL_DIR / "src") not in sys.path:
     sys.path.insert(0, str(_CONTROL_DIR / "src"))
 
+from ci.compose_env import compose_env  # noqa: E402
+
+
 def run_cmd(cmd: list[str], cwd: Path | str = _CONTROL_DIR) -> int:
     print(f"\n>>> Running: {' '.join(cmd)}")
     # Use the current environment but ensure PSETI_CONTROL and IN_DOCKER_CI are not overriding host paths
@@ -23,26 +26,14 @@ def run_cmd(cmd: list[str], cwd: Path | str = _CONTROL_DIR) -> int:
     env.pop("PSETI_CONTROL", None)
     env.pop("PSETI_ROOT", None)
     env.pop("IN_DOCKER_CI", None)
-    
-    # Ensure build variables are present for docker compose
-    # Since we run from control/, PSETI_CONTROL_BUILD is . and ROOT is ..
-    if "PSETI_CONTROL_BUILD" not in env:
-        env["PSETI_CONTROL_BUILD"] = "."
-    if "PSETI_ROOT_BUILD" not in env:
-        env["PSETI_ROOT_BUILD"] = ".."
-    
-    # Inject PSETI_CONFIG for HITL environment so check-env passes on host
-    if "PSETI_CONFIG" not in env:
-        env["PSETI_CONFIG"] = str(_CONTROL_DIR / "src/ci/hardware_software/configs")
 
-    # Required by docker-compose.hw-sw.yml's ${PSETI_CORE_OBS_CONFIGS}:...
-    # volume mount -- without it, *any* `docker compose` subcommand against
-    # that file (even `exec`, which doesn't need volumes at runtime) fails
-    # at compose-file interpolation with "invalid spec: empty section
-    # between colons", since Compose parses the whole file regardless of
-    # which subcommand is being run.
-    if "PSETI_CORE_OBS_CONFIGS" not in env:
-        env["PSETI_CORE_OBS_CONFIGS"] = str(_CONTROL_DIR / "src/ci/hardware_software/core_obs_configs")
+    # compose_env() sets PSETI_ROOT_BUILD/PSETI_CONTROL_BUILD/PSETI_CONFIG/
+    # PSETI_CORE_OBS_CONFIGS/HOST_UID/HOST_GID -- the single source of truth
+    # for what docker-compose.hw-sw.yml needs, shared with hw_utils/cli.py.
+    # Two independent reimplementations of this here and in hw_utils/cli.py
+    # each drifted and forgot PSETI_CORE_OBS_CONFIGS at different points,
+    # breaking CI identically both times.
+    env = compose_env(env)
 
     return subprocess.run(cmd, cwd=cwd, env=env).returncode
 
