@@ -114,7 +114,7 @@ async def test_stop_run_bypasses_enqueue_on_fundamental_failure(
     state_mgr.save_state(ledger)
     
     with patch("control.stop.RunStateManager", return_value=state_mgr), \
-         patch("control.stop.TransferQueue") as m_tq_cls, \
+         patch("control.stop_transaction.TransferQueue") as m_tq_cls, \
          patch("control.utils.util.local_ip", side_effect=RuntimeError("Ladder Crash")):
          
          mock_tq = m_tq_cls.return_value

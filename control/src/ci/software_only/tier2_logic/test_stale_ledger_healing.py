@@ -65,7 +65,7 @@ class TestStaleLedgerHealing:
             patch("control.start._check_quabo_reachability"),
             patch("control.start.start_data_flow"),
             patch("control.start.util.start_hk_recorder"),
-            patch("control.start.AsyncDaqControlClient"),
+            patch("control.start_transaction.AsyncDaqControlClient"),
         ):
             await start_run(
                 obs_cfg,  # type: ignore[arg-type]
@@ -120,7 +120,7 @@ class TestStaleLedgerHealing:
             patch("control.start._check_quabo_reachability"),
             patch("control.start.start_data_flow"),
             patch("control.start.util.start_hk_recorder"),
-            patch("control.start.AsyncDaqControlClient"),
+            patch("control.start_transaction.AsyncDaqControlClient"),
         ):
             result = await start_run(
                 obs_cfg,  # type: ignore[arg-type]

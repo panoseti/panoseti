@@ -23,35 +23,39 @@
 # ---------------- TELEMETRY LOGGING ----------------
 import asyncio
 import functools
-import json
 import os
-import pathlib
 import shutil
 import signal
 import socket
-import subprocess
 import sys
-import time
 import traceback
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import typer
 
 # ---------------------------------------------------
 # panoseti-grpc imports
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient
-from panoseti_grpc.daq_data.client import AioDaqDataClient
 from panoseti_grpc.telemetry.logger import get_logger
 
 # control imports
 import control.session_stop as session_stop
 from control.driver import quabo_driver
+from control.hardware_ops import make_run_dirs, start_data_flow
 from control.interfaces import NetworkClient
+from control.start_preflight import (
+    QuaboProbeResult,
+    _check_daq_data_status,
+    _check_daq_reachability,
+    _check_no_remote_hashpipe,
+    _check_quabo_reachability,
+    _quabo_reachability_report,
+    _resolve_strict_mode,
+    ph_baseline_file_ok,
+)
+from control.start_transaction import StartTransaction
 from control.tools.sw_info import get_sw_info
-from control.utils import config_file, file_xfer, pff, util
+from control.utils import config_file, pff, util
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfig,
@@ -72,6 +76,23 @@ from control.utils.run_state import (
     ValidationError,
 )
 
+# Re-exported for backward compatibility: external callers and tests import
+# these names (and patch them) via `control.start`, e.g.
+# `unittest.mock.patch("control.start.make_run_dirs")` or
+# `from control.start import StartTransaction`. Keep them as real top-level
+# imports (not lazy/deferred) so they stay valid patch targets.
+__all__ = [
+    "QuaboProbeResult",
+    "StartTransaction",
+    "app",
+    "async_main_logic",
+    "make_run_dirs",
+    "ph_baseline_file_ok",
+    "start_data_flow",
+    "start_recording",
+    "start_run",
+]
+
 # ---------------------------------------------------
 
 log_dir = PanoPaths.logs_dir()
@@ -84,434 +105,6 @@ logger = get_logger(
 )
 
 # ---------------------------------------------------
-
-verbose = False
-
-class StartTransaction:
-    """
-    Context manager for a transactional observing run startup.
-    Implements a robust rollback ladder and lock management.
-    """
-    def __init__(
-        self,
-        state_mgr: RunStateManager,
-        run_name: str,
-        daq_config: DaqConfig,
-        quabo_uids: QuaboUids,
-        network_config: NetworkConfig,
-        process_mgr: Any = None,
-        net_client: Any = None,
-        fs_mgr: Any = None,
-    ) -> None:
-        self.state_mgr = state_mgr
-        self.run_name = run_name
-        self.daq_config = daq_config
-        self.quabo_uids = quabo_uids
-        self.network_config = network_config
-        self.process_mgr = process_mgr
-        self.net_client = net_client
-        self.fs_mgr = fs_mgr
-        self.success = False
-        # Set to True in start_run immediately before start_data_flow() is called.
-        # Only this transaction may undo data flow that it started — calling
-        # stop_data_flow() on a rollback from a pre-flight failure would silently
-        # halt an already-running valid observation on the same Quabos.
-        self.data_flow_started: bool = False
-        # Set to True in start_run after the ledger is initialized for THIS run.
-        self.ledger_initialized: bool = False
-        # Set of IP addresses of nodes that this transaction attempted to start.
-        self.nodes_attempted: set[str] = set()
-
-    async def __aenter__(self) -> StartTransaction:
-        await asyncio.to_thread(self.state_mgr.acquire_lock)
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: Any,
-    ) -> bool:
-        try:
-            if exc_type is not None:
-                # Ladder Step 0: Identify the failure
-                if exc_type is ValidationError:
-                    logger.warning(f"Aborting start due to validation failure: {exc_val}")
-                else:
-                    # Use traceback.format_exception to handle ExceptionGroups (Python 3.11+)
-                    # This automatically renders the nested tree of sub-exceptions.
-                    full_tb = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
-                    summary = str(exc_val)
-                    if isinstance(exc_val, ExceptionGroup):
-                        sub_errs = ", ".join(type(e).__name__ + ": " + str(e) for e in exc_val.exceptions)
-                        summary = f"{summary} -> {sub_errs}"
-                    logger.error(f"[FAILURE] Start process aborted: {summary}\n{full_tb}")
-                
-                logger.info("Triggering Rollback Ladder...")
-
-                # Wait briefly for cancelled tasks to finish their synchronous I/O
-                await asyncio.sleep(0.2)
-
-                # Ladder Step 1: Update ledger to ABORTED immediately (WAL pattern)
-                # We re-load to ensure we have any node receipts written just before cancellation
-                if self.ledger_initialized:
-                    try:
-                        ledger = await asyncio.to_thread(self.state_mgr.load_state)
-                        if ledger and ledger.run_name == self.run_name:
-                            ledger.status = RunStatus.ABORTED
-                            await asyncio.to_thread(self.state_mgr.save_state, ledger)
-                    except Exception as e_led:
-                        logger.error(f"Failed to update ledger to ABORTED: {e_led}")
-                else:
-                    logger.info("Skipping ledger status update — this transaction never initialized the ledger.")
-
-                # Ladder Step 2: Stop remote DAQ nodes (Any that were attempted)
-                logger.info("Stopping remote DAQ nodes...")
-                # Re-load again to be absolutely sure we have all concurrent updates
-                try:
-                    ledger = await asyncio.to_thread(self.state_mgr.load_state)
-                except Exception:
-                    ledger = None
-                
-                async def rollback_node(node: DaqNode) -> None:
-                    # Rollback logic MUST only apply to nodes that THIS transaction
-                    # attempted to start. Rolling back nodes from a pre-existing
-                    # conflicting run would violate the non-interference invariant.
-                    if str(node.ip_addr) not in self.nodes_attempted:
-                        return
-
-                    receipt = next((n for n in ledger.nodes if str(n.ip_addr) == str(node.ip_addr)), None) if ledger else None
-                    if not receipt:
-                        return
-
-                    logger.info(f"Rolling back node {node.ip_addr} (Status: {receipt.status})...")
-                    try:
-                        grpc_host, grpc_port = util.daq_grpc_endpoint(node, self.daq_config)
-                        async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                            await client.StopDaq({'data_dir': node.data_dir, 'run_dir': self.run_name}, timeout=15.0)
-                    except Exception as stop_err:
-                        logger.error(f"StopDaq RPC failed for {node.ip_addr} during rollback ({stop_err}). Escalating to SSH pkill...")
-                        try:
-                            ssh_args = ["ssh", *util.ssh_options]
-                            if node.port_forwarding and node.port_forwarding.status:
-                                real_ip = str(node.port_forwarding.gw_ip)
-                                port = str(node.port_forwarding.port)
-                                ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
-                            else:
-                                ssh_args.append(f"{node.username}@{node.ip_addr}")
-
-                            ssh_args.append("pkill -9 hashpipe")
-                            res = await asyncio.create_subprocess_exec(*ssh_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                            await res.wait()
-                            if res.returncode in [0, 1]:
-                                logger.info(f"Hard-kill escalation succeeded for node {node.ip_addr}")
-                            else:
-                                logger.critical(f"Hard-kill SSH escalation failed for node {node.ip_addr} (rc={res.returncode})")
-                        except Exception as ssh_err:
-                            logger.critical(f"Failed to stop node {node.ip_addr} even with SSH escalation: {ssh_err}")
-                            logger.exception(ssh_err)
-
-                async with asyncio.TaskGroup() as tg:
-                    for node in self.daq_config.daq_nodes:
-                        if node.module_ids:
-                            tg.create_task(rollback_node(node))
-
-                # Ladder Step 3: Stop Quabo data flow — ONLY if this transaction
-                # was the one that started it. Calling stop_data_flow without
-                # having called start_data_flow would interrupt a pre-existing
-                # valid observation on the same Quabos.
-                if self.data_flow_started:
-                    logger.info("Stopping Quabo data flow (started by this transaction)...")
-                    try:
-                        await asyncio.to_thread(util.stop_data_flow, self.quabo_uids, self.network_config)
-                    except Exception as e2:
-                        logger.error(f"Failed to stop Quabo data flow: {e2}")
-                else:
-                    logger.info("Skipping stop_data_flow — this transaction never called start_data_flow.")
-
-                # Ladder Step 4: Kill local daemons
-                logger.info("Stopping local daemons...")
-                try:
-                    if self.process_mgr:
-                        await asyncio.to_thread(self.process_mgr.kill, util.hk_recorder_name)
-                        await asyncio.to_thread(self.process_mgr.kill, util.hv_updater_name)
-                        await asyncio.to_thread(self.process_mgr.kill, util.module_temp_monitor_name)
-                    else:
-                        await asyncio.to_thread(util.kill_hk_recorder)
-                        await asyncio.to_thread(util.kill_hv_updater)
-                        await asyncio.to_thread(util.kill_module_temp_monitor)
-                except Exception as e3:
-                    logger.error(f"Failed to kill local daemons: {e3}")
-
-                # Ladder Step 5: Archive partial artifacts
-                try:
-                    aborted_base = f"{self.daq_config.head_node_data_dir}/_aborted/{self.run_name}"
-                    suffix = 1
-                    aborted_dir = aborted_base
-                    while await asyncio.to_thread(os.path.exists, aborted_dir):
-                        aborted_dir = f"{aborted_base}_{suffix}"
-                        suffix += 1
-
-                    logger.info(f"Archiving partial artifacts to {aborted_dir}")
-                    await asyncio.to_thread(os.makedirs, aborted_dir, exist_ok=True)
-
-                    # Write failure context
-                    err_msg = str(exc_val)
-                    full_tb = "".join(traceback.format_exception(exc_type, exc_val, exc_tb)) if exc_tb else ""
-                    def dump_context(msg: str, tb: str) -> None:
-                        with open(f"{aborted_dir}/start_failure_context.json", "w") as f:
-                            json.dump({"error": msg, "traceback": tb}, f, indent=4)
-                    await asyncio.to_thread(dump_context, err_msg, full_tb)
-
-                    local_run_dir = f"{self.daq_config.head_node_data_dir}/{self.run_name}"
-                    if await asyncio.to_thread(os.path.exists, local_run_dir):
-                        items = os.listdir(local_run_dir)
-                        logger.info(f"Found {len(items)} items in {local_run_dir} to archive: {items}")
-                        for item in items:
-                            s = os.path.join(local_run_dir, item)
-                            d = os.path.join(aborted_dir, item)
-                            await asyncio.to_thread(shutil.move, s, d)
-                        await asyncio.to_thread(os.rmdir, local_run_dir)
-                    else:
-                        logger.warning(f"local_run_dir {local_run_dir} does not exist; nothing to archive.")
-                except Exception:
-                    logger.exception("Failed to archive partial artifacts (non-fatal)")
-
-            if exc_type is ValidationError:
-                return True # Suppress validation errors for a clean exit
-            
-            if exc_type is not None:
-                return not issubclass(exc_type, (KeyboardInterrupt, SystemExit, asyncio.CancelledError))
-            
-            return False
-
-        finally:
-            await asyncio.to_thread(self.state_mgr.release_lock)
-
-# check that PH calibration file is present, nonempty, and at most 24 hours old
-#
-def ph_baseline_file_ok(path: pathlib.Path | str | None = None) -> bool:
-    """Verify that the Pulse Height calibration file is valid.
-
-    Checks that the file exists, is not empty, and is at most 24 hours old.
-    Stale or missing calibration data can lead to incorrect PH measurements.
-
-    Args:
-        path: Optional Path (or str) to the baseline file. Defaults to using config_file.get_quabo_ph_baselines().
-
-    Returns:
-        True if the file is valid and values are within range, False otherwise.
-    """
-    # Resolve the path if not provided
-    if path is None:
-        try:
-            path = config_file.get_quabo_ph_baseline_path()
-        except FileNotFoundError:
-            print('PH baseline file not found.  Run config.py --calibrate-ph')
-            return False
-
-    path = pathlib.Path(path)
-    if not path.exists():
-        print(f'{path} not found.  Run config.py --calibrate-ph')
-        return False
-
-    # Common checks for the resolved path
-    if path.stat().st_size == 0:
-        print(f'{path} is empty.  Run config.py --calibrate-ph')
-        return False
-    if path.stat().st_mtime < time.time() - 86400:
-        print(f'{path} is too old (>24h).  Run config.py --calibrate-ph')
-        return False
-    
-    try:
-        # Load and validate content
-        with open(path) as f:
-            data = json.load(f)
-        from control.utils.pydantic_config_models import PhBaselineConfig
-        baselines = PhBaselineConfig(**data)
-        return config_file.validate_ph_baselines(baselines)
-    except Exception as e:
-        print(f"PH baseline validation failed: {e}")
-        return False
-
-
-def start_data_flow(
-    quabo_uids: QuaboUids,
-    data_config: DataConfig,
-    daq_config: DaqConfig,
-    network_config: NetworkConfig
-) -> None:
-    """Initialize data flow from Quabos by configuring networking and modes.
-    
-    For every Quabo in every module:
-    1. Tell it where to send Housekeeping (HK) packets (head node).
-    2. Tell it where to send Data packets (assigned DAQ node).
-    3. Set its DAQ acquisition mode (Image/PH/Stim/Flash).
-    4. Synchronize PPS.
-
-    Args:
-        quabo_uids: Validated Quabo UID configuration.
-        data_config: Science/engineering acquisition parameters.
-        daq_config: DAQ node and head node networking details.
-        network_config: Network routing and port forwarding settings.
-    """
-    daq_params = quabo_driver.get_daq_params(data_config)
-    for dome in quabo_uids.domes:
-        for module in dome.modules:
-            # Note: QuaboUidModule has 'ip_addr'
-            base_ip_addr = str(module.ip_addr)
-            module_id = config_file.ip_addr_to_module_id(base_ip_addr)
-            try:
-                # daq_config.model_dump() is still needed for config_file.module_id_to_daq_node
-                # until that is also fully refactored to take the model.
-                # Actually I refactored it to take both.
-                daq_node = config_file.module_id_to_daq_node(daq_config, module_id)
-            except Exception:
-                continue
-            daq_node_ip_addr = str(daq_node.ip_addr)
-            head_node_ip_addr = str(daq_config.head_node_ip_addr)
-            for i in range(4):
-                if module.quabos[i].uid == '':
-                    continue
-                ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
-                ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
-                real_ip = ip_ports.ip_addr
-                cmd_port = ip_ports.cmd_port
-                logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
-                from ipaddress import ip_address
-                quabo = quabo_driver.QUABO(real_ip, cmd_port)
-                if verbose:
-                    print(f'setting HK packet dest to {head_node_ip_addr} on quabo {ip_addr}')
-                quabo.hk_packet_destination(ip_address(head_node_ip_addr))
-                if verbose:
-                    print(f'setting data packet dest to {daq_node_ip_addr} on quabo {ip_addr}')
-                quabo.data_packet_destination(ip_address(daq_node_ip_addr))
-                if verbose:
-                    print(f'setting DAQ mode on quabo {ip_addr}')
-                quabo.send_daq_params(daq_params)
-                quabo.close()
-            # send software 1PPS
-            time.sleep(0.5)
-            logger.info(f'Send software 1PPS to {base_ip_addr}')
-            ip_ports = util.get_quabo_ip_port(module.ip_addr, 0, network_config)
-            real_ip = ip_ports.ip_addr
-            cmd_port = ip_ports.cmd_port
-            quabo = quabo_driver.QUABO(real_ip, cmd_port)
-            quabo.swpps()
-            quabo.close()
-
-
-def make_run_dirs(
-    run_name: str,
-    obs_config: ObsConfig,
-    daq_config: DaqConfig,
-    quabo_uids: QuaboUids,
-    data_config: DataConfig,
-    network_config: NetworkConfig
-) -> None:
-    """Create hierarchical run directories and snapshot configuration files.
-    
-    Snapshotting Contract:
-    - Instead of copying from disk (which can mutate), this method writes the 
-      in-memory Pydantic models back to JSON files in the run directory.
-    - Ensures the run directory is a faithful record of the actual run parameters.
-    """
-    # logger = logging.getLogger('PSETI.Start')
-    run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
-    os.makedirs(run_dir, exist_ok=True)
-
-    # 1. Snapshot in-memory config models to head node run dir
-    # This prevents mid-flight disk mutations from leaking into the run records.
-    # Note: we exclude bidirectional links ('modules', 'daq_node') to avoid circular serialization.
-    config_snapshots = {
-        config_file.obs_config_filename: obs_config,
-        config_file.daq_config_filename: daq_config,
-        config_file.data_config_filename: data_config,
-        config_file.network_config_filename: network_config,
-        config_file.quabo_uids_filename: quabo_uids,
-    }
-    
-    for filename, model in config_snapshots.items():
-        base_name = os.path.basename(filename)
-        dest_path = f"{run_dir}/{base_name}"
-        with open(dest_path, "w") as f:
-            # We use model_dump then json.dump to allow fine-grained exclusion
-            data = model.model_dump(exclude={'modules', 'daq_node'})
-            json.dump(data, f, indent=4, default=str)
-            
-    # 2. Snapshot additional transient artifacts into the head node run dir.
-    # We copy EVERYTHING from state/calibration to ensure full context is archived.
-    calib_dir = PanoPaths.calibration_dir()
-    if calib_dir.exists():
-        for item in calib_dir.iterdir():
-            if item.is_file():
-                shutil.copy2(item, Path(run_dir) / item.name)
-
-    # Explicitly ensure sw_info.json and ph_baseline.json are captured from their primary locations
-    # We check multiple likely paths for sw_info.json to ensure it's captured in both host and Docker environments.
-    sw_info_paths = [
-        PanoPaths.software_root_dir() / config_file.sw_info_filename,
-        PanoPaths.base_dir() / config_file.sw_info_filename,
-        Path("/") / config_file.sw_info_filename,
-        Path("/app") / config_file.sw_info_filename,
-    ]
-    
-    sw_info_src = next((p for p in sw_info_paths if p.exists()), None)
-
-    artifact_map = {
-        config_file.quabo_ph_baseline_filename: calib_dir / config_file.quabo_ph_baseline_filename,
-        config_file.sw_info_filename: sw_info_src,
-    }
-    for base_name, src_path in artifact_map.items():
-        if src_path and src_path.exists():
-             shutil.copy2(src_path, f'{run_dir}/{base_name}')
-        else:
-             logger.debug(f"Artifact {base_name} not found in expected locations; skipping snapshot.")
-
-    # 3. make module and run directories on DAQ nodes
-    for node in daq_config.daq_nodes:
-        # Check if this node has any modules assigned
-        # DaqNode has module_ids
-        if not node.module_ids:
-            continue
-        if util.is_local(node.ip_addr, daq_config):
-            # We need to know which module IDs are on this node to create module_N dirs
-            # node.module_ids is a list of ints or a range string (preprocessed to list[int])
-            for mid in node.module_ids:
-                path = f'{daq_config.head_node_data_dir}/module_{mid}/{run_name}'
-                if verbose:
-                    print(f"mkdir -p {path}")
-                os.makedirs(path, exist_ok=True)
-        else:
-            ip_addr = str(node.ip_addr)
-            username = node.username
-            data_dir = node.data_dir
-            rcmds = [f'mkdir {data_dir}/{run_name}']
-            for mid in node.module_ids:
-                rcmds.append(f'mkdir -p {data_dir}/module_{mid}/{run_name}')
-            # create process snapshot
-            rcmds.append(f'cd {data_dir}/{run_name}; ps -ux > pss_{ip_addr}.log')
-            rcmnd = ';'.join(rcmds)
-            logger.info(f'DAQ IP: {ip_addr}')
-            ssh_args = ["ssh", *util.ssh_options]
-            if node.port_forwarding and node.port_forwarding.status:
-                real_ip = str(node.port_forwarding.gw_ip)
-                port = str(node.port_forwarding.port)
-                ssh_args.extend(["-p", port, f"{username}@{real_ip}"])
-            else:
-                ssh_args.append(f"{username}@{ip_addr}")
-            ssh_args.append(rcmnd)
-            
-            if verbose:
-                print(" ".join(ssh_args))
-            res = subprocess.run(ssh_args, capture_output=True, text=True)
-            if res.returncode != 0:
-                raise RuntimeError(f"Failed to create run dirs on {ip_addr}: {res.stderr}")
-
-    # copy config files to DAQ nodes
-    file_xfer.copy_config_files(daq_config, run_name, verbose)
 
 
 async def start_recording(
@@ -570,9 +163,9 @@ async def start_recording(
     async def start_node(node_validator: DaqNode) -> None:
         if not node_validator.module_ids:
             return
-        
+
         logger.info(f'StartDaq via NetworkClient: {node_validator.ip_addr} modules={node_validator.module_ids}')
-        
+
         start_args = {
             'data_dir':         node_validator.data_dir,
             'daq_ip_addr':      str(node_validator.ip_addr),
@@ -584,9 +177,9 @@ async def start_recording(
             'module_id':        node_validator.module_ids,
             'force_clean_semaphores': force_clean_semaphores,
         }
-        
+
         last_err = ""
-        
+
         for attempt in range(1, startdaq_retries + 1):
             try:
                 ok = await asyncio.wait_for(
@@ -609,7 +202,7 @@ async def start_recording(
                     await asyncio.sleep(1.0)
                     continue
                 break
-        
+
         # If we reach here, it's a hard failure or we ran out of retries
         await state_mgr.update_node_receipt(NodeReceipt(
             ip_addr=node_validator.ip_addr,
@@ -634,19 +227,19 @@ async def start_recording(
 
     # 3. Liveness Probe (Heartbeat) with retry loop
     logger.info("Waiting for Hashpipe stabilization heartbeat...")
-    
+
     async def probe_node(node_validator: DaqNode) -> None:
         if not node_validator.module_ids:
             return
-        
+
         # Retry loop: N attempts, 1s backoff
         last_err = ""
         for attempt in range(1, startdaq_retries + 1):
             if cancel_event.is_set():
                 raise asyncio.CancelledError("Heartbeat check cancelled by user")
-            
+
             await asyncio.sleep(1.0) # 1s between attempts
-            
+
             try:
                 status = await net_client.get_daq_status(node_validator, timeout_s=5.0)
                 if hasattr(status, 'hashpipe_running'):
@@ -657,7 +250,7 @@ async def start_recording(
                     running = status.get('hashpipe_running')
                     pid = status.get('hashpipe_pid')
                     msg = status.get('message', 'hashpipe exited during stabilization')
-                
+
                 if running:
                     logger.info(f"Node {node_validator.ip_addr} heartbeat OK on attempt {attempt} (PID {pid})")
                     await state_mgr.update_node_receipt(NodeReceipt(
@@ -673,7 +266,7 @@ async def start_recording(
                 if attempt == startdaq_retries:
                     break
                 continue
-        
+
         # If we reached here, heartbeat failed
         await state_mgr.update_node_receipt(NodeReceipt(
             ip_addr=node_validator.ip_addr,
@@ -694,7 +287,7 @@ async def start_recording(
         async def verify_liveness_final(node_validator: DaqNode) -> None:
             if not node_validator.module_ids:
                 return
-            
+
             try:
                 status = await net_client.get_daq_status(node_validator, timeout_s=5.0)
                 if hasattr(status, 'hashpipe_running'):
@@ -703,10 +296,10 @@ async def start_recording(
                 else:
                     running = status.get('hashpipe_running')
                     msg = status.get('message', 'hashpipe exited during stabilization')
-                
+
                 if not running:
                     raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {msg}")
-                
+
                 logger.info(f"Node {node_validator.ip_addr} Phase 5 Liveness OK")
             except Exception as e:
                 await state_mgr.update_node_receipt(NodeReceipt(
@@ -719,243 +312,6 @@ async def start_recording(
         for n in daq_config.daq_nodes:
             tg.create_task(verify_liveness_final(n))
 
-
-@dataclass(frozen=True)
-class QuaboProbeResult:
-    uid: str
-    ip: str
-    port: int
-    reachable: bool
-    error: str | None
-
-async def _quabo_reachability_report(
-    quabo_uids: QuaboUids,
-    network_config: NetworkConfig
-) -> list[QuaboProbeResult]:
-    """Perform a structured reachability sweep and return results per-Quabo."""
-    results: list[QuaboProbeResult] = []
-    
-    async def check_one(uid: str, base_ip: str, index: int) -> None:
-        from ipaddress import ip_address
-        ip_ports = util.get_quabo_ip_port(ip_address(base_ip), index, network_config)
-        real_ip = ip_ports.ip_addr
-        cmd_port = ip_ports.cmd_port
-        
-        from control.utils.config_validator import _check_reachability
-        
-        loop = asyncio.get_running_loop()
-        ok, err = await loop.run_in_executor(None, lambda: _check_reachability(str(real_ip), cmd_port, target_type="quabo", timeout=2.0))
-        results.append(QuaboProbeResult(
-            uid=uid,
-            ip=str(real_ip),
-            port=cmd_port,
-            reachable=ok,
-            error=err if not ok else None
-        ))
-
-    async with asyncio.TaskGroup() as tg:
-        for dome in quabo_uids.domes:
-            for module in dome.modules:
-                base_ip = str(module.ip_addr)
-                for i in range(4):
-                    uid = module.quabos[i].uid
-                    if uid != '':
-                        tg.create_task(check_one(uid, base_ip, i))
-    return results
-
-async def _check_quabo_reachability(
-    quabo_uids: QuaboUids,
-    network_config: NetworkConfig,
-    lenient: bool = False
-) -> None:
-    """Verify that all configured Quabos are reachable on the network."""
-    logger.info("Performing Quabo reachability sweep...")
-
-    results = await _quabo_reachability_report(quabo_uids, network_config)
-    unreachable = [r for r in results if not r.reachable]
-    
-    if not unreachable:
-        logger.info("All configured Quabos are reachable.")
-        return
-
-    for r in unreachable:
-        msg = f"Quabo {r.uid} at {r.ip}:{r.port} is UNREACHABLE: {r.error}"
-        if lenient:
-            logger.warning(f"{msg} (Non-fatal in container/CI environment)")
-        else:
-            logger.error(msg)
-    
-    if not lenient:
-        summary = "\n".join([f"  - {r.uid} ({r.ip}:{r.port}): {r.error}" for r in unreachable])
-        raise ValidationError(f"One or more Quabos are unreachable:\n{summary}")
-
-
-async def _check_daq_reachability(daq_config: DaqConfig, net_client: NetworkClient) -> None:
-    """Verify that all configured DAQ nodes are responding via gRPC."""
-    logger.info("Performing DAQ node gRPC reachability sweep...")
-    async def check_node_grpc(node: DaqNode) -> None:
-        if not node.module_ids:
-            return
-        try:
-            await net_client.get_daq_status(node, timeout_s=5.0)
-        except Exception as e:
-            raise ValidationError(f"DAQ node {node.ip_addr} gRPC is unreachable: {e}") from e
-
-    try:
-        async with asyncio.TaskGroup() as tg:
-            for node in daq_config.daq_nodes:
-                tg.create_task(check_node_grpc(node))
-        logger.info("All configured DAQ nodes are reachable via gRPC.")
-    except* Exception as eg:
-        for i, exc in enumerate(eg.exceptions, 1):
-            tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-            logger.error(f"gRPC reachability check {i}/{len(eg.exceptions)} failed: {type(exc).__name__}: {exc}\n{tb}")
-        raise ValidationError("One or more DAQ nodes are unreachable via gRPC.") from eg
-
-
-def _resolve_strict_mode(strict_flag: bool | None, daq_config: DaqConfig) -> bool:
-    """Resolve the effective strict mode for pre-flight checks.
-
-    Resolution order:
-    1. CLI flag ``--strict/--no-strict`` (highest priority).
-    2. Env var ``PSETI_STRICT=1|0``.
-    3. Tier-aware default: ``True`` unless we are in a pure-SW container CI
-       tier (tier3_fleet, tier4_chaos, tier5_integration).  HW-SW tests and
-       bare-metal runs always default to strict.
-
-    Args:
-        strict_flag: Value from ``--strict/--no-strict`` CLI option.  ``None``
-            means the flag was not passed and the default should be applied.
-        daq_config: Loaded DAQ configuration model.
-
-    Returns:
-        True if strict mode is active; False for lenient mode.
-    """
-    if strict_flag is not None:
-        return strict_flag
-    env_val = os.environ.get("PSETI_STRICT")
-    if env_val is not None:
-        return env_val.strip() not in ("0", "false", "no")
-    # Default: lenient only in known SW-simulation CI tiers.
-    sw_tiers = {"tier3_fleet", "tier4_chaos", "tier5_integration"}
-    in_sw_tier = os.environ.get("PSETI_TEST_TIER", "") in sw_tiers
-    return not (daq_config.head_node_container and in_sw_tier)
-
-
-async def _check_no_remote_hashpipe(daq_config: DaqConfig, net_client: NetworkClient, force_restart: bool = False) -> None:
-    """Verify that no DAQ node is already running Hashpipe.
-
-    Prevents a new start transaction from issuing UDP configuration to Quabos
-    while an existing observation is in progress, which would corrupt the
-    running run.
-
-    Args:
-        daq_config: Validated DAQ configuration model.
-        net_client: Dependency-injected network client.
-        force_restart: If True, call StopDaq on each node that reports a
-            running Hashpipe instead of raising.
-
-    Raises:
-        ValidationError: If any DAQ node reports Hashpipe running and
-            *force_restart* is False.
-    """
-    logger.info("Performing remote Hashpipe liveness pre-flight check...")
-
-    async def check_node(node: DaqNode) -> None:
-        if not node.module_ids:
-            return
-        try:
-            status = await net_client.get_daq_status(node, timeout_s=5.0)
-            if hasattr(status, 'hashpipe_running'):
-                running = status.hashpipe_running
-                pid = status.hashpipe_pid
-            else:
-                running = status.get("hashpipe_running")
-                pid = status.get("hashpipe_pid")
-        except Exception as e:
-            logger.warning("StatusDaq failed for %s during hashpipe pre-flight: %s", node.ip_addr, e)
-            return
-
-        if running:
-            if force_restart:
-                logger.warning(
-                    "Hashpipe running on %s (pid=%s) — stopping per --force-restart.",
-                    node.ip_addr, pid,
-                )
-                try:
-                    await net_client.stop_daq_node(node, timeout_s=15.0)
-                except Exception as stop_err:
-                    raise ValidationError(
-                        f"--force-restart: StopDaq failed for {node.ip_addr}: {stop_err}"
-                    ) from stop_err
-            else:
-                raise ValidationError(
-                    f"Hashpipe already running on {node.ip_addr} "
-                    f"(pid={pid}). "
-                    "Run `pseti stop` first, or pass --force-restart."
-                )
-
-    try:
-        async with asyncio.TaskGroup() as tg:
-            for node in daq_config.daq_nodes:
-                tg.create_task(check_node(node))
-    except* Exception as eg:
-        for i, exc in enumerate(eg.exceptions, 1):
-            if isinstance(exc, ValidationError):
-                 logger.error(f"Remote Hashpipe check {i}/{len(eg.exceptions)} failed: {exc}")
-            else:
-                 tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-                 logger.error(f"Remote Hashpipe check {i}/{len(eg.exceptions)} failed: {type(exc).__name__}: {exc}\n{tb}")
-        
-        # If any were ValidationErrors, re-raise the first one to maintain existing API contract
-        # but the operator now sees all of them in the log.
-        for exc in eg.exceptions:
-            if isinstance(exc, ValidationError):
-                raise exc from None
-        raise ValidationError("Remote Hashpipe liveness check failed.") from eg
-
-    logger.info("Remote Hashpipe pre-flight OK — no running instances detected.")
-
-
-async def _check_daq_data_status(
-    daq_config: DaqConfig,
-    network_config: NetworkConfig,
-    do_init: bool = False,
-    gateway_host: str = "localhost",
-    gateway_port: int = 50051,
-) -> None:
-    """Verify DaqData gateway is reachable and optionally request re-initialization."""
-    logger.info("Performing DaqData gateway status pre-flight check...")
-
-    async with AioDaqDataClient(gateway_host, gateway_port) as client:
-        status = await client.status()
-        if not status or not status.hp_io_initialized:
-            if do_init:
-                logger.info("Requesting DaqData gateway re-initialization...")
-                # The gateway proxies InitHpIo to each edge node as-is, so
-                # data_dir must be a real, non-empty path (InitHpIoParameters
-                # requires it) even though edge nodes normally auto-init on
-                # their own startup and ignore this unless force=True.
-                hp_io_cfg = {
-                    "data_dir": daq_config.daq_nodes[0].data_dir,
-                    "update_interval_seconds": 0.1,
-                    "force": False,
-                    "simulate_daq": False,
-                    "module_ids": [],
-                }
-                success = await client.init_hp_io(hp_io_cfg)
-                if success:
-                    logger.info("DaqData gateway re-initialization succeeded.")
-                else:
-                    logger.warning("DaqData gateway re-initialization failed.")
-            else:
-                logger.warning(
-                    "DaqData gateway hp_io is NOT initialized. "
-                    "Real-time streaming (pseti show sci) will not be available. "
-                    "Use --init-snapshot to enable it automatically (default)."
-                )
-        else:
-            logger.info("DaqData gateway hp_io is initialized and valid.")
 
 async def start_run(
     obs_config: ObsConfig,
@@ -976,6 +332,7 @@ async def start_run(
     net_client: Any = None,
     fs_mgr: Any = None,
     force_clean_semaphores: bool = False,
+    verbose: bool = False,
 ) -> str | None:
     """Main transactional run coordinator.
 
@@ -1005,6 +362,7 @@ async def start_run(
         process_mgr, net_client, fs_mgr: Dependency-injected adapters (real
             implementations are constructed if not supplied).
         force_clean_semaphores: Forwarded to ``StartDaq`` — see its docstring.
+        verbose: Print extra command detail from ``start_data_flow``/``make_run_dirs``.
 
     Raises:
         ValidationError: Any pre-flight check fails in strict mode, or a
@@ -1013,7 +371,7 @@ async def start_run(
     Returns:
         The run name on success, or ``None`` if the transaction failed.
     """
-    
+
     # --- Resolve strict mode ---
     strict_mode = _resolve_strict_mode(strict, daq_config)
     logger.info("Strict mode: %s", strict_mode)
@@ -1034,17 +392,17 @@ async def start_run(
 
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
-    
+
     def signal_handler(signal: signal.Signals) -> None:
         logger.critical(f"start.py received the signal {signal!r}")
         cancel_event.set()
-         
+
 
     # Install signal handlers
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, functools.partial(signal_handler, sig))
-    
+
     if run_name is None:
         run_name = pff.run_dir_name(obs_config.name, data_config.run_type)
 
@@ -1085,7 +443,7 @@ async def start_run(
                         except OSError:
                             logger.info(f"Detected stale {existing_state.status} ledger from dead PID {existing_state.pid} on this host.")
                             stale = True
-                
+
                 if stale:
                     aborted_base = f"{daq_config.head_node_data_dir}/_aborted/{existing_state.run_name}"
                     suffix = 1
@@ -1093,7 +451,7 @@ async def start_run(
                     while await asyncio.to_thread(os.path.exists, aborted_dir):
                         aborted_dir = f"{aborted_base}_{suffix}"
                         suffix += 1
-                    
+
                     logger.info(f"Archiving stale ledger to {aborted_dir}")
                     os.makedirs(aborted_dir, exist_ok=True)
                     shutil.move(str(state_mgr.state_path), f"{aborted_dir}/{STATE_FILE_STALE}")
@@ -1150,12 +508,13 @@ async def start_run(
                     await asyncio.to_thread(fs_mgr.create_run_dirs, run_name, obs_config, daq_config, quabo_uids, data_config, network_config)
                 else:
                     await asyncio.to_thread(
-                        make_run_dirs, run_name, obs_config, daq_config, quabo_uids, data_config, network_config
+                        make_run_dirs, run_name, obs_config, daq_config, quabo_uids, data_config, network_config,
+                        verbose=verbose,
                     )
 
             # Validation checks
             get_sw_info()
-            
+
             config_file.associate(daq_config, quabo_uids)
             config_file.show_daq_assignments(quabo_uids)
 
@@ -1185,8 +544,8 @@ async def start_run(
 
                 logger.info('starting data flow from quabos')
                 tx.data_flow_started = True
-                start_data_flow(quabo_uids, data_config, daq_config, network_config)
-                
+                start_data_flow(quabo_uids, data_config, daq_config, network_config, verbose=verbose)
+
                 logger.info('starting recording (Phase 3: Transactional)')
                 await start_recording(
                     obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx, net_client,
@@ -1201,21 +560,21 @@ async def start_run(
                         logger.info("No DaqData service detected on gateway port (UNIMPLEMENTED). Skipping pre-flight.")
                     else:
                         logger.warning(f"DaqData service pre-flight check failed: {e}. Proceeding anyway.")
-            
+
             # Mark ACTIVE in ledger
             ledger = state_mgr.load_state()
             if ledger:
                 ledger.status = RunStatus.ACTIVE
                 state_mgr.save_state(ledger)
-                
+
             # Write legacy current_run file for compatibility
             if fs_mgr:
                 await asyncio.to_thread(fs_mgr.write_metadata, run_name, {"run_name": run_name})
-            
+
             # Always write the local legacy current_run file so background daemons (interleaver, HK)
             # can find the active run.
             util.write_run_name(daq_config, run_name)
-            
+
             logger.info(f'started run {run_name}')
             tx.success = True
             return run_name
@@ -1230,7 +589,7 @@ async def start_run(
     finally:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(sig)
-    
+
     return run_name if getattr(tx, 'success', False) else None
 
 
@@ -1282,14 +641,11 @@ def main(
     fail if a recording run is in progress,
     or if recording activities are active
     """
-    global verbose
-    verbose = verbose_opt
-    
     if not yes:
         typer.confirm("Are you sure you want to start a new recording run?", abort=True)
-        
+
     success = asyncio.run(async_main_logic(
-        no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset, no_check_daq,
+        no_hv, no_redis, no_data, nsecs, stop_session, verbose_opt, force_reset, no_check_daq,
         strict=strict, force_restart=force_restart, init_snapshot=init_snapshot,
         force_clean_semaphores=force_clean_semaphores,
     ))
@@ -1324,7 +680,7 @@ async def async_main_logic(
         RealNetworkClient,
         RealProcessManager,
     )
-    
+
     process_mgr = RealProcessManager()
     net_client = RealNetworkClient(daq_config)
     fs_mgr = RealFileSystemManager(daq_config)
@@ -1339,8 +695,9 @@ async def async_main_logic(
         net_client=net_client,
         fs_mgr=fs_mgr,
         force_clean_semaphores=force_clean_semaphores,
+        verbose=verbose,
     )
-    
+
     if not success_run_name:
         return False
 
@@ -1357,7 +714,7 @@ async def async_main_logic(
         )
         if stop_session:
             session_stop.session_stop(obs_config)
-    
+
     return True
 
 

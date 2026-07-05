@@ -173,7 +173,7 @@ class TestDataFlowStartedFlag:
 
         with (
             patch.object(util_mod, "stop_data_flow") as mock_stop,
-            patch("control.start.AsyncDaqControlClient"),
+            patch("control.start_transaction.AsyncDaqControlClient"),
         ):
             await tx.__aenter__()
             await tx.__aexit__(RuntimeError, RuntimeError("hashpipe failed"), None)
