@@ -1,0 +1,184 @@
+# Production head-node stack: Redis, InfluxDB, Loki, Grafana, Alloy, and the
+# unified gRPC server (telemetry + daq_data gateway role).
+#
+# Adapted from control/src/ci/docker-compose.hw-sw.yml's "headnode" profile
+# (the one thing in this stack with real verification behind it this
+# session) -- same images, same PSETI_DATA_DIR-driven persistence
+# convention, with the HITL-test-only bits removed (core_obs_configs
+# variant-swapping mount, IN_DOCKER_CI flag) and Grafana's own state
+# directory added, which the test profile never needed to persist.
+#
+# Required env vars (see control/CLI.md / `pseti paths`):
+#   PSETI_ROOT_BUILD   - path to the panoseti-software checkout (for the
+#                        headnode-server build context and Grafana
+#                        provisioning mount)
+#   PSETI_CONFIG       - path to the site's active configs/ directory
+#                        (the obs_config.json/daq_config.json/etc. symlink
+#                        target) -- mounted read-only at /mnt/config
+#   PSETI_DATA_DIR     - host directory for durable service state
+#                        (default /mnt/panoseti-data)
+#   HOST_UID/HOST_GID  - host UID/GID for file ownership inside containers
+#                        (default 1000/1000)
+#   HEADNODE_IP        - this machine's real IP (Alloy pushes to Loki here
+#                        even though they're colocated, since both run
+#                        with network_mode: host)
+#
+# Usage:
+#   docker compose -f docker-compose.headnode.yml up -d --build
+
+configs:
+  alloy_config:
+    content: |
+      // Unified log aggregation for PANOSETI components.
+      // Reads per-host .jsonl files written by panoseti_grpc get_logger().
+      // Directory layout: /var/log/panoseti/{hostname}/{service}.jsonl
+
+      local.file_match "panoseti" {
+        path_targets = [{ "__path__" = "/var/log/panoseti/*/*.jsonl", "job" = "panoseti" }]
+      }
+
+      loki.source.file "panoseti" {
+        targets    = local.file_match.panoseti.targets
+        forward_to = [loki.process.panoseti.receiver]
+      }
+
+      loki.process "panoseti" {
+        stage.json {
+          expressions = {
+            message    = "message",
+            service    = "service",
+            level      = "level",
+            hostname   = "hostname",
+            git_commit = "git_commit",
+            run_id     = "run_id",
+          }
+        }
+        stage.labels {
+          values = {
+            service    = "service",
+            level      = "level",
+            hostname   = "hostname",
+            git_commit = "git_commit",
+          }
+        }
+        forward_to = [loki.write.headnode.receiver]
+      }
+
+      loki.write "headnode" {
+        // network_mode: host, so the bridge-network DNS name "loki" never
+        // resolves -- always go via the headnode's real IP.
+        endpoint { url = string.format("http://%s:3100/loki/api/v1/push", sys.env("HEADNODE_IP")) }
+        external_labels = { cluster = "panoseti" }
+      }
+
+services:
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    restart: always
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  influxdb:
+    image: influxdb:1.8
+    network_mode: host
+    restart: always
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/influxdb:/var/lib/influxdb
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "show databases"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  loki:
+    image: grafana/loki:3.7.0
+    network_mode: host
+    restart: always
+    # The grafana/loki image runs as UID/GID 10001 by default (not root).
+    # Pin it explicitly so it's self-documenting, and so a host where the
+    # bind-mount source gets auto-created by a *different* root-run
+    # container (Docker creates missing bind-mount sources as root:root)
+    # fails loudly instead of silently reintroducing the permission bug --
+    # `chown -R 10001:10001 ${PSETI_DATA_DIR}/loki` on the host fixes it.
+    user: "10001:10001"
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/loki:/loki
+
+  alloy:
+    image: grafana/alloy:latest
+    network_mode: host
+    restart: always
+    configs:
+      - source: alloy_config
+        target: /etc/alloy/config.alloy
+    volumes:
+      - /var/log/panoseti:/var/log/panoseti:ro
+    environment:
+      HEADNODE_IP: "${HEADNODE_IP:?set HEADNODE_IP to this machine's real IP}"
+    command: ["run", "/etc/alloy/config.alloy"]
+
+  grafana:
+    image: grafana/grafana:latest
+    network_mode: host
+    restart: always
+    volumes:
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      # Grafana's own sqlite DB (dashboards/alerts/auth created via the UI,
+      # as opposed to the provisioned dashboards above which come from repo
+      # files and don't need this). Not persisted in the HITL test profile
+      # this was adapted from, since throwaway UI state there doesn't matter;
+      # it does here.
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/grafana:/var/lib/grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
+
+  headnode-server:
+    image: pseti-headnode:production
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: headnode
+      args:
+        LOCAL_UID: "${HOST_UID:-1000}"
+        LOCAL_GID: "${HOST_GID:-1000}"
+    network_mode: host
+    user: root
+    volumes:
+      - ${DAQ_DATA_DIR:-/mnt/panoseti-data/daq}:${DAQ_DATA_DIR:-/mnt/panoseti-data/daq}
+      - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
+      - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
+      - ${PSETI_CONFIG}:/mnt/config:ro
+      - ./grpc-server-headnode.toml:/app/grpc-server-headnode.toml:ro
+      # Read-write: get_logger() writes {service}.jsonl here; Alloy (above)
+      # tails it read-only. Without this mount, every service silently
+      # falls back to a container-local /tmp path Alloy can never see.
+      - /var/log/panoseti:/var/log/panoseti
+    environment:
+      REDIS_HOST: "127.0.0.1"
+      LOKI_URL: "http://127.0.0.1:3100/loki/api/v1/push"
+      PSETI_CONFIG: "/mnt/config"
+      PSETI_QUABOS: "/app/quabos"
+      PSETI_FIRMWARE: "/app/firmware"
+      SSH_AUTH_SOCK: "/run/host-ssh-agent"
+      LOCAL_UID: "${HOST_UID:-1000}"
+      LOCAL_GID: "${HOST_GID:-1000}"
+      # entrypoint.sh's self-healing chown reads this at container start to
+      # know which mounted data dir to align ownership on; without it, it
+      # silently falls back to its own /mnt/panoseti-test default regardless
+      # of what path the volume mount above actually used. (This is also
+      # missing from docker-compose.hw-sw.yml's headnode-server -- harmless
+      # there only because that default happens to be its actual path too.)
+      DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-data/daq}"
+    entrypoint: ["/entrypoint-headnode-hw.sh"]
+    command: ["pseti-grpc", "server", "--config", "/app/grpc-server-headnode.toml"]
+    restart: always
