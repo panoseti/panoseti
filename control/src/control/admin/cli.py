@@ -10,17 +10,31 @@ from rich.console import Console
 from control.utils.paths import PanoPaths
 
 app = typer.Typer(
-    help="Admin and deployment tools for remote DAQ nodes.",
+    help="Admin and deployment tools for remote DAQ nodes and the head node.",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
 
 console = Console()
 
+# Env vars whose values actually change compose interpolation/behavior --
+# printed alongside every command so it can be copy-pasted and re-run (or
+# tweaked) verbatim, without having to reconstruct what this process
+# resolved them to.
+_PRINTABLE_ENV_KEYS = (
+    "PSETI_ROOT_BUILD", "PSETI_CONFIG", "PSETI_DATA_DIR", "DAQ_DATA_DIR",
+    "HEADNODE_IP", "HOST_UID", "HOST_GID", "LOCAL_UID", "LOCAL_GID",
+)
+
+
 def run_cmd(host: str, cmd: list[str], env: dict[str, str] | None = None) -> bool:
-    """Run a shell command and print its output."""
+    """Run a shell command, printing the full reproducible invocation first."""
+    if env:
+        shown = " ".join(f"{k}={env[k]}" for k in _PRINTABLE_ENV_KEYS if k in env)
+        if shown:
+            console.print(f"[[bold cyan]{host}[/bold cyan]] {shown} \\")
     console.print(f"[[bold cyan]{host}[/bold cyan]] Executing: {' '.join(cmd)}")
-    
+
     # We use subprocess.run so output streams nicely
     result = subprocess.run(cmd, env=env)
     if result.returncode != 0:
@@ -40,14 +54,75 @@ def get_docker_context_for_node(host: str) -> str:
         pass
     return f"pseti-daq-{host.replace('.', '-')}"
 
-def resolve_target_nodes(nodes: str) -> list[str]:
-    """Expand a comma-separated node list, resolving 'all' from daq_config.json."""
+def resolve_target_nodes(nodes: str) -> tuple[list[str], bool]:
+    """Expand a comma-separated node list, resolving 'all' from daq_config.json.
+
+    Returns (daq_node_targets, include_headnode). 'headnode' is not a DAQ
+    node IP -- it's pulled out and returned separately since it deploys
+    locally with no docker context / SSH involved. 'all' means every DAQ
+    node *and* the head node.
+    """
     target_nodes = [n.strip() for n in nodes.split(",")]
     if "all" in target_nodes:
         from control.utils.config_file import get_daq_config
         daq_config = get_daq_config()
-        target_nodes = [str(node.ip_addr) for node in daq_config.daq_nodes]
-    return target_nodes
+        return [str(node.ip_addr) for node in daq_config.daq_nodes], True
+
+    include_headnode = "headnode" in target_nodes
+    daq_targets = [n for n in target_nodes if n != "headnode"]
+    return daq_targets, include_headnode
+
+
+def get_headnode_compose_env() -> dict[str, str] | None:
+    """Build the env dict required by control/deploy/docker-compose.headnode.yml.
+
+    Returns None (after printing why) if a value that has no safe default
+    -- HEADNODE_IP -- isn't set anywhere.
+    """
+    env = os.environ.copy()
+    env["PSETI_ROOT_BUILD"] = str(PanoPaths.software_root_dir())
+    env.setdefault("PSETI_CONFIG", str(PanoPaths.config_dir()))
+    env.setdefault("PSETI_DATA_DIR", "/mnt/panoseti-data")
+    env["HOST_UID"] = str(os.getuid())
+    env["HOST_GID"] = str(os.getgid())
+    if "HEADNODE_IP" not in env:
+        console.print(
+            "[bold red][headnode][/bold red] HEADNODE_IP is not set (this machine's "
+            "real IP -- required so Alloy knows where to push logs). Set it and retry, e.g.:\n"
+            "    HEADNODE_IP=192.168.88.103 pseti admin deploy headnode"
+        )
+        return None
+    return env
+
+
+def deploy_headnode(mode: str) -> bool:
+    """Deploy the head node's observability + gRPC gateway stack (local machine, no SSH)."""
+    if mode != "docker":
+        console.print(f"[yellow][headnode][/yellow] --mode {mode} is not supported for the head node; use --mode docker.")
+        return False
+
+    env = get_headnode_compose_env()
+    if env is None:
+        return False
+
+    compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
+    cmd = ["docker", "compose", "-f", str(compose_file), "up", "-d", "--build"]
+    return run_cmd("headnode", cmd, env=env)
+
+
+def status_headnode(mode: str) -> None:
+    """Check the status of the head node's local compose stack."""
+    if mode != "docker":
+        console.print(f"[yellow][headnode][/yellow] --mode {mode} is not supported for the head node; use --mode docker.")
+        return
+
+    env = get_headnode_compose_env()
+    if env is None:
+        return
+
+    compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
+    cmd = ["docker", "compose", "-f", str(compose_file), "ps"]
+    run_cmd("headnode", cmd, env=env)
 
 async def deploy_node(host: str, mode: str) -> None:
     """Deploy the DAQ node software using the specified strategy."""
@@ -97,33 +172,41 @@ async def deploy_node(host: str, mode: str) -> None:
 
 @app.command()
 def deploy(
-    nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, or 'all'.")],
+    nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, 'headnode', or 'all' (every DAQ node + the head node).")],
     mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker"
 ) -> None:
-    """Deploy the DAQ node gRPC and telemetry stack to remote machines."""
+    """Deploy the DAQ node gRPC/telemetry stack and/or the head node stack."""
     if mode not in ["docker", "bare-metal"]:
         console.print("[bold red]Error:[/] --mode must be either 'docker' or 'bare-metal'.")
         raise typer.Exit(1)
-        
-    target_nodes = resolve_target_nodes(nodes)
 
-    console.print(f"[bold]Starting {mode} deployment on: {', '.join(target_nodes)}[/bold]")
-    
-    # Run sequentially or concurrently? Subprocess stdout interleaves if concurrent.
-    # We will just run them sequentially for clear logs since we use subprocess.run directly.
-    for host in target_nodes:
+    daq_targets, include_headnode = resolve_target_nodes(nodes)
+
+    described = (["headnode"] if include_headnode else []) + daq_targets
+    console.print(f"[bold]Starting {mode} deployment on: {', '.join(described)}[/bold]")
+
+    # Run sequentially: subprocess stdout interleaves if concurrent, and we
+    # print each full invocation as it runs so the log doubles as a
+    # re-runnable/modifiable script.
+    if include_headnode:
+        deploy_headnode(mode)
+
+    for host in daq_targets:
         asyncio.run(deploy_node(host, mode))
 
 
 @app.command()
 def status(
-    nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, or 'all'.")],
+    nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, 'headnode', or 'all' (every DAQ node + the head node).")],
     mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker"
 ) -> None:
-    """Check the status of the DAQ node services."""
-    target_nodes = resolve_target_nodes(nodes)
+    """Check the status of the DAQ node services and/or the head node stack."""
+    daq_targets, include_headnode = resolve_target_nodes(nodes)
 
-    for host in target_nodes:
+    if include_headnode:
+        status_headnode(mode)
+
+    for host in daq_targets:
         if mode == "docker":
             context = get_docker_context_for_node(host)
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
