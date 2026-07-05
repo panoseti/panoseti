@@ -21,8 +21,18 @@ import json
 import pathlib
 import signal
 import sys
+import threading
 import time
 from typing import Any
+
+# Real hashpipe is 1 main thread + net_thread + compute_thread +
+# output_thread = 4 OS threads; panoseti_grpc's daq_control server polls
+# this count (psutil) to distinguish "actually running" from "process alive
+# but stuck mid-init" (see EXPECTED_HASHPIPE_THREADS in
+# panoseti_grpc.daq_control.util). Spawn matching dummy worker threads so
+# this stub is health-checked the same way the real binary is, instead of
+# being permanently flagged unhealthy in software-only CI.
+_FAKE_WORKER_THREAD_NAMES = ("net_thread", "compute_thread", "output_thread")
 
 
 def _read_module_ids(config_path: pathlib.Path) -> list[int]:
@@ -83,9 +93,16 @@ def main() -> None:
     if run_dir and module_ids:
         _create_stub_data(cwd, run_dir, module_ids, args_data)
 
+    # Spawn dummy worker threads so this process's OS thread count matches
+    # real hashpipe's (see module docstring above).
+    stop_event = threading.Event()
+    for name in _FAKE_WORKER_THREAD_NAMES:
+        threading.Thread(target=stop_event.wait, name=name, daemon=True).start()
+
     # Stay alive until SIGINT / SIGTERM
     def _stop(signum: int, frame: Any) -> None:
         print(f"fake_hashpipe: received signal {signum}, exiting...")
+        stop_event.set()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, _stop)
