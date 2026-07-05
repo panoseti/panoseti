@@ -130,13 +130,15 @@ def assert_hashpipe_healthy(
 
     client = DaqControlClient(host=host, port=port)
     try:
-        result = client.StatusDaq(
+        success, result = client.StatusDaq(
             {"data_dir": node.data_dir, "check_hashpipe_running": True,
              "check_disk_usage": False, "check_run_dirs": False},
             timeout=10.0,
         )
     finally:
         client.close()
+
+    assert success, f"DAQ node {host}:{port} StatusDaq call itself failed for run={run_name!r}."
 
     running = result.get("hashpipe_running")
     pid = result.get("hashpipe_pid")

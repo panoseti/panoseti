@@ -45,12 +45,24 @@ def pytest_configure(config: Any) -> None:
 
     os.environ.setdefault("TC_SESSION_ID", f"tc-v2-{worker_id}-{run_uuid}")
 
-    # Isolation defaults (not production paths)
+    # Isolation defaults (not production paths).
+    #
+    # PSETI_STATE is the critical one: PanoPaths derives locks/, runs/,
+    # transfer/queue/, and calibration/ from it when no more-specific
+    # override is set. Without this, the autouse clear_shared_state fixture
+    # below -- which runs before every test in this suite, not just tests
+    # that opt into the pseti_workspace fixture -- resolves
+    # PanoPaths.transfer_queue_dir() and RunStateManager()'s ledger path to
+    # the real production state/ tree and wipes them (rmtree on
+    # pending/active/completed/failed, plus the run ledger) on every test
+    # run. This is what silently emptied a real observatory's transfer
+    # queue during dev-mode test runs before this fix.
+    os.environ.setdefault("PSETI_STATE", "/tmp/pseti_v2_test/state")
     os.environ.setdefault("PSETI_TMP", "/tmp/pseti_v2_test/tmp")
     os.environ.setdefault("PSETI_LOGS", "/tmp/pseti_v2_test/logs")
     os.environ.setdefault("PSETI_QUABOS", "/tmp/pseti_v2_test/quabos")
 
-    for d in ["PSETI_TMP", "PSETI_LOGS", "PSETI_QUABOS"]:
+    for d in ["PSETI_STATE", "PSETI_TMP", "PSETI_LOGS", "PSETI_QUABOS"]:
         os.makedirs(os.environ[d], exist_ok=True)
 
     # Per-worker telemetry isolation (same pattern as v1)
