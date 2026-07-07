@@ -21,6 +21,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
+from control.utils.env_loader import get_env_info
 from control.utils.paths import PanoPaths
 
 app = typer.Typer(help="Inspect and visualize PSETI system state.", no_args_is_help=True)
@@ -119,6 +120,74 @@ def show_paths(
         console.print(table)
     
     console.print("\n[dim]Tip: Overriding PSETI_ROOT or PSETI_CONTROL will shift the default locations of all sub-directories.[/dim]")
+
+
+def show_env() -> None:
+    """Show the resolved pseti environment: active .env file, its variables, and runtime overrides."""
+    console = Console()
+    info = get_env_info()
+    env_file = info["env_file"]
+    dotenv_vars: dict = info["dotenv_vars"]
+    pseti_vars: dict = info["pseti_vars"]
+    runtime_vars: dict = info["runtime_vars"]
+
+    # ── .env file header ──────────────────────────────────────────────────────
+    if env_file:
+        console.print(f"[bold green]✓[/bold green] Loaded .env file: [bold]{env_file.resolve()}[/bold]")
+    else:
+        env_file_override = os.getenv("PSETI_ENV_FILE")
+        if env_file_override:
+            console.print(f"[bold red]✗[/bold red] PSETI_ENV_FILE set to [bold]{env_file_override}[/bold] but file not found.")
+        else:
+            console.print("[dim]No .env file found in the current directory (and PSETI_ENV_FILE is not set).[/dim]")
+    console.print()
+
+    # ── Variables defined in the .env file ───────────────────────────────────
+    if dotenv_vars:
+        dot_table = Table(title="Variables from .env file", show_header=True, header_style="bold cyan")
+        dot_table.add_column("Variable", style="cyan", no_wrap=True)
+        dot_table.add_column("Value in file", style="yellow", overflow="fold")
+        dot_table.add_column("Active in process", style="green", no_wrap=True)
+        for key, file_val in sorted(dotenv_vars.items()):
+            active = os.environ.get(key)
+            if active is None:
+                active_str = "[dim](not set)[/dim]"
+            elif active == file_val:
+                active_str = f"[green]{active}[/green]"
+            else:
+                active_str = f"[magenta]{active}[/magenta] [dim](overridden by shell)[/dim]"
+            dot_table.add_row(key, file_val or "", active_str)
+        console.print(dot_table)
+        console.print()
+
+    # ── PSETI_* path overrides currently in the process ──────────────────────
+    dot_keys = set(dotenv_vars.keys())
+    extra_pseti = {k: v for k, v in pseti_vars.items() if k not in dot_keys}
+    if extra_pseti:
+        pseti_table = Table(title="PSETI_* vars from shell environment", show_header=True, header_style="bold magenta")
+        pseti_table.add_column("Variable", style="magenta", no_wrap=True)
+        pseti_table.add_column("Value", style="yellow", overflow="fold")
+        for key, val in sorted(extra_pseti.items()):
+            pseti_table.add_row(key, val or "")
+        console.print(pseti_table)
+        console.print()
+
+    # ── Other known runtime vars ──────────────────────────────────────────────
+    extra_runtime = {k: v for k, v in runtime_vars.items() if k not in dot_keys and not k.startswith("PSETI_")}
+    if extra_runtime:
+        rt_table = Table(title="Other runtime vars from shell environment", show_header=True, header_style="bold blue")
+        rt_table.add_column("Variable", style="blue", no_wrap=True)
+        rt_table.add_column("Value", style="yellow", overflow="fold")
+        for key, val in sorted(extra_runtime.items()):
+            rt_table.add_row(key, val or "")
+        console.print(rt_table)
+        console.print()
+
+    if not dotenv_vars and not extra_pseti and not extra_runtime:
+        console.print("[dim]No pseti-relevant environment variables are currently set.[/dim]")
+
+    console.print("[dim]Tip: Variables loaded from .env are process-scoped — they will not appear in `printenv`.[/dim]")
+    console.print("[dim]Use `pseti paths` to see the resolved filesystem paths.[/dim]")
 
 
 def get_color(val: float, cmap_name: str | None) -> str:

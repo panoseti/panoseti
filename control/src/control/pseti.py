@@ -30,6 +30,7 @@ class PanoLazyGroup(BaseLazyGroup):
             # System commands
             "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (sci data, pff)."),
             "paths": ("control.tools.show_cli", "show_paths", "Display resolved system paths and environment overrides."),
+            "env": ("control.tools.show_cli", "show_env", "Show the resolved pseti environment variables."),
             "test": ("ci.test_cli", "app", "Unified PSETI testing suite (lint, sw, hw, pff)."),
             "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
             "admin": ("control.admin.cli", "app", "Admin/Deployment tools for remote nodes."),
@@ -37,7 +38,7 @@ class PanoLazyGroup(BaseLazyGroup):
         # Explicit order to ensure consistent UX regardless of mapping insertion order
         command_order = [
             "power", "uids", "cfg", "val", "start", "stat", "health", "stop", "xfr",
-            "session-start", "session-stop", "show", "paths", "test", "grpc", "admin"
+            "session-start", "session-stop", "show", "paths", "env", "test", "grpc", "admin"
         ]
         super().__init__(
             *args, 
