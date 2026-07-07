@@ -679,7 +679,7 @@ def _run_edit() -> bool:
             
             # Best-effort load: apply defaults and aliases without crashing on validation errors
             model_instance = model_class.model_construct(**raw_json)
-            current_data = model_instance.model_dump(exclude_none=True, by_alias=True)
+            current_data = model_instance.model_dump(exclude_none=True, by_alias=True, mode='json')
             console.print(f"[dim]Loaded: {target_path_for_edit}[/dim]")
         except Exception as e:
             console.print(f"[red]Error loading file (Malformed JSON): {e}[/red]")
@@ -698,7 +698,7 @@ def _run_edit() -> bool:
     validated_data = current_data
     try:
         model_instance = model_class(**current_data)
-        validated_data = model_instance.model_dump(exclude_none=True, by_alias=True)
+        validated_data = model_instance.model_dump(exclude_none=True, by_alias=True, mode='json')
         console.print("[green]Validation successful![/green]")
     except Exception as e:
         if hasattr(e, 'errors'):
@@ -717,7 +717,7 @@ def _run_edit() -> bool:
         # Best-effort serialization for invalid configs (applies defaults and aliases without validating)
         console.print("[yellow]Performing best-effort serialization of invalid config...[/yellow]")
         model_instance = model_class.model_construct(**current_data)
-        validated_data = model_instance.model_dump(exclude_none=True, by_alias=True)
+        validated_data = model_instance.model_dump(exclude_none=True, by_alias=True, mode='json')
 
     target_path_for_edit.parent.mkdir(parents=True, exist_ok=True)
     if target_path_for_edit.exists() or target_path_for_edit.is_symlink():
