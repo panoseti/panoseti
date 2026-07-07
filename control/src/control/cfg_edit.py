@@ -210,11 +210,11 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
                         choices.append(questionary.Choice(title=f"{prefix}{k} (Current: {v}) [Custom Field]", value=k))
             
             if model_class == DataConfig:
-                choices.append(questionary.Choice(title=f"{prefix}[a] Add custom image_*/pulse_height_* mode", value="__add_extra_mode__", shortcut_key="a"))
+                choices.append(questionary.Choice(title=f"{prefix}[n] Add custom image_*/pulse_height_* mode", value="__add_extra_mode__", shortcut_key="n"))
             elif model_class == ObsConfig:
-                choices.append(questionary.Choice(title=f"{prefix}[a] Add custom WPS config", value="__add_wps__", shortcut_key="a"))
+                choices.append(questionary.Choice(title=f"{prefix}[n] Add custom WPS config", value="__add_wps__", shortcut_key="n"))
             else:
-                choices.append(questionary.Choice(title=f"{prefix}[a] Add custom extra field", value="__add_generic_extra__", shortcut_key="a"))
+                choices.append(questionary.Choice(title=f"{prefix}[n] Add custom extra field", value="__add_generic_extra__", shortcut_key="n"))
 
         choices.append(questionary.Choice(title=f"{prefix}[v] Validate Current Draft", value="__validate__", shortcut_key="v"))
         choices.append(questionary.Choice(title=f"{prefix}[p] Preview Current JSON", value="__view__", shortcut_key="p"))
@@ -431,7 +431,7 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
                         while True:
                             list_choices = [questionary.Choice(f"{prefix}  Item {i}", value=f"Item {i}") for i in range(len(working_data[selected]))]
                             list_choices.extend([
-                                questionary.Choice(title=f"{prefix}  [a] Add new item", value="[+] Add new item", shortcut_key="a"),
+                                questionary.Choice(title=f"{prefix}  [n] Add new item", value="[+] Add new item", shortcut_key="n"),
                                 questionary.Choice(title=f"{prefix}  [r] Remove item", value="[-] Remove item", shortcut_key="r"),
                                 questionary.Choice(title=f"{prefix}  [b] Back", value="Back", shortcut_key="b")
                             ])
