@@ -137,9 +137,12 @@ def _build_daq_config(spec: FleetSpec) -> DaqConfig:
                 port=gw.ssh_port,
                 grpc_port=gw.grpc_port,
             )
+            
+        node_data_dir = head_data_dir if node_spec.ip == spec.headnode_ip else node_spec.data_dir
+        
         nodes.append(DaqNode(
             username=node_spec.username,
-            data_dir=node_spec.data_dir,
+            data_dir=node_data_dir,
             ip_addr=IPv4Address(node_spec.ip),
             module_ids=node_spec.module_ids,
             bindhost=node_spec.bindhost,
