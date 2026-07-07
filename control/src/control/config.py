@@ -69,9 +69,10 @@ class ConfigLazyGroup(BaseLazyGroup):
             "start-interleave": ("control.config", "start_interleave", "Start background interleaver."),
             "stop-interleave": ("control.config", "stop_interleave", "Stop background interleaver."),
             "dry-run-interleave": ("control.config", "dry_run_interleave", "Test interleave schedule."),
+            "edit": ("control.cfg_edit", "edit", "Interactive text-based configuration manager."),
         }
         command_order = [
-            "reboot", "hk-dest", "ping", "maroc-config", "mask-config", "calibrate-ph", "show-ph-baselines", "redis-daemons", 
+            "reboot", "hk-dest", "ping", "maroc-config", "mask-config", "calibrate-ph", "show-ph-baselines", "redis-daemons", "edit",
         ]
         super().__init__(
             *args,
