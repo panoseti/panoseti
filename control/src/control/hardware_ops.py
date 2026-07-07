@@ -194,8 +194,9 @@ def make_run_dirs(
         if util.is_local(node.ip_addr, daq_config):
             # We need to know which module IDs are on this node to create module_N dirs
             # node.module_ids is a list of ints or a range string (preprocessed to list[int])
+            os.makedirs(f'{node.data_dir}/{run_name}', exist_ok=True)
             for mid in node.module_ids:
-                path = f'{daq_config.head_node_data_dir}/module_{mid}/{run_name}'
+                path = f'{node.data_dir}/module_{mid}/{run_name}'
                 if verbose:
                     print(f"mkdir -p {path}")
                 os.makedirs(path, exist_ok=True)
