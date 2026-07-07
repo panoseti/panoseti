@@ -20,6 +20,15 @@ from control.utils.pydantic_config_models import (
 
 console = Console()
 
+
+class PydanticEncoder(json.JSONEncoder):
+    """Fallback encoder that converts any non-serializable Pydantic/stdlib types to str."""
+    def default(self, o: Any) -> Any:
+        try:
+            return super().default(o)
+        except TypeError:
+            return str(o)
+
 app = typer.Typer(help="Interactive text-based configuration manager.")
 
 CONFIG_TYPES = {
@@ -269,7 +278,7 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
             
         if selected == "__view__":
             console.print(f"\n[bold magenta]--- Current State of {breadcrumb} ---[/bold magenta]")
-            syntax = Syntax(json.dumps(working_data, indent=4), "json", theme="monokai", line_numbers=True)
+            syntax = Syntax(json.dumps(working_data, indent=4, cls=PydanticEncoder), "json", theme="monokai", line_numbers=True)
             console.print(syntax)
             console.print("[bold magenta]-----------------------------------[/bold magenta]\n")
             input("Press Enter to return to the wizard...")
@@ -724,7 +733,7 @@ def _run_edit() -> bool:
         backup_file(target_path_for_edit)
     
     with open(target_path_for_edit, 'w') as f:
-        json.dump(validated_data, f, indent=4)
+        json.dump(validated_data, f, indent=4, cls=PydanticEncoder)
     console.print(f"[bold green]Saved successfully to {target_path_for_edit}[/bold green]")
     input("Press Enter to continue...")
     return True
