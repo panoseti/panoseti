@@ -104,11 +104,7 @@ app = typer.Typer(help="Scan and cache Quabo hardware UIDs.", no_args_is_help=Fa
 def main(
     exclude: list[int] = typer.Option(None, "--exclude", "-e", help="Quabo indices (0-3) to skip in every module.")
 ) -> None:
-    """
-    Scan possible quabo IP addrs.
-    If they respond to ping, get their UID
-    write these to quabo_uids.json
-    """
+    """Scan possible quabo IP addrs, ping them to get their UID, and cache to quabo_uids.json."""
     obs_config = config_file.get_obs_config()
     network_config = config_file.get_network_config()
     _quabo_uids = get_uids(obs_config, network_config, exclude)
