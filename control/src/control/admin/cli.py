@@ -106,7 +106,7 @@ def deploy_headnode(mode: str) -> bool:
         return False
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-    cmd = ["docker", "compose", "-f", str(compose_file), "up", "-d", "--build"]
+    cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "up", "-d", "--build"]
     return run_cmd("headnode", cmd, env=env)
 
 
@@ -121,7 +121,7 @@ def status_headnode(mode: str) -> None:
         return
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-    cmd = ["docker", "compose", "-f", str(compose_file), "ps"]
+    cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "ps"]
     run_cmd("headnode", cmd, env=env)
 
 async def deploy_node(host: str, mode: str) -> None:
@@ -143,10 +143,12 @@ async def deploy_node(host: str, mode: str) -> None:
         env["LOCAL_UID"] = str(os.getuid())
         env["LOCAL_GID"] = str(os.getgid())
 
+        project_name = f"pseti-daqnode-{host.replace('.', '-')}"
+
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
         cmd = [
             "docker", "--context", context,
-            "compose", "-f", str(compose_file),
+            "compose", "-p", project_name, "-f", str(compose_file),
             "up", "-d", "--build"
         ]
         run_cmd(host, cmd, env=env)
@@ -155,7 +157,7 @@ async def deploy_node(host: str, mode: str) -> None:
         alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
         alloy_cmd = [
             "docker", "--context", context,
-            "compose", "-f", str(alloy_compose_file),
+            "compose", "-p", project_name, "-f", str(alloy_compose_file),
             "up", "-d", "--build"
         ]
         run_cmd(host, alloy_cmd, env=env)
@@ -196,6 +198,118 @@ def deploy(
 
 
 @app.command()
+def build(
+    nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, 'headnode', or 'all' (every DAQ node + the head node).")],
+    mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker"
+) -> None:
+    """Build the DAQ node gRPC/telemetry stack and/or the head node stack images."""
+    if mode != "docker":
+        console.print("[bold red]Error:[/] build is only supported in docker mode.")
+        raise typer.Exit(1)
+
+    daq_targets, include_headnode = resolve_target_nodes(nodes)
+
+    if include_headnode:
+        env = get_headnode_compose_env()
+        if env is not None:
+            compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
+            cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "build"]
+            run_cmd("headnode", cmd, env=env)
+
+    for host in daq_targets:
+        context = get_docker_context_for_node(host)
+        env = os.environ.copy()
+        env["LOCAL_UID"] = str(os.getuid())
+        env["LOCAL_GID"] = str(os.getgid())
+
+        project_name = f"pseti-daqnode-{host.replace('.', '-')}"
+
+        compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
+        cmd = [
+            "docker", "--context", context,
+            "compose", "-p", project_name, "-f", str(compose_file),
+            "build"
+        ]
+        run_cmd(host, cmd, env=env)
+
+        alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+        alloy_cmd = [
+            "docker", "--context", context,
+            "compose", "-p", project_name, "-f", str(alloy_compose_file),
+            "build"
+        ]
+        run_cmd(host, alloy_cmd, env=env)
+
+
+@app.command()
+def down(
+    nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, 'headnode', or 'all' (every DAQ node + the head node).")],
+    mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker"
+) -> None:
+    """Tear down the DAQ node gRPC/telemetry stack and/or the head node stack."""
+    if mode != "docker":
+        console.print("[bold red]Error:[/] down is only supported in docker mode.")
+        raise typer.Exit(1)
+
+    daq_targets, include_headnode = resolve_target_nodes(nodes)
+
+    if include_headnode:
+        env = get_headnode_compose_env()
+        if env is not None:
+            compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
+            cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "down"]
+            run_cmd("headnode", cmd, env=env)
+
+    for host in daq_targets:
+        context = get_docker_context_for_node(host)
+        project_name = f"pseti-daqnode-{host.replace('.', '-')}"
+        
+        compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
+        cmd = [
+            "docker", "--context", context,
+            "compose", "-p", project_name, "-f", str(compose_file),
+            "down"
+        ]
+        run_cmd(host, cmd)
+
+        alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+        alloy_cmd = [
+            "docker", "--context", context,
+            "compose", "-p", project_name, "-f", str(alloy_compose_file),
+            "down"
+        ]
+        run_cmd(host, alloy_cmd)
+
+@app.command()
+def attach(
+    node: Annotated[str, typer.Argument(help="Hostname/IP of DAQ node or 'headnode'.")],
+    service: Annotated[str, typer.Argument(help="Service to attach to (e.g. daqnode-server, alloy).")] = "daqnode-server"
+) -> None:
+    """Tail logs for a specific service on a DAQ node or head node."""
+    if node == "headnode":
+        env = get_headnode_compose_env()
+        if env is not None:
+            compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
+            cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "logs", "-f", service]
+            subprocess.run(cmd, env=env)
+    else:
+        context = get_docker_context_for_node(node)
+        project_name = f"pseti-daqnode-{node.replace('.', '-')}"
+        
+        # Decide which compose file has the service
+        if service == "alloy":
+            compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+        else:
+            compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
+            
+        cmd = [
+            "docker", "--context", context,
+            "compose", "-p", project_name, "-f", str(compose_file),
+            "logs", "-f", service
+        ]
+        subprocess.run(cmd)
+
+@app.command()
 def status(
     nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, 'headnode', or 'all' (every DAQ node + the head node).")],
     mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker"
@@ -209,12 +323,14 @@ def status(
     for host in daq_targets:
         if mode == "docker":
             context = get_docker_context_for_node(host)
+            project_name = f"pseti-daqnode-{host.replace('.', '-')}"
+            
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-            cmd = ["docker", "--context", context, "compose", "-f", str(compose_file), "ps"]
+            cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(compose_file), "ps"]
             run_cmd(host, cmd)
 
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = ["docker", "--context", context, "compose", "-f", str(alloy_compose_file), "ps"]
+            alloy_cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(alloy_compose_file), "ps"]
             run_cmd(host, alloy_cmd)
         else:
             cmd = ["ssh", host, "systemctl is-active panoseti_grpc panoseti_alloy"]

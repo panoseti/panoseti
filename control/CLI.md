@@ -6,6 +6,7 @@ The `pseti` command is the unified entry point for the PSETI observatory control
 
 - `-h`, `--help`: Show the help message and exit.
 - `-t`, `--tree`: Display the command tree for the current hierarchy and exit.
+- `--no-env`: Disable automatic loading of `.env` files.
 
 ---
 

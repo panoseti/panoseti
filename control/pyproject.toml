@@ -42,6 +42,7 @@ dependencies = [
   "docker>=7.0",
   "pypff",
   "filelock>=3.18",
+  "python-dotenv>=1.2.2",
 ]
 
   [project.optional-dependencies]

@@ -286,9 +286,12 @@ async def _check_daq_data_status(
     network_config: NetworkConfig,
     do_init: bool = False,
     gateway_host: str = "localhost",
-    gateway_port: int = 50051,
+    gateway_port: int | None = None,
 ) -> None:
     """Verify DaqData gateway is reachable and optionally request re-initialization."""
+    if gateway_port is None:
+        gateway_port = int(os.getenv("DAQ_DATA_GATEWAY_PORT", "50051"))
+        
     logger.info("Performing DaqData gateway status pre-flight check...")
 
     async with AioDaqDataClient(gateway_host, gateway_port) as client:

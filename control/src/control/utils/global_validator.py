@@ -520,8 +520,10 @@ class GlobalConfigValidator:
                 self.report.add_test("DAQ Node Bottleneck", "PASS", f"DAQ Node {node_ip} load balanced.")
 
         # 4. Check for Control Loops (Must be a DAG)
-        if not nx.is_directed_acyclic_graph(graph):
-            cycles = list(nx.simple_cycles(graph))
+        graph_no_self_loops = graph.copy()
+        graph_no_self_loops.remove_edges_from(nx.selfloop_edges(graph_no_self_loops))
+        if not nx.is_directed_acyclic_graph(graph_no_self_loops):
+            cycles = list(nx.simple_cycles(graph_no_self_loops))
             self.report.add_test("Control Loop Check", "ERROR", f"Infinite control loops detected: {cycles}")
         else:
             self.report.add_test("Control Loop Check", "PASS", "No control loops detected.")

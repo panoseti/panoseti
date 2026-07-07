@@ -1,4 +1,12 @@
+import sys
 from typing import Annotated, Any
+
+from control.utils.env_loader import load_pseti_env
+
+# Check for --no-env flag early to prevent loading .env files if the user disables it
+if "--no-env" not in sys.argv:
+    # Load .env variables (if any) before initializing config and commands
+    load_pseti_env()
 
 import typer
 from panoseti_grpc.util.cli import BaseLazyGroup, display_tree_callback
@@ -51,7 +59,8 @@ app = typer.Typer(
 @app.callback()
 def main_callback(
     ctx: typer.Context,
-    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree and exit.", callback=display_tree_callback)] = False
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree and exit.", callback=display_tree_callback)] = False,
+    no_env: Annotated[bool, typer.Option("--no-env", help="Disable automatic loading of .env files.")] = False
 ) -> None:
     """PSETI Control Plane."""
     pass
