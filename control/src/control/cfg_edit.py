@@ -180,7 +180,7 @@ def edit_scalar(name: str, current_value: Any, field_info: FieldInfo, breadcrumb
         return current_value
 
 
-def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], breadcrumb: str = "", indent: int = 0) -> dict[str, Any]:
+def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], breadcrumb: str = "", indent: int = 0) -> tuple[str, dict[str, Any]]:
     import copy
     working_data = copy.deepcopy(current_data)
     prefix = "  " * indent
@@ -218,8 +218,10 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
 
         choices.append(questionary.Choice(title=f"{prefix}[v] Validate Current Draft", value="__validate__", shortcut_key="v"))
         choices.append(questionary.Choice(title=f"{prefix}[p] Preview Current JSON", value="__view__", shortcut_key="p"))
-        choices.append(questionary.Choice(title=f"{prefix}[s] Save and Back", value="__save__", shortcut_key="s"))
-        choices.append(questionary.Choice(title=f"{prefix}[d] Discard changes and Back", value="__discard__", shortcut_key="d"))
+        choices.append(questionary.Choice(title=f"{prefix}[s] Save block and go up", value="__save__", shortcut_key="s"))
+        choices.append(questionary.Choice(title=f"{prefix}[a] Save ALL edits and exit to menu", value="__save_all__", shortcut_key="a"))
+        choices.append(questionary.Choice(title=f"{prefix}[d] Discard block edits and go up", value="__discard__", shortcut_key="d"))
+        choices.append(questionary.Choice(title=f"{prefix}[x] Discard ALL edits and exit to menu", value="__discard_all__", shortcut_key="x"))
         choices.append(questionary.Choice(title=f"{prefix}[q] Quit immediately", value="__quit__", shortcut_key="q"))
 
         selected = questionary.select(
@@ -239,10 +241,14 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
         last_selected = selected
             
         if selected == "__save__":
-            return working_data
+            return ("__save__", working_data)
+        if selected == "__save_all__":
+            return ("__save_all__", working_data)
             
         if selected == "__discard__":
-            return current_data
+            return ("__discard__", current_data)
+        if selected == "__discard_all__":
+            return ("__discard_all__", current_data)
             
         if selected == "__validate__":
             try:
@@ -278,14 +284,20 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
                 if mode_name:
                     full_name = f"{mode_type}{mode_name}"
                     inner_model = ImageMode if mode_type == "image_" else PulseHeightMode
-                    working_data[full_name] = edit_model(inner_model, {}, breadcrumb=f"{breadcrumb} > {full_name}")
+                    action, data = edit_model(inner_model, {}, breadcrumb=f"{breadcrumb} > {full_name}")
+                    if action in ("__save__", "__save_all__"): working_data[full_name] = data
+                    if action == "__save_all__": return action, working_data
+                    if action == "__discard_all__": return action, current_data
             continue
             
         if selected == "__add_wps__":
             wps_name = questionary.text("Enter WPS name (e.g. wps2, wps-gh-runner):", style=custom_style).ask()
             if wps_name is None: sys.exit(0)
             if wps_name and wps_name.startswith("wps"):
-                working_data[wps_name] = edit_model(WpsConfig, {}, breadcrumb=f"{breadcrumb} > {wps_name}", indent=indent + 1)
+                action, data = edit_model(WpsConfig, {}, breadcrumb=f"{breadcrumb} > {wps_name}", indent=indent + 1)
+                if action in ("__save__", "__save_all__"): working_data[wps_name] = data
+                if action == "__save_all__": return action, working_data
+                if action == "__discard_all__": return action, current_data
             continue
 
         if selected == "__add_generic_extra__":
@@ -326,7 +338,10 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
                         inner_model = WpsConfig
                     
                     if inner_model:
-                        working_data[selected] = edit_model(inner_model, working_data[selected], breadcrumb=f"{breadcrumb} > {selected}", indent=indent + 1)
+                        action, data = edit_model(inner_model, working_data[selected], breadcrumb=f"{breadcrumb} > {selected}", indent=indent + 1)
+                        if action in ("__save__", "__save_all__") or action == "__discard__": working_data[selected] = data
+                        if action == "__save_all__": return action, working_data
+                        if action == "__discard_all__": return action, current_data
                     else:
                         console.print(f"[yellow]Cannot edit unknown arbitrary dict {selected}[/yellow]")
             else:
@@ -374,7 +389,10 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
                         working_data[selected] = []
                     else:
                         inner_model = ann if hasattr(ann, 'model_fields') else args[0]
-                        working_data[selected] = edit_model(inner_model, {}, breadcrumb=f"{breadcrumb} > {selected}", indent=indent + 1)
+                        action, data = edit_model(inner_model, {}, breadcrumb=f"{breadcrumb} > {selected}", indent=indent + 1)
+                        if action in ("__save__", "__save_all__") or action == "__discard__": working_data[selected] = data
+                        if action == "__save_all__": return action, working_data
+                        if action == "__discard_all__": return action, current_data
             else:
                 ann = field_info.annotation
                 origin = getattr(ann, '__origin__', None)
@@ -430,8 +448,11 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
                             if "Back" in list_sel:
                                 break
                             elif "[+] Add new item" in list_sel:
-                                new_item = edit_model(inner_model, {}, breadcrumb=f"{breadcrumb} > {selected} [NEW]")
-                                working_data[selected].append(new_item)
+                                action, data = edit_model(inner_model, {}, breadcrumb=f"{breadcrumb} > {selected} [NEW]")
+                                if action in ("__save__", "__save_all__"):
+                                    working_data[selected].append(data)
+                                if action == "__save_all__": return action, working_data
+                                if action == "__discard_all__": return action, current_data
                             elif "[-] Remove item" in list_sel:
                                 if len(working_data[selected]) > 0:
                                     rm_idx = questionary.select("Select item to remove:", choices=[str(i) for i in range(len(working_data[selected]))], style=custom_style).ask()
@@ -440,14 +461,20 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
                                         working_data[selected].pop(int(rm_idx))
                             else:
                                 idx = int(list_sel.split("Item ")[1])
-                                working_data[selected][idx] = edit_model(inner_model, working_data[selected][idx], breadcrumb=f"{breadcrumb} > {selected} [{idx}]", indent=indent + 2)
+                                action, data = edit_model(inner_model, working_data[selected][idx], breadcrumb=f"{breadcrumb} > {selected} [{idx}]", indent=indent + 2)
+                                if action in ("__save__", "__save_all__") or action == "__discard__": working_data[selected][idx] = data
+                                if action == "__save_all__": return action, working_data
+                                if action == "__discard_all__": return action, current_data
                     else:
                         inner_model = ann if hasattr(ann, 'model_fields') else args[0]
-                        working_data[selected] = edit_model(inner_model, working_data[selected], breadcrumb=f"{breadcrumb} > {selected}", indent=indent + 1)
+                        action, data = edit_model(inner_model, working_data[selected], breadcrumb=f"{breadcrumb} > {selected}", indent=indent + 1)
+                        if action in ("__save__", "__save_all__") or action == "__discard__": working_data[selected] = data
+                        if action == "__save_all__": return action, working_data
+                        if action == "__discard_all__": return action, current_data
                 elif action == "Disable (Delete) block":
                     working_data[selected] = None
 
-    return working_data
+    return "__save__", working_data
 
 def discover_templates(config_dir: Path, target_filename: str) -> list[Path]:
     """Scans immediate subdirectories of config_dir for matching filenames."""
@@ -648,7 +675,11 @@ def _run_edit() -> bool:
     if target_path_for_edit.exists():
         try:
             with open(target_path_for_edit, 'r') as f:
-                current_data = json.load(f)
+                raw_json = json.load(f)
+            
+            # Best-effort load: apply defaults and aliases without crashing on validation errors
+            model_instance = model_class.model_construct(**raw_json)
+            current_data = model_instance.model_dump(exclude_none=True, by_alias=True)
             console.print(f"[dim]Loaded: {target_path_for_edit}[/dim]")
         except Exception as e:
             console.print(f"[red]Error loading file (Malformed JSON): {e}[/red]")
@@ -658,7 +689,11 @@ def _run_edit() -> bool:
             current_data = {}
 
     # Drop into the editor with breadcrumbs
-    current_data = edit_model(model_class, current_data, breadcrumb=selected_type)
+    action, current_data = edit_model(model_class, current_data, breadcrumb=selected_type)
+    
+    if action in ("__discard__", "__discard_all__"):
+        console.print("[dim]Edits discarded. File was not saved.[/dim]")
+        return True
     
     validated_data = current_data
     try:
@@ -678,6 +713,11 @@ def _run_edit() -> bool:
         save_anyway = questionary.confirm("Save anyway? (Will result in invalid config)", style=custom_style).ask()
         if not save_anyway:
             return True
+            
+        # Best-effort serialization for invalid configs (applies defaults and aliases without validating)
+        console.print("[yellow]Performing best-effort serialization of invalid config...[/yellow]")
+        model_instance = model_class.model_construct(**current_data)
+        validated_data = model_instance.model_dump(exclude_none=True, by_alias=True)
 
     target_path_for_edit.parent.mkdir(parents=True, exist_ok=True)
     if target_path_for_edit.exists() or target_path_for_edit.is_symlink():
