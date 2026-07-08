@@ -138,7 +138,7 @@ def _build_daq_config(spec: FleetSpec) -> DaqConfig:
                 grpc_port=gw.grpc_port,
             )
             
-        node_data_dir = head_data_dir if node_spec.ip == spec.headnode_ip else node_spec.data_dir
+        node_data_dir = node_spec.data_dir
         
         nodes.append(DaqNode(
             username=node_spec.username,
