@@ -433,9 +433,15 @@ class TestPortForwarding:
     _BASE: ClassVar[dict[str, Any]] = {"status": True, "gw_ip": "203.0.113.1"}
 
     def test_valid_without_grpc_port(self) -> None:
-        """grpc_port is required; omitting it implies the default grpc port of 50051."""
+        """grpc_port is optional; omitting it means "not explicitly forwarded" (None), not a 50051 default.
+
+        This distinguishes "operator set it" from "field default" so
+        daq_grpc_endpoint() can fall through to a direct (env-resolved)
+        connection instead of silently assuming every forwarded node's gRPC
+        traffic goes through the gateway on 50051.
+        """
         pf = PortForwarding(**self._BASE)
-        assert pf.grpc_port == 50051
+        assert pf.grpc_port is None
 
     def test_valid_grpc_port(self) -> None:
         """grpc_port in 1-65535 is accepted."""

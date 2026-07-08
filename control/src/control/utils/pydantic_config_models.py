@@ -273,7 +273,14 @@ class PortForwarding(BaseStrictModel):
     reboot_port: list[int | None] | None = Field(None)
     cmd_port: list[int | None] | None = Field(None)
     port: int | None = None                              # SSH forwarded port (legacy)
-    grpc_port: int = Field(50051, ge=1, le=65535)  # gRPC forwarded port; None = use direct IP (not forwarded); Defaults to 50051.
+    # gRPC forwarded port. None means "not explicitly forwarded" -- daq_grpc_endpoint()
+    # then falls through to a direct connection (env-resolved DAQNODE_GRPC_PORT).
+    # Was `Field(50051, ...)`, which made "operator set it" indistinguishable from
+    # "field default" and prevented daq_grpc_endpoint() from ever taking its direct-
+    # connection fallback branch. Any node behind a real gateway (status=true) MUST
+    # now set this explicitly -- see control/configs/palomar/network_config.json and
+    # control/src/ci/hardware_software/configs/network_config.json for the pattern.
+    grpc_port: int | None = Field(None, ge=1, le=65535)
 
 
 class QuaboIpPorts(BaseStrictModel):
@@ -293,6 +300,13 @@ class DaqNode(BaseModel):
     bindhost: str | None = Field("0.0.0.0")
     docker_context: str | None = Field(None, description="Docker context for remote deployment")
     port_forwarding: PortForwarding | None = None
+    # Explicit gRPC port override for a node reached *directly* (no
+    # port_forwarding gateway) that still needs a non-default port -- e.g.
+    # a bare-metal or co-located node running the daq_node profile on a
+    # custom port. For a forwarded node, use port_forwarding.grpc_port
+    # instead (that takes precedence in daq_grpc_endpoint()). Leave unset
+    # to use the fleet-wide DAQNODE_GRPC_PORT env var / 50051 default.
+    grpc_port: int | None = Field(None, ge=1, le=65535, description="Direct-connection gRPC port override")
     modules: list[Any] = Field(default_factory=list)
 
     @field_validator('module_ids', mode='before')

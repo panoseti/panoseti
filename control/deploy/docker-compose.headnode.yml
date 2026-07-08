@@ -182,5 +182,9 @@ services:
       # there only because that default happens to be its actual path too.)
       DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-data/daq}"
     entrypoint: ["/entrypoint-headnode-hw.sh"]
-    command: ["pseti-grpc", "server", "--config", "/app/grpc-server-headnode.toml"]
+    # --port-env names HEADNODE_GRPC_PORT as the var that overrides the bind
+    # port (see unified_main.resolve_bind_port()) -- without it, GRPC_PORT
+    # above only reaches PanosetiServerConfig's own lower-priority
+    # default_factory fallback, which an explicit TOML port would still beat.
+    command: ["pseti-grpc", "server", "--config", "/app/grpc-server-headnode.toml", "--port-env", "HEADNODE_GRPC_PORT"]
     restart: always

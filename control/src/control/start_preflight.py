@@ -290,8 +290,12 @@ async def _check_daq_data_status(
 ) -> None:
     """Verify DaqData gateway is reachable and optionally request re-initialization."""
     if gateway_port is None:
-        gateway_port = int(os.getenv("DAQ_DATA_GATEWAY_PORT", "50051"))
-        
+        # The gateway *is* the head node's unified server -- resolve_grpc_port
+        # keeps this in sync with every other headnode client (and with
+        # DAQ_DATA_GATEWAY_PORT as a deprecated fallback) instead of reading
+        # that one env var directly.
+        gateway_port = util.resolve_grpc_port("headnode")
+
     logger.info("Performing DaqData gateway status pre-flight check...")
 
     async with AioDaqDataClient(gateway_host, gateway_port) as client:

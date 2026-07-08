@@ -42,15 +42,20 @@ def get_env_info() -> dict:
         runtime_vars: dict[str, str | None] — other known pseti runtime vars from os.environ
     """
     known_runtime = [
+        "HEADNODE_GRPC_PORT",
+        "DAQNODE_GRPC_PORT",
+        "HEADNODE_IP",
         "DAQ_DATA_GATEWAY_HOST",
-        "DAQ_DATA_GATEWAY_PORT",
-        "GRPC_PORT",
+        "DAQ_DATA_GATEWAY_PORT",  # deprecated alias for HEADNODE_GRPC_PORT -- see util.resolve_grpc_port
+        "GRPC_PORT",  # legacy, lowest-priority fallback -- see util.resolve_grpc_port
         "REDIS_HOST",
         "LOKI_URL",
         "PSETI_ENV_FILE",
         "PSETI_STRICT",
         "PSETI_TEST_TIER",
         "HEAD_DATA_DIR",
+        "DAQ_DATA_DIR",
+        "PSETI_DATA_DIR",
     ]
 
     env_path = _resolve_env_path()

@@ -1,6 +1,8 @@
 import asyncio
+import atexit
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Annotated
 
@@ -20,11 +22,62 @@ console = Console()
 # Env vars whose values actually change compose interpolation/behavior --
 # printed alongside every command so it can be copy-pasted and re-run (or
 # tweaked) verbatim, without having to reconstruct what this process
-# resolved them to.
+# resolved them to. Includes the gRPC port vars (see utils.util's
+# resolve_grpc_port / grpc's unified_main.resolve_bind_port) since a
+# misresolved port here is exactly the class of bug this list exists to
+# make visible.
 _PRINTABLE_ENV_KEYS = (
     "PSETI_ROOT_BUILD", "PSETI_CONFIG", "PSETI_DATA_DIR", "DAQ_DATA_DIR",
-    "HEADNODE_IP", "HOST_UID", "HOST_GID", "LOCAL_UID", "LOCAL_GID",
+    "HEADNODE_IP", "HEADNODE_GRPC_PORT", "DAQNODE_GRPC_PORT",
+    "HOST_UID", "HOST_GID", "LOCAL_UID", "LOCAL_GID",
 )
+
+# Keys actually written into the materialized --env-file (a superset of
+# _PRINTABLE_ENV_KEYS: some compose-relevant vars aren't interesting enough
+# to echo on every invocation but must still reach compose interpolation
+# deterministically).
+_ENV_FILE_KEYS = _PRINTABLE_ENV_KEYS + ("GRPC_PORT", "DAQ_DATA_GATEWAY_HOST", "REDIS_HOST", "LOKI_URL")
+
+# A `pseti admin` invocation can call _write_compose_env_file() several
+# times (once per compose file, per node). Track them for best-effort
+# cleanup on exit instead of leaking small .env files into PanoPaths.tmp_dir()
+# forever -- same tempfile-cleanup pattern as health.py's _check_quabo_tftp.
+_tmp_env_files: list[Path] = []
+
+
+@atexit.register
+def _cleanup_tmp_env_files() -> None:
+    for p in _tmp_env_files:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
+def _write_compose_env_file(env: dict[str, str]) -> Path:
+    """Materialize the resolved env subset to a file compose reads via --env-file.
+
+    Passing env= to subprocess.run already makes these values reach compose
+    interpolation via inheritance, but docker compose *also* auto-reads a
+    `.env` file from its own project directory (which defaults to the
+    caller's CWD, not necessarily the repo root) -- if `pseti admin` is run
+    from a directory that happens to have an unrelated `.env`, that could
+    silently compete with what we intend to pass. An explicit --env-file
+    on every invocation makes interpolation deterministic regardless of
+    CWD, and is also how a PSETI_ENV_FILE-selected dotfile's values reach
+    compose without a hand rebuild of every var here (they're already in
+    os.environ by the time this runs, via env_loader.load_pseti_env()).
+    """
+    tmp_dir = PanoPaths.tmp_dir()
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    fd, path = tempfile.mkstemp(prefix="pseti-admin-", suffix=".env", dir=str(tmp_dir))
+    with os.fdopen(fd, "w") as f:
+        for key in _ENV_FILE_KEYS:
+            if key in env:
+                f.write(f"{key}={env[key]}\n")
+    result = Path(path)
+    _tmp_env_files.append(result)
+    return result
 
 
 def run_cmd(host: str, cmd: list[str], env: dict[str, str] | None = None, quiet: bool = False) -> bool:
@@ -42,10 +95,42 @@ def run_cmd(host: str, cmd: list[str], env: dict[str, str] | None = None, quiet:
         if not quiet:
             console.print(f"[[bold red]{host}[/bold red]] Command failed with exit code {result.returncode}")
         return False
-    
+
     if not quiet:
         console.print(f"[[bold green]{host}[/bold green]] Command succeeded.")
     return True
+
+def _daq_compose_env() -> dict[str, str]:
+    """Build the env dict shared by every DAQ-node compose invocation.
+
+    Previously duplicated inline in deploy_node() and build(), and simply
+    omitted (env=None, relying on bare subprocess inheritance) in down()
+    and status() -- which meant those two never got LOCAL_UID/LOCAL_GID and
+    never printed the reproducible env header run_cmd() prints for
+    deploy/build, making a `pseti admin down`/`status` silently harder to
+    debug than a `deploy` for the exact same node.
+    """
+    env = os.environ.copy()
+    env["LOCAL_UID"] = str(os.getuid())
+    env["LOCAL_GID"] = str(os.getgid())
+    return env
+
+
+def _compose_prefix(context: str | None, project_name: str, compose_file: Path, env: dict[str, str]) -> list[str]:
+    """Build the shared `docker [--context X] compose -p P --env-file F -f FILE` prefix.
+
+    Centralizing this is what guarantees --env-file is never forgotten on
+    a new call site the way plain env= was on down()/status() -- see
+    _write_compose_env_file()'s docstring for why --env-file (not just
+    env=) matters.
+    """
+    cmd = ["docker"]
+    if context is not None:
+        cmd += ["--context", context]
+    env_file = _write_compose_env_file(env)
+    cmd += ["compose", "-p", project_name, "--env-file", str(env_file), "-f", str(compose_file)]
+    return cmd
+
 
 def get_docker_context_for_node(host: str) -> str:
     from control.utils.config_file import get_daq_config
@@ -110,7 +195,7 @@ def deploy_headnode(mode: str) -> bool:
         return False
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-    cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "up", "-d", "--build"]
+    cmd = _compose_prefix(None, "pseti-headnode", compose_file, env) + ["up", "-d", "--build"]
     return run_cmd("headnode", cmd, env=env)
 
 
@@ -125,9 +210,46 @@ def status_headnode(mode: str) -> None:
         return
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-    cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "ps"]
+    cmd = _compose_prefix(None, "pseti-headnode", compose_file, env) + ["ps"]
     console.print("[[bold cyan]headnode[/bold cyan]] Status:")
     run_cmd("headnode", cmd, env=env, quiet=True)
+
+
+# Remote path for the EnvironmentFile= a bare-metal node's panoseti_grpc/
+# panoseti_alloy systemd units read (see grpc/scripts/setup_panoseti_grpc.sh).
+# Keep in sync with that script's ENV_FILE default.
+_BARE_METAL_ENV_FILE = "/etc/panoseti/grpc.env"
+
+# Subset of the resolved env actually relevant to a bare-metal node's
+# systemd units -- deliberately narrow (not the full _ENV_FILE_KEYS list):
+# this file is world-readable-ish on the remote host via sudo tee, so only
+# forward what start_grpc.sh / config.alloy actually consume.
+_BARE_METAL_ENV_KEYS = ("HEADNODE_IP", "HEADNODE_GRPC_PORT", "DAQNODE_GRPC_PORT", "PSETI_GRPC_PROFILE")
+
+
+def _write_remote_env_file(host: str) -> bool:
+    """Write/update the bare-metal node's systemd EnvironmentFile over SSH.
+
+    Before this, a head-node .env port/host change had NO path onto a
+    bare-metal node at all -- start_grpc.sh invoked `pseti-grpc server
+    --profile X` with nothing but the operator's *interactive shell* env
+    (if any), and the systemd unit's only Environment= line set
+    PSETI_LOGS. This is what makes `pseti admin deploy --mode bare-metal`
+    actually reconfigurable via .env instead of requiring an operator to
+    SSH in and hand-edit the unit file.
+    """
+    lines = [f"{k}={os.environ[k]}" for k in _BARE_METAL_ENV_KEYS if k in os.environ]
+    if not lines:
+        return True  # nothing to forward; leave whatever's already there
+    content = "\n".join(lines) + "\n"
+    remote_cmd = f"sudo mkdir -p $(dirname {_BARE_METAL_ENV_FILE}) && sudo tee {_BARE_METAL_ENV_FILE} >/dev/null"
+    result = subprocess.run(["ssh", host, remote_cmd], input=content, text=True)
+    if result.returncode != 0:
+        console.print(f"[[bold red]{host}[/bold red]] Failed to write {_BARE_METAL_ENV_FILE} over SSH.")
+        return False
+    console.print(f"[[bold cyan]{host}[/bold cyan]] Updated {_BARE_METAL_ENV_FILE}: {', '.join(lines)}")
+    return True
+
 
 async def deploy_node(host: str, mode: str) -> None:
     """Deploy the DAQ node software using the specified strategy."""
@@ -144,18 +266,11 @@ async def deploy_node(host: str, mode: str) -> None:
             console.print(f"    docker context create {context} --docker \"host=ssh://<user>@{host}\"")
             return
 
-        env = os.environ.copy()
-        env["LOCAL_UID"] = str(os.getuid())
-        env["LOCAL_GID"] = str(os.getgid())
-
+        env = _daq_compose_env()
         project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-        cmd = [
-            "docker", "--context", context,
-            "compose", "-p", project_name, "-f", str(compose_file),
-            "up", "-d", "--build"
-        ]
+        cmd = _compose_prefix(context, project_name, compose_file, env) + ["up", "-d", "--build"]
         run_cmd(host, cmd, env=env)
 
         # Grafana Alloy (log shipping) is a separate host-network container on the same node.
@@ -165,17 +280,25 @@ async def deploy_node(host: str, mode: str) -> None:
         is_headnode = is_local(host, get_daq_config())
         if not is_headnode:
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = [
-                "docker", "--context", context,
-                "compose", "-p", project_name, "-f", str(alloy_compose_file),
-                "up", "-d", "--build"
-            ]
+            alloy_cmd = _compose_prefix(context, project_name, alloy_compose_file, env) + ["up", "-d", "--build"]
             run_cmd(host, alloy_cmd, env=env)
 
     elif mode == "bare-metal":
         # For bare-metal, we just SSH in, install from PyPI, and restart the service
         # Ensure we have the SSH key available or it will prompt
-        remote_cmd = "source ~/miniconda3/etc/profile.d/conda.sh && conda activate grpc-py314 && pip install --upgrade panoseti-grpc && echo panoseti | sudo -S systemctl restart panoseti_grpc"
+        _write_remote_env_file(host)
+        # panoseti_alloy is restarted separately (not `systemctl restart A B`
+        # as one call) and its failure doesn't fail the whole command --
+        # setup_panoseti_grpc.sh's --no-alloy lets a node skip installing it
+        # entirely, and a genuinely missing unit shouldn't be reported as a
+        # failed grpc restart.
+        remote_cmd = (
+            "source ~/miniconda3/etc/profile.d/conda.sh && conda activate grpc-py314 && "
+            "pip install --upgrade panoseti-grpc && "
+            "echo panoseti | sudo -S systemctl restart panoseti_grpc && "
+            "(echo panoseti | sudo -S systemctl restart panoseti_alloy || "
+            "echo 'panoseti_alloy not installed/active on this node, skipping')"
+        )
         cmd = ["ssh", host, f"bash -c '{remote_cmd}'"]
         run_cmd(host, cmd)
 
@@ -223,23 +346,16 @@ def build(
         env = get_headnode_compose_env()
         if env is not None:
             compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-            cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "build"]
+            cmd = _compose_prefix(None, "pseti-headnode", compose_file, env) + ["build"]
             run_cmd("headnode", cmd, env=env)
 
     for host in daq_targets:
         context = get_docker_context_for_node(host)
-        env = os.environ.copy()
-        env["LOCAL_UID"] = str(os.getuid())
-        env["LOCAL_GID"] = str(os.getgid())
-
+        env = _daq_compose_env()
         project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-        cmd = [
-            "docker", "--context", context,
-            "compose", "-p", project_name, "-f", str(compose_file),
-            "build"
-        ]
+        cmd = _compose_prefix(context, project_name, compose_file, env) + ["build"]
         run_cmd(host, cmd, env=env)
 
         from control.utils.util import is_local
@@ -247,11 +363,7 @@ def build(
         is_headnode = is_local(host, get_daq_config())
         if not is_headnode:
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = [
-                "docker", "--context", context,
-                "compose", "-p", project_name, "-f", str(alloy_compose_file),
-                "build"
-            ]
+            alloy_cmd = _compose_prefix(context, project_name, alloy_compose_file, env) + ["build"]
             run_cmd(host, alloy_cmd, env=env)
 
 
@@ -271,32 +383,32 @@ def down(
         env = get_headnode_compose_env()
         if env is not None:
             compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-            cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "down"]
+            cmd = _compose_prefix(None, "pseti-headnode", compose_file, env) + ["down"]
             run_cmd("headnode", cmd, env=env)
 
     for host in daq_targets:
+        # Previously built with no env= at all here (down() was the one
+        # command that skipped it entirely, not just the printed header --
+        # see _daq_compose_env()'s docstring). subprocess inheriting the
+        # bare process env happened to carry port vars through anyway, but
+        # not LOCAL_UID/LOCAL_GID, and --env-file (via _compose_prefix)
+        # wasn't used at all, so compose fell back to its own CWD-relative
+        # .env auto-discovery instead of this process's resolved values.
         context = get_docker_context_for_node(host)
+        env = _daq_compose_env()
         project_name = f"pseti-daqnode-{host.replace('.', '-')}"
-        
+
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-        cmd = [
-            "docker", "--context", context,
-            "compose", "-p", project_name, "-f", str(compose_file),
-            "down"
-        ]
-        run_cmd(host, cmd)
+        cmd = _compose_prefix(context, project_name, compose_file, env) + ["down"]
+        run_cmd(host, cmd, env=env)
 
         from control.utils.util import is_local
         from control.utils.config_file import get_daq_config
         is_headnode = is_local(host, get_daq_config())
         if not is_headnode:
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = [
-                "docker", "--context", context,
-                "compose", "-p", project_name, "-f", str(alloy_compose_file),
-                "down"
-            ]
-            run_cmd(host, alloy_cmd)
+            alloy_cmd = _compose_prefix(context, project_name, alloy_compose_file, env) + ["down"]
+            run_cmd(host, alloy_cmd, env=env)
 
 @app.command()
 def attach(
@@ -306,11 +418,12 @@ def attach(
     """Open an interactive shell in a specific service container."""
     if service is None:
         service = "headnode-server" if node == "headnode" else "daqnode-server"
-    cmd_base = _get_compose_cmd_base(node, service)
-    if cmd_base:
+    resolved = _get_compose_cmd_base(node, service)
+    if resolved:
+        cmd_base, env = resolved
         # Try bash first, fallback to sh
         shell_cmd = ["/bin/sh", "-c", "if command -v bash >/dev/null; then exec bash; else exec sh; fi"]
-        subprocess.run([*cmd_base, "exec", "-it", service, *shell_cmd])
+        subprocess.run([*cmd_base, "exec", "-it", service, *shell_cmd], env=env)
 
 @app.command()
 def logs(
@@ -321,13 +434,14 @@ def logs(
     """View or tail logs for a specific service."""
     if service is None:
         service = "headnode-server" if node == "headnode" else "daqnode-server"
-    cmd_base = _get_compose_cmd_base(node, service)
-    if cmd_base:
+    resolved = _get_compose_cmd_base(node, service)
+    if resolved:
+        cmd_base, env = resolved
         cmd = [*cmd_base, "logs"]
         if follow:
             cmd.append("-f")
         cmd.append(service)
-        subprocess.run(cmd)
+        subprocess.run(cmd, env=env)
 
 @app.command(name="ls")
 def list_containers(
@@ -336,16 +450,20 @@ def list_containers(
     """List all containers and services managed by pseti admin on a node."""
     status(node)
 
-def _get_compose_cmd_base(node: str, service: str) -> list[str] | None:
-    """Helper to get the base docker compose command for a node/service."""
+def _get_compose_cmd_base(node: str, service: str) -> tuple[list[str], dict[str, str]] | None:
+    """Helper to get the base docker compose command + its env for a node/service.
+
+    Returns (cmd_prefix, env) rather than mutating os.environ in place --
+    the previous os.environ.update(env) approach permanently polluted this
+    CLI process's own environment for the rest of its lifetime (visible to
+    any later command in the same invocation, and impossible to reason
+    about once two calls with different envs happened in sequence).
+    """
     if node == "headnode":
         env = get_headnode_compose_env()
         if env is not None:
             compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-            # We can't easily return env in the list, so we'll just set it in os.environ temporarily
-            import os
-            os.environ.update(env)
-            return ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file)]
+            return _compose_prefix(None, "pseti-headnode", compose_file, env), env
     else:
         from control.utils.config_file import get_daq_config
         try:
@@ -358,12 +476,13 @@ def _get_compose_cmd_base(node: str, service: str) -> list[str] | None:
             return None
 
         context = get_docker_context_for_node(node)
+        env = _daq_compose_env()
         project_name = f"pseti-daqnode-{node.replace('.', '-')}"
         if service == "alloy":
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
         else:
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-        return ["docker", "--context", context, "compose", "-p", project_name, "-f", str(compose_file)]
+        return _compose_prefix(context, project_name, compose_file, env), env
     return None
 
 @app.command()
@@ -379,22 +498,26 @@ def status(
 
     for host in daq_targets:
         if mode == "docker":
+            # Previously built with no env at all (relied on bare subprocess
+            # inheritance + compose's own CWD-relative .env auto-discovery,
+            # like down() -- see _daq_compose_env()'s docstring).
             context = get_docker_context_for_node(host)
+            env = _daq_compose_env()
             project_name = f"pseti-daqnode-{host.replace('.', '-')}"
-            
+
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-            cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(compose_file), "ps"]
+            cmd = _compose_prefix(context, project_name, compose_file, env) + ["ps"]
             console.print(f"[[bold cyan]{host}[/bold cyan]] DAQ Node Status:")
-            run_cmd(host, cmd, quiet=True)
+            run_cmd(host, cmd, env=env, quiet=True)
 
             from control.utils.util import is_local
             from control.utils.config_file import get_daq_config
             is_headnode = is_local(host, get_daq_config())
             if not is_headnode:
                 alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-                alloy_cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(alloy_compose_file), "ps"]
+                alloy_cmd = _compose_prefix(context, project_name, alloy_compose_file, env) + ["ps"]
                 console.print(f"[[bold cyan]{host}[/bold cyan]] Alloy Status:")
-                run_cmd(host, alloy_cmd, quiet=True)
+                run_cmd(host, alloy_cmd, env=env, quiet=True)
         else:
             cmd = ["ssh", host, "systemctl is-active panoseti_grpc panoseti_alloy"]
             run_cmd(host, cmd, quiet=True)

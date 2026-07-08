@@ -145,15 +145,87 @@ def _check_grpc_daq_nodes() -> list[tuple[str, bool, str]]:
 
 
 def _check_grpc_headnode() -> tuple[bool, str]:
+    """Probe the head node's gRPC services on the endpoint a real client would use.
+
+    Resolving the port via ``util.resolve_grpc_port("headnode")`` (rather
+    than a hardcoded 50051) is what makes this a genuine desync check: it
+    tells us whether the server the operator's .env says should be
+    listening on HEADNODE_GRPC_PORT actually is -- catching exactly the bug
+    class where a server binds one port (stale TOML, forgotten --port-env)
+    while every client still assumes the default.
+    """
     from panoseti_grpc.grpc_utils.health import HealthClient
 
+    from control.utils import util
+
+    port = util.resolve_grpc_port("headnode")
     try:
-        hc = HealthClient(host="localhost", port=50051)
+        hc = HealthClient(host="localhost", port=port)
         telemetry_ok = hc.check(_SVC_TELEMETRY, timeout=5.0)
         data_ok = hc.check(_SVC_DAQ_DATA, timeout=5.0)
         return telemetry_ok or data_ok, f"telemetry={'up' if telemetry_ok else 'down'} daq_data(gateway)={'up' if data_ok else 'down'}"
     except Exception as e:
-        return False, str(e)
+        return False, f"localhost:{port} -- {e}"
+
+
+def _check_port_collision() -> list[tuple[str, bool, str]]:
+    """Pure, no-network check for a co-located head+DAQ node port/data-dir collision.
+
+    On a single-machine deployment (e.g. Lick), the head and DAQ unified
+    servers both run with network_mode: host, so they MUST resolve to
+    different ports -- if HEADNODE_GRPC_PORT and DAQNODE_GRPC_PORT resolve
+    to the same value on a node that is local to the head, the two servers
+    will fight over one port and one of them loses (see wiki_docs's
+    "Co-locating Head Node and DAQ Node" section). Likewise DAQ_DATA_DIR and
+    PSETI_DATA_DIR must not overlap, or the DAQ node's hashpipe output and
+    the head node's own service state corrupt each other.
+
+    Runs before any network I/O -- catches the misconfiguration that would
+    otherwise surface later as "container keeps restarting" or silent data
+    loss, per wiki_docs's debugging section for co-located nodes.
+    """
+    from control.utils import config_file, util
+
+    results: list[tuple[str, bool, str]] = []
+    try:
+        daq_config = config_file.get_daq_config()
+    except Exception as e:
+        return [("config", False, f"could not load daq_config.json: {e}")]
+
+    head_port = util.resolve_grpc_port("headnode")
+    daq_port = util.resolve_grpc_port("daqnode")
+    for node in daq_config.daq_nodes:
+        if not util.is_local(node.ip_addr, daq_config):
+            continue
+        ok = head_port != daq_port
+        results.append((
+            str(node.ip_addr),
+            ok,
+            f"HEADNODE_GRPC_PORT={head_port} DAQNODE_GRPC_PORT={daq_port}"
+            if ok else
+            f"co-located with head node but HEADNODE_GRPC_PORT == DAQNODE_GRPC_PORT == {head_port} "
+            "-- set distinct values in .env (see wiki_docs's co-location guide)",
+        ))
+
+        # DAQ_DATA_DIR/PSETI_DATA_DIR are compose-time env vars (see
+        # docker-compose.daqnode.yml / docker-compose.headnode.yml), not
+        # PanoPaths-resolved paths -- comparing them here is only meaningful
+        # when both are actually set, i.e. an operator running pseti admin
+        # deploy for a co-located node; skip silently otherwise rather than
+        # inventing a comparison against unrelated defaults.
+        daq_data_dir = os.environ.get("DAQ_DATA_DIR", str(node.data_dir))
+        pseti_data_dir = os.environ.get("PSETI_DATA_DIR")
+        if pseti_data_dir:
+            dd_ok = os.path.normpath(daq_data_dir) != os.path.normpath(pseti_data_dir)
+            results.append((
+                f"{node.ip_addr} (data dirs)",
+                dd_ok,
+                f"DAQ_DATA_DIR={daq_data_dir} PSETI_DATA_DIR={pseti_data_dir}"
+                if dd_ok else
+                f"DAQ_DATA_DIR and PSETI_DATA_DIR are both {daq_data_dir!r} -- "
+                "must be distinct or the transfer/cleanup pipeline can destroy head-node state",
+            ))
+    return results
 
 
 def _compose_ps_running(cmd: list[str]) -> tuple[bool, str]:
@@ -232,9 +304,12 @@ def main(
 
     Covers: config validity, WPS power reachability, Quabo network
     reachability (real TFTP round-trip, not the UDP echo probe used
-    elsewhere -- see module docstring), DAQ node + head node gRPC service
-    health, container status, and the transfer daemon.
+    elsewhere -- see module docstring), co-located port/data-dir collisions,
+    DAQ node + head node gRPC service health, container status, and the
+    transfer daemon.
     """
+    from control.utils import util
+
     table = Table(title="PSETI Observatory Health", show_lines=False)
     table.add_column("Category", style="bold")
     table.add_column("Target")
@@ -265,9 +340,14 @@ def main(
                 _row(table, "Quabo", name, quabo_ok, "" if quabo_ok else "TFTP round-trip failed")
                 mark(quabo_ok)
 
+        console.print("[dim]Checking for co-located port/data-dir collisions...[/dim]")
+        for name, pc_ok, detail in _check_port_collision():
+            _row(table, "Port/Dir Collision", name, pc_ok, detail)
+            mark(pc_ok)
+
         console.print("[dim]Checking head node gRPC services...[/dim]")
         hn_ok, hn_detail = _check_grpc_headnode()
-        _row(table, "gRPC", "headnode (localhost:50051)", hn_ok, hn_detail)
+        _row(table, "gRPC", f"headnode (localhost:{util.resolve_grpc_port('headnode')})", hn_ok, hn_detail)
         mark(hn_ok)
 
         console.print("[dim]Checking DAQ node gRPC services...[/dim]")

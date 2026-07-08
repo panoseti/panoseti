@@ -111,17 +111,69 @@ def now_str() -> str:
 #
 default_hk_dest = '192.168.1.100'
 
+_DEFAULT_GRPC_PORT = 50051
+
+# Canonical env vars for gRPC bind/connect ports, in sync with
+# grpc/src/panoseti_grpc/unified_main.py's resolve_bind_port() on the server
+# side: server and client MUST agree on this precedence or they desync onto
+# different ports (the exact bug this resolver exists to eliminate -- see
+# the headnode profile's old hardcoded `port = 50052` for what that looked
+# like). DAQ_DATA_GATEWAY_PORT is a deprecated alias for HEADNODE_GRPC_PORT,
+# kept as a low-priority fallback for one release so existing .env files
+# don't silently regress.
+_ROLE_ENV_VARS: dict[str, tuple[str, ...]] = {
+    "headnode": ("HEADNODE_GRPC_PORT", "DAQ_DATA_GATEWAY_PORT"),
+    "daqnode": ("DAQNODE_GRPC_PORT",),
+}
+
+
+def resolve_grpc_port(role: str, explicit: int | None = None) -> int:
+    """Resolve the gRPC port for a given role ("headnode" or "daqnode").
+
+    This is the client-side half of the single source of truth for gRPC
+    ports; the server-side half is
+    ``panoseti_grpc.unified_main.resolve_bind_port``. Both must apply the
+    *same* precedence so a server bound via ``--port-env`` and a client
+    calling this function always agree on where to connect:
+
+    1. ``explicit`` — an operator-set, per-node value (e.g. a real
+       ``port_forwarding.grpc_port`` from ``network_config.json``, or a
+       direct node's ``daq_config.json`` ``grpc_port`` field). Passing the
+       *class default* here defeats the point — callers must only pass a
+       value that was actually configured, never a field's own default.
+    2. The role's env var(s) (``HEADNODE_GRPC_PORT`` / ``DAQNODE_GRPC_PORT``,
+       falling back to the deprecated ``DAQ_DATA_GATEWAY_PORT`` for
+       headnode).
+    3. The legacy ``GRPC_PORT`` env var.
+    4. The built-in default, 50051.
+    """
+    if explicit is not None:
+        return explicit
+    for env_var in _ROLE_ENV_VARS.get(role, ()):
+        val = os.getenv(env_var)
+        if val is not None:
+            return int(val)
+    legacy = os.getenv("GRPC_PORT")
+    if legacy is not None:
+        return int(legacy)
+    return _DEFAULT_GRPC_PORT
+
+
 def daq_grpc_endpoint(node: DaqNode | TransferNodeSpec, daq_config: DaqConfig | None = None) -> tuple[str, int]:
     """Return (host, port) for the gRPC DAQ-control server on this node.
 
     Reads port_forwarding from the node model (attached by attach_daq_config).
     If we are not local to the node, it uses the gateway IP and forwarded port.
-    Falls back to direct connection on port 50051.
+    Falls back to a direct connection on the resolved DAQNODE_GRPC_PORT.
     """
+    # A direct node may carry its own explicit override (daq_config.json's
+    # optional DaqNode.grpc_port); None means "no override, use the env/default".
+    direct_explicit = getattr(node, "grpc_port", None)
+
     # 1. If we have a daq_config, check if we are actually ON the node or in its local network.
     # If so, bypass the gateway entirely.
     if daq_config and is_local(node.ip_addr, daq_config):
-        return str(node.ip_addr), 50051
+        return str(node.ip_addr), resolve_grpc_port("daqnode", explicit=direct_explicit)
 
     # 2. If port forwarding is enabled and grpc_port is explicitly set, use the gateway.
     # grpc_port=None means gRPC is not forwarded at the gateway — fall through to direct.
@@ -130,7 +182,7 @@ def daq_grpc_endpoint(node: DaqNode | TransferNodeSpec, daq_config: DaqConfig | 
         return str(node.port_forwarding.gw_ip), node.port_forwarding.grpc_port
 
     # 3. Default direct connection
-    return str(node.ip_addr), 50051
+    return str(node.ip_addr), resolve_grpc_port("daqnode", explicit=direct_explicit)
 
 
 def local_ip() -> list[str]:

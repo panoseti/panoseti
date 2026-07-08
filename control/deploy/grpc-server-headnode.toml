@@ -5,12 +5,19 @@
 # daq_data gateway/aggregator role), with paths filled in to match
 # docker-compose.headnode.yml's config mount (${PSETI_CONFIG}:/mnt/config:ro).
 #
+# Bind port: intentionally NOT set here (see [daq_data.gateway]'s edge_port
+# below for the same principle). docker-compose.headnode.yml's command:
+# passes --port-env HEADNODE_GRPC_PORT, which resolves the bind port from
+# that env var ahead of anything in this file -- an explicit `port =` line
+# here would silently win over HEADNODE_GRPC_PORT and desync this server
+# from every client, which is exactly what happened when a hardcoded
+# `port = 50052` shipped in the bundled headnode profile TOML.
+#
 # Usage:
-#   pseti-grpc server --config /path/to/grpc-server-headnode.toml
+#   pseti-grpc server --config /path/to/grpc-server-headnode.toml --port-env HEADNODE_GRPC_PORT
 # ============================================================
 
 [server]
-port = 50051
 shutdown_grace_period = 5.0
 log_dir = "/var/log/panoseti"
 grpc_logging = true
@@ -42,5 +49,9 @@ role = "gateway"
 # no per-site edits needed unless you change that mount path.
 daq_config_path     = "/mnt/config/daq_config.json"
 network_config_path = "/mnt/config/network_config.json"
-# gRPC port on each edge node (matches the daq_node profile port).
-edge_port = 50051
+# edge_port intentionally NOT set here -- it defaults from the
+# DAQNODE_GRPC_PORT env var (DaqDataGatewayConfig.edge_port's
+# default_factory), matching whatever port the daq_node profile actually
+# bound, without needing this file edited every time that changes. A
+# per-node network_config.json port_forwarding.grpc_port override (or a
+# direct node's daq_config.json grpc_port) still wins over this default.

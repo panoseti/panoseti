@@ -21,6 +21,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
+from control.utils import util
 from control.utils.env_loader import get_env_info
 from control.utils.paths import PanoPaths
 
@@ -284,7 +285,10 @@ async def stream_sci_data(
 ) -> None:
     """Async science data stream with decoupled rendering to prevent flickering."""
     gateway_host = os.getenv("DAQ_DATA_GATEWAY_HOST", "localhost")
-    gateway_port = int(os.getenv("DAQ_DATA_GATEWAY_PORT", "50051"))
+    # The gateway is the head node's unified server -- resolve_grpc_port keeps
+    # this in sync with every other headnode client (DAQ_DATA_GATEWAY_PORT is
+    # honored as a deprecated fallback, not read directly here anymore).
+    gateway_port = util.resolve_grpc_port("headnode")
 
     # Shared state between ingestion and rendering
     latest_images: dict[int, dict[str, dict[Any, Any]]] = {}
