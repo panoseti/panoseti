@@ -7,9 +7,6 @@ ARG LOCAL_GID=1000
 # ═══════════════════════════════════════════════════════════════════════════
 FROM python:3.14-slim AS base
 
-ARG LOCAL_UID
-ARG LOCAL_GID
-
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -37,6 +34,9 @@ COPY control/src/ci/scripts/entrypoint-daqnode.sh /entrypoint-daqnode.sh
 COPY control/src/ci/scripts/entrypoint-headnode-hw.sh /entrypoint-headnode-hw.sh
 RUN chmod +x /entrypoint.sh /entrypoint-daqnode.sh /entrypoint-headnode-hw.sh
 
+ARG LOCAL_UID
+ARG LOCAL_GID
+
 # Create the panoseti user with Build-Time UID/GID injection.
 RUN groupadd -o -g ${LOCAL_GID} panoseti \
  && useradd -o -u ${LOCAL_UID} -o -g ${LOCAL_GID} -m -s /bin/bash panoseti \
@@ -62,9 +62,6 @@ RUN --mount=type=cache,uid=${LOCAL_UID},target=/home/panoseti/.cache/uv \
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS headnode
 
-ARG LOCAL_UID
-ARG LOCAL_GID
-
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync openssh-client docker.io curl \
@@ -84,6 +81,9 @@ ENV PANOSETI_LOG_DIR=/var/log/panoseti
 
 # Copy source code as the panoseti user
 COPY --chown=panoseti:panoseti control/ .
+
+ARG LOCAL_UID
+ARG LOCAL_GID
 
 RUN --mount=type=cache,uid=${LOCAL_UID},target=/home/panoseti/.cache/uv \
     uv sync --all-extras
@@ -130,9 +130,6 @@ RUN make
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS integration-daqnode
 
-ARG LOCAL_UID
-ARG LOCAL_GID
-
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     socat tcpreplay procps \
@@ -150,6 +147,9 @@ COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_da
 
 # Copy source code as the panoseti user
 COPY --chown=panoseti:panoseti control/ .
+
+ARG LOCAL_UID
+ARG LOCAL_GID
 
 RUN --mount=type=cache,uid=${LOCAL_UID},target=/home/panoseti/.cache/uv \
     uv sync --all-extras

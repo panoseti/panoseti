@@ -172,6 +172,7 @@ services:
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
       LOCAL_UID: "${HOST_UID:-1000}"
       LOCAL_GID: "${HOST_GID:-1000}"
+      GRPC_PORT: "${HEADNODE_GRPC_PORT:-50051}"
       # entrypoint.sh's self-healing chown reads this at container start to
       # know which mounted data dir to align ownership on; without it, it
       # silently falls back to its own /mnt/panoseti-test default regardless

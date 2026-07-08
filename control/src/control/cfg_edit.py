@@ -36,9 +36,8 @@ CONFIG_TYPES = {
     "obs_config.json": ObsConfig,
     "daq_config.json": DaqConfig,
     "network_config.json": NetworkConfig,
-    "daemon_config.json": DaemonConfig,
-    "firmware_config.json": FirmwareConfig,
-    "quabo_uids.json": QuaboUids,
+    "daemons.json": DaemonConfig,
+    "firmware.json": FirmwareConfig,
 }
 
 # A colorful style for questionary to make the UI pop
@@ -184,6 +183,12 @@ def edit_scalar(name: str, current_value: Any, field_info: FieldInfo, breadcrumb
             try: return float(res)
             except ValueError: pass
             
+        if _check_type(annotation, (bool,)):
+            if str(res).strip().lower() in ('true', '1', 't', 'y', 'yes'):
+                return True
+            if str(res).strip().lower() in ('false', '0', 'f', 'n', 'no'):
+                return False
+            
         return res
     except Exception:
         return current_value
@@ -315,10 +320,15 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
             if key_name:
                 val = questionary.text(f"Enter value for {key_name}:", style=custom_style).ask()
                 if val is not None:
-                    try:
-                        working_data[key_name] = float(val) if "." in val else int(val)
-                    except ValueError:
-                        working_data[key_name] = val
+                    if val.strip().lower() in ('true', '1', 't', 'y', 'yes'):
+                        working_data[key_name] = True
+                    elif val.strip().lower() in ('false', '0', 'f', 'n', 'no'):
+                        working_data[key_name] = False
+                    else:
+                        try:
+                            working_data[key_name] = float(val) if "." in val else int(val)
+                        except ValueError:
+                            working_data[key_name] = val
             continue
 
         if selected in extra_keys:
@@ -357,10 +367,15 @@ def edit_model(model_class: Type[BaseModel], current_data: dict[str, Any], bread
                 new_val = questionary.text(f"[{breadcrumb}] Edit {selected}:", default=str(val), style=custom_style).ask()
                 if new_val is None: sys.exit(0)
                 if new_val is not None:
-                    try:
-                        working_data[selected] = float(new_val) if "." in new_val else int(new_val)
-                    except ValueError:
-                        working_data[selected] = new_val
+                    if new_val.strip().lower() in ('true', '1', 't', 'y', 'yes'):
+                        working_data[selected] = True
+                    elif new_val.strip().lower() in ('false', '0', 'f', 'n', 'no'):
+                        working_data[selected] = False
+                    else:
+                        try:
+                            working_data[selected] = float(new_val) if "." in new_val else int(new_val)
+                        except ValueError:
+                            working_data[selected] = new_val
             continue
 
         field_info = fields[selected]

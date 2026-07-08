@@ -154,13 +154,18 @@ async def deploy_node(host: str, mode: str) -> None:
         run_cmd(host, cmd, env=env)
 
         # Grafana Alloy (log shipping) is a separate host-network container on the same node.
-        alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-        alloy_cmd = [
-            "docker", "--context", context,
-            "compose", "-p", project_name, "-f", str(alloy_compose_file),
-            "up", "-d", "--build"
-        ]
-        run_cmd(host, alloy_cmd, env=env)
+        # Skip if this DAQ node is the head node (headnode-server stack already runs it).
+        from control.utils.util import is_local
+        from control.utils.config_file import get_daq_config
+        is_headnode = is_local(host, get_daq_config())
+        if not is_headnode:
+            alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+            alloy_cmd = [
+                "docker", "--context", context,
+                "compose", "-p", project_name, "-f", str(alloy_compose_file),
+                "up", "-d", "--build"
+            ]
+            run_cmd(host, alloy_cmd, env=env)
 
     elif mode == "bare-metal":
         # For bare-metal, we just SSH in, install from PyPI, and restart the service
@@ -232,13 +237,17 @@ def build(
         ]
         run_cmd(host, cmd, env=env)
 
-        alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-        alloy_cmd = [
-            "docker", "--context", context,
-            "compose", "-p", project_name, "-f", str(alloy_compose_file),
-            "build"
-        ]
-        run_cmd(host, alloy_cmd, env=env)
+        from control.utils.util import is_local
+        from control.utils.config_file import get_daq_config
+        is_headnode = is_local(host, get_daq_config())
+        if not is_headnode:
+            alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+            alloy_cmd = [
+                "docker", "--context", context,
+                "compose", "-p", project_name, "-f", str(alloy_compose_file),
+                "build"
+            ]
+            run_cmd(host, alloy_cmd, env=env)
 
 
 @app.command()
@@ -272,13 +281,17 @@ def down(
         ]
         run_cmd(host, cmd)
 
-        alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-        alloy_cmd = [
-            "docker", "--context", context,
-            "compose", "-p", project_name, "-f", str(alloy_compose_file),
-            "down"
-        ]
-        run_cmd(host, alloy_cmd)
+        from control.utils.util import is_local
+        from control.utils.config_file import get_daq_config
+        is_headnode = is_local(host, get_daq_config())
+        if not is_headnode:
+            alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+            alloy_cmd = [
+                "docker", "--context", context,
+                "compose", "-p", project_name, "-f", str(alloy_compose_file),
+                "down"
+            ]
+            run_cmd(host, alloy_cmd)
 
 @app.command()
 def attach(
@@ -329,9 +342,13 @@ def status(
             cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(compose_file), "ps"]
             run_cmd(host, cmd)
 
-            alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(alloy_compose_file), "ps"]
-            run_cmd(host, alloy_cmd)
+            from control.utils.util import is_local
+            from control.utils.config_file import get_daq_config
+            is_headnode = is_local(host, get_daq_config())
+            if not is_headnode:
+                alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+                alloy_cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(alloy_compose_file), "ps"]
+                run_cmd(host, alloy_cmd)
         else:
             cmd = ["ssh", host, "systemctl is-active panoseti_grpc panoseti_alloy"]
             run_cmd(host, cmd)
