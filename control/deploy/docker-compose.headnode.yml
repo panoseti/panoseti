@@ -155,6 +155,7 @@ services:
     user: root
     volumes:
       - ${DAQ_DATA_DIR:-/mnt/panoseti-data/daq}:${DAQ_DATA_DIR:-/mnt/panoseti-data/daq}
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/data:${PSETI_DATA_DIR:-/mnt/panoseti-data}/data
       - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
       - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
       - ${PSETI_CONFIG}:/mnt/config:ro
