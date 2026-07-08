@@ -27,20 +27,24 @@ _PRINTABLE_ENV_KEYS = (
 )
 
 
-def run_cmd(host: str, cmd: list[str], env: dict[str, str] | None = None) -> bool:
+def run_cmd(host: str, cmd: list[str], env: dict[str, str] | None = None, quiet: bool = False) -> bool:
     """Run a shell command, printing the full reproducible invocation first."""
-    if env:
-        shown = " ".join(f"{k}={env[k]}" for k in _PRINTABLE_ENV_KEYS if k in env)
-        if shown:
-            console.print(f"[[bold cyan]{host}[/bold cyan]] {shown} \\")
-    console.print(f"[[bold cyan]{host}[/bold cyan]] Executing: {' '.join(cmd)}")
+    if not quiet:
+        if env:
+            shown = " ".join(f"{k}={env[k]}" for k in _PRINTABLE_ENV_KEYS if k in env)
+            if shown:
+                console.print(f"[[bold cyan]{host}[/bold cyan]] {shown} \\")
+        console.print(f"[[bold cyan]{host}[/bold cyan]] Executing: {' '.join(cmd)}")
 
     # We use subprocess.run so output streams nicely
     result = subprocess.run(cmd, env=env)
     if result.returncode != 0:
-        console.print(f"[[bold red]{host}[/bold red]] Command failed with exit code {result.returncode}")
+        if not quiet:
+            console.print(f"[[bold red]{host}[/bold red]] Command failed with exit code {result.returncode}")
         return False
-    console.print(f"[[bold green]{host}[/bold green]] Command succeeded.")
+    
+    if not quiet:
+        console.print(f"[[bold green]{host}[/bold green]] Command succeeded.")
     return True
 
 def get_docker_context_for_node(host: str) -> str:
@@ -122,7 +126,8 @@ def status_headnode(mode: str) -> None:
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
     cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "ps"]
-    run_cmd("headnode", cmd, env=env)
+    console.print("[[bold cyan]headnode[/bold cyan]] Status:")
+    run_cmd("headnode", cmd, env=env, quiet=True)
 
 async def deploy_node(host: str, mode: str) -> None:
     """Deploy the DAQ node software using the specified strategy."""
@@ -296,31 +301,70 @@ def down(
 @app.command()
 def attach(
     node: Annotated[str, typer.Argument(help="Hostname/IP of DAQ node or 'headnode'.")],
-    service: Annotated[str, typer.Argument(help="Service to attach to (e.g. daqnode-server, alloy).")] = "daqnode-server"
+    service: Annotated[str | None, typer.Argument(help="Service to attach to (e.g. daqnode-server, headnode-server, alloy).")] = None
 ) -> None:
-    """Tail logs for a specific service on a DAQ node or head node."""
+    """Open an interactive shell in a specific service container."""
+    if service is None:
+        service = "headnode-server" if node == "headnode" else "daqnode-server"
+    cmd_base = _get_compose_cmd_base(node, service)
+    if cmd_base:
+        # Try bash first, fallback to sh
+        shell_cmd = ["/bin/sh", "-c", "if command -v bash >/dev/null; then exec bash; else exec sh; fi"]
+        subprocess.run([*cmd_base, "exec", "-it", service, *shell_cmd])
+
+@app.command()
+def logs(
+    node: Annotated[str, typer.Argument(help="Hostname/IP of DAQ node or 'headnode'.")],
+    service: Annotated[str | None, typer.Argument(help="Service to view logs for.")] = None,
+    follow: Annotated[bool, typer.Option("--follow", "-f", help="Follow log output.")] = True
+) -> None:
+    """View or tail logs for a specific service."""
+    if service is None:
+        service = "headnode-server" if node == "headnode" else "daqnode-server"
+    cmd_base = _get_compose_cmd_base(node, service)
+    if cmd_base:
+        cmd = [*cmd_base, "logs"]
+        if follow:
+            cmd.append("-f")
+        cmd.append(service)
+        subprocess.run(cmd)
+
+@app.command(name="ls")
+def list_containers(
+    node: Annotated[str, typer.Argument(help="Hostname/IP of DAQ node or 'headnode'.")]
+) -> None:
+    """List all containers and services managed by pseti admin on a node."""
+    status(node)
+
+def _get_compose_cmd_base(node: str, service: str) -> list[str] | None:
+    """Helper to get the base docker compose command for a node/service."""
     if node == "headnode":
         env = get_headnode_compose_env()
         if env is not None:
             compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-            cmd = ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "logs", "-f", service]
-            subprocess.run(cmd, env=env)
+            # We can't easily return env in the list, so we'll just set it in os.environ temporarily
+            import os
+            os.environ.update(env)
+            return ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file)]
     else:
+        from control.utils.config_file import get_daq_config
+        try:
+            daq_config = get_daq_config()
+            if not any(str(n.ip_addr) == node for n in daq_config.daq_nodes):
+                console.print(f"[bold red]Error:[/] Node '{node}' is not 'headnode' and was not found in daq_config.json.")
+                return None
+        except Exception as e:
+            console.print(f"[bold red]Error:[/] Failed to load daq_config.json to validate node: {e}")
+            return None
+
         context = get_docker_context_for_node(node)
         project_name = f"pseti-daqnode-{node.replace('.', '-')}"
-        
-        # Decide which compose file has the service
         if service == "alloy":
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
         else:
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-            
-        cmd = [
-            "docker", "--context", context,
-            "compose", "-p", project_name, "-f", str(compose_file),
-            "logs", "-f", service
-        ]
-        subprocess.run(cmd)
+        return ["docker", "--context", context, "compose", "-p", project_name, "-f", str(compose_file)]
+    return None
 
 @app.command()
 def status(
@@ -340,7 +384,8 @@ def status(
             
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
             cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(compose_file), "ps"]
-            run_cmd(host, cmd)
+            console.print(f"[[bold cyan]{host}[/bold cyan]] DAQ Node Status:")
+            run_cmd(host, cmd, quiet=True)
 
             from control.utils.util import is_local
             from control.utils.config_file import get_daq_config
@@ -348,10 +393,11 @@ def status(
             if not is_headnode:
                 alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
                 alloy_cmd = ["docker", "--context", context, "compose", "-p", project_name, "-f", str(alloy_compose_file), "ps"]
-                run_cmd(host, alloy_cmd)
+                console.print(f"[[bold cyan]{host}[/bold cyan]] Alloy Status:")
+                run_cmd(host, alloy_cmd, quiet=True)
         else:
             cmd = ["ssh", host, "systemctl is-active panoseti_grpc panoseti_alloy"]
-            run_cmd(host, cmd)
+            run_cmd(host, cmd, quiet=True)
 
 if __name__ == "__main__":
     app()

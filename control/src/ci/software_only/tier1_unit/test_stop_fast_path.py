@@ -70,7 +70,7 @@ def daq_config(tmp_path, monkeypatch) -> DaqConfig:
             {
                 "username": "panoseti",
                 "data_dir": str(tmp_path),
-                "ip_addr": "127.0.0.1",
+                "ip_addr": "127.0.0.2",
                 "module_ids": [254],
                 "bindhost": "lo",
             }

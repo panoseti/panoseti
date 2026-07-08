@@ -28,7 +28,9 @@ def test_admin_build_headnode():
 
 @patch.dict(os.environ, {"HEADNODE_IP": "127.0.0.1"})
 @patch('control.admin.cli.get_docker_context_for_node', return_value='panoseti-192.168.1.10')
-def test_admin_deploy_node(mock_get_ctx):
+@patch('control.utils.util.is_local', return_value=False)
+@patch('control.utils.config_file.get_daq_config')
+def test_admin_deploy_node(mock_get_daq_config, mock_is_local, mock_get_ctx):
     with patch('control.admin.cli.subprocess.run') as mock_run:
         # mock docker context ls to return our context
         mock_run.return_value.stdout = "panoseti-192.168.1.10"
@@ -51,7 +53,9 @@ def test_admin_deploy_node(mock_get_ctx):
 
 @patch.dict(os.environ, {"HEADNODE_IP": "127.0.0.1"})
 @patch('control.admin.cli.get_docker_context_for_node', return_value='panoseti-192.168.1.10')
-def test_admin_down_all(mock_get_ctx):
+@patch('control.utils.util.is_local', return_value=False)
+@patch('control.utils.config_file.get_daq_config')
+def test_admin_down_all(mock_get_daq_config, mock_is_local, mock_get_ctx):
     with patch('control.admin.cli.subprocess.run') as mock_run:
         # mock docker context ls to return our context
         mock_run.return_value.stdout = "panoseti-192.168.1.10"
@@ -78,10 +82,10 @@ def test_admin_attach():
         result = runner.invoke(app, ["attach", "headnode"])
         assert result.exit_code == 0, f"Command failed: {result.stdout}"
         
-        found_headnode_logs = False
+        found_headnode_exec = False
         for call_args in mock_run.call_args_list:
             cmd = call_args[0][0]
-            if "logs" in cmd and "-f" in cmd and "daqnode-server" in cmd and "pseti-headnode" in cmd:
-                found_headnode_logs = True
+            if "exec" in cmd and "-it" in cmd and "headnode-server" in cmd and "pseti-headnode" in cmd:
+                found_headnode_exec = True
         
-        assert found_headnode_logs
+        assert found_headnode_exec

@@ -310,24 +310,24 @@ class TestDaqConfig:
         with pytest.raises(ValidationError):
             DaqConfig(head_node_ip_addr="10.0.0.1", daq_nodes=[])
 
-    def test_head_node_matches_daq_node_data_dir_must_match(self) -> None:
-        """When DAQ node IP == head node IP, data_dirs must match."""
-        with pytest.raises(ValidationError, match="differs from"):
+    def test_head_node_matches_daq_node_data_dir_must_not_match(self) -> None:
+        """When DAQ node IP == head node IP, data_dirs must NOT match."""
+        with pytest.raises(ValidationError, match="MUST be different"):
             DaqConfig(
                 head_node_data_dir="/data",
                 head_node_ip_addr="10.0.0.1",
                 daq_nodes=[{
-                    "username": "p", "data_dir": "/other",
+                    "username": "p", "data_dir": "/data",
                     "ip_addr": "10.0.0.1", "module_ids": "0-10",
                 }],
             )
 
-    def test_head_node_same_ip_matching_data_dir_ok(self) -> None:
+    def test_head_node_same_ip_different_data_dir_ok(self) -> None:
         DaqConfig(
             head_node_data_dir="/data",
             head_node_ip_addr="10.0.0.1",
             daq_nodes=[{
-                "username": "p", "data_dir": "/data",
+                "username": "p", "data_dir": "/other",
                 "ip_addr": "10.0.0.1", "module_ids": "0-10",
             }],
         )
