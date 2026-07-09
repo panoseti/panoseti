@@ -38,18 +38,15 @@ pseti session-stop      # power off, stop daemons
 
 ### Run tests
 ```bash
-# v2 test suite (software_only_v2/ — current)
-pseti test sw2 unit        # Tier 1: fast logic + config unit tests
-pseti test sw2 logic       # Tier 2: state-machine logic
-pseti test sw2 fleet       # Tier 3: testcontainers fleet
-pseti test sw2 chaos       # Tier 4: fault injection
-pseti test sw2 integration # Tier 5: real Hashpipe + tcpreplay
-# pseti test sw v2 <suite> is also valid (legacy alias)
-
-# v1 test suite (software_only/ — sunset in progress; tier1 unit tests moved to sw2)
-pseti test sw logic
-pseti test sw integration
-pseti test sw chaos
+# 5-tier software-only suite (control/src/ci/software_only/ — single tree,
+# no v1/v2 split: an earlier v1->v2 migration completed and consolidated
+# everything here. `pseti test sw2 ...` / `software_only_v2/` do not exist.)
+pseti test sw unit        # Tier 1: fast logic + config unit tests
+pseti test sw logic       # Tier 2: state-machine logic
+pseti test sw fleet       # Tier 3: testcontainers fleet
+pseti test sw chaos       # Tier 4: fault injection
+pseti test sw integration # Tier 5: real Hashpipe + tcpreplay
+pseti test sw all         # all five tiers sequentially
 
 # Lint (Ruff + MyPy)
 pseti test lint
@@ -308,12 +305,11 @@ The daemon holds `tmp/panoseti_transfer.lock` (flock) as a singleton guard. `sto
 `control/pyproject.toml` sets `requires-python = ">=3.14"`.
 
 ### Test locations
-- `control/src/ci/software_only_v2/tier1_unit/` — pure logic, Pydantic, parsing (no hardware, no Docker)
-- `control/src/ci/software_only_v2/tier2_logic/` — state-machine logic with isolated workspace
-- `control/src/ci/software_only_v2/tier3_fleet/` — multi-node E2E with testcontainers (`DaqNodeSimContainer`)
-- `control/src/ci/software_only_v2/tier4_chaos/` — fault injection (process kill, disk fill, gRPC proxy, netem)
-- `control/src/ci/software_only_v2/tier5_integration/` — real Hashpipe binary + tcpreplay (static compose)
-- `control/src/ci/software_only/` — v1 test suite (being sunset; runs in parallel with v2 during soak period)
+- `control/src/ci/software_only/tier1_unit/` — pure logic, Pydantic, parsing (no hardware, no Docker)
+- `control/src/ci/software_only/tier2_logic/` — state-machine logic with isolated workspace
+- `control/src/ci/software_only/tier3_fleet/` — multi-node E2E with testcontainers (`DaqNodeSimContainer`)
+- `control/src/ci/software_only/tier4_chaos/` — fault injection (process kill, disk fill, gRPC proxy, netem)
+- `control/src/ci/software_only/tier5_integration/` — real Hashpipe binary + tcpreplay (static compose)
 - `control/src/ci/hardware_software/` — hardware-in-the-loop tests (requires real Quabos + DAQ node)
 - `control/src/ci/Dockerfile.ci` — multi-stage image for all test suites
 - `control/src/ci/test_cli.py` — unified `pseti test` CLI (invoked via `pseti test sw/hw/grpc/lint`)

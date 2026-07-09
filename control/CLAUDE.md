@@ -54,13 +54,13 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 ---
 
 ## Testing and Debugging
-Tests live under `src/ci/software_only_v2/` (v2 — current) and `src/ci/software_only/` (v1 — sunset in progress):
+Tests live under `src/ci/software_only/` — a single tree, five tiers (no v1/v2 split: an earlier v1→v2 migration completed and consolidated everything here; `software_only_v2/` and `pseti test sw2` do not exist):
 
-- **Tier 1 (Unit)**: `src/ci/software_only_v2/tier1_unit/`. Zero-dependency logic and parsing.
-- **Tier 2 (Logic)**: `src/ci/software_only_v2/tier2_logic/`. Subsystem logic with isolated workspace.
-- **Tier 3 (Fleet)**: `src/ci/software_only_v2/tier3_fleet/`. Multi-node E2E with testcontainers; no persistent compose service.
-- **Tier 4 (Chaos)**: `src/ci/software_only_v2/tier4_chaos/`. Fault injection and resilience. Also uses testcontainers; no persistent service.
-- **Tier 5 (Integration)**: `src/ci/software_only_v2/tier5_integration/`. Real Hashpipe binary and heavy telemetry (Loki/Redis). Drives static Docker Compose.
+- **Tier 1 (Unit)**: `src/ci/software_only/tier1_unit/`. Zero-dependency logic and parsing.
+- **Tier 2 (Logic)**: `src/ci/software_only/tier2_logic/`. Subsystem logic with isolated workspace.
+- **Tier 3 (Fleet)**: `src/ci/software_only/tier3_fleet/`. Multi-node E2E with testcontainers; no persistent compose service.
+- **Tier 4 (Chaos)**: `src/ci/software_only/tier4_chaos/`. Fault injection and resilience. Also uses testcontainers; no persistent service.
+- **Tier 5 (Integration)**: `src/ci/software_only/tier5_integration/`. Real Hashpipe binary and heavy telemetry (Loki/Redis). Drives static Docker Compose.
 - **Atomic Locking**: Locks are managed via `os.O_EXCL` file creation with stale PID detection. Orphaned locks from crashed runs are self-healing.
 - **State Isolation**: ALL integration tests MUST isolate their state using `PSETI_STATE` redirected to a temporary directory.
 
@@ -89,33 +89,28 @@ Tests live under `src/ci/software_only_v2/` (v2 — current) and `src/ci/softwar
 ## Run tests
 
 ```bash
-# v2 test suite (software_only_v2/ — current)
-pseti test sw2 unit        # Tier 1: config/Pydantic/driver unit tests (no Docker)
-pseti test sw2 logic       # Tier 2: isolated workspace (no Docker)
-pseti test sw2 fleet       # Tier 3: testcontainers fleet
-pseti test sw2 chaos       # Tier 4: fault injection
-pseti test sw2 integration # Tier 5: real Hashpipe + tcpreplay
-# pseti test sw v2 <suite> is an equivalent legacy alias
-
-# v1 test suite (software_only/ — sunset in progress; tier1 unit tests migrated to sw2)
-pseti test sw logic
-pseti test sw fleet
-pseti test sw integration
+# 5-tier software-only suite (single tree, src/ci/software_only/ — see above)
+pseti test sw unit         # Tier 1: config/Pydantic/driver unit tests (no Docker)
+pseti test sw logic        # Tier 2: isolated workspace (no Docker)
+pseti test sw fleet        # Tier 3: testcontainers fleet
+pseti test sw chaos        # Tier 4: fault injection
+pseti test sw integration  # Tier 5: real Hashpipe + tcpreplay
+pseti test sw all          # all five tiers sequentially
 
 # Lint
 pseti test lint              # ruff + mypy concurrently
 
 # Targeted runs
-pseti test sw2 chaos -k SCN003 -vv
-pseti test sw2 integration -k "real_data"
+pseti test sw chaos -k SCN003 -vv
+pseti test sw integration -k "real_data"
 ```
 
 ---
 
 ## CI Architecture Notes
-- **Tier 1/2 (unit/logic)**: `pseti test sw2 unit/logic` runs inside the `unit-test-runner` compose service. No persistent DAQ containers.
-- **Tier 3/4 (fleet/chaos)**: `pseti test sw2 fleet/chaos` uses testcontainers — containers are created and torn down per test module. No `pseti test up` required; Docker daemon must be available on the host.
-- **Tier 5 (integration)**: `pseti test sw2 integration` requires the static compose stack (`docker-compose.integration.yml`). `pseti test up` starts persistent services.
+- **Tier 1/2 (unit/logic)**: `pseti test sw unit/logic` runs inside the `unit-test-runner` compose service. No persistent DAQ containers.
+- **Tier 3/4 (fleet/chaos)**: `pseti test sw fleet/chaos` uses testcontainers — containers are created and torn down per test module. No `pseti test up` required; Docker daemon must be available on the host.
+- **Tier 5 (integration)**: `pseti test sw integration` requires the static compose stack (`docker-compose.integration.yml`). `pseti test up` starts persistent services.
 - **Dev mode**: Pass `--dev` to any `pseti test sw` command to add hot-mounted source code into the container (useful for rapid iteration without rebuilding).
 - **CI isolation**: Without `--dev`, CI mode uses the image as the source of truth — no host bind mounts. Files written inside containers stay inside containers.
 - **Validation Leniency**: In CI, we bypass strict hardware checks if `daq_config.json` has `head_node_container: true`.
