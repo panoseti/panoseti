@@ -192,11 +192,15 @@ bash scripts/run-ci/run-daq-data-ci-test.sh
 
 All three active services are hosted on a single port via the unified server:
 ```bash
-panoseti-server                          # all enabled services
-panoseti-server --profile daq_node       # daq_data + daq_control
-panoseti-server --profile headnode       # telemetry only
-panoseti-server --list-services          # show registered services (with [DEPRECATED] tags)
+pseti-grpc server                                          # all enabled services
+pseti-grpc server --profile daq_node --port-env DAQNODE_GRPC_PORT    # daq_data (edge) + daq_control
+pseti-grpc server --profile headnode --port-env HEADNODE_GRPC_PORT   # telemetry + daq_data (gateway)
+pseti-grpc server --list-services                          # show registered services (with [DEPRECATED] tags)
 ```
+
+**gRPC port resolution — single source of truth.** The bind port is never hardcoded in a bundled profile TOML; it resolves at startup via `resolve_bind_port()` (`grpc/src/panoseti_grpc/unified_main.py`), highest priority first: `--port` > `os.getenv(--port-env's value)` > whatever the TOML/`GRPC_PORT` env resolved to > 50051. Every `docker-compose*.yml` `command:` and every bare-metal `start_grpc.sh` invocation passes `--port-env HEADNODE_GRPC_PORT` or `--port-env DAQNODE_GRPC_PORT` explicitly — the deployment names which role it is, so one `PanosetiServerConfig` shape serves two roles without profile-sniffing. Client-side, `control.utils.util.resolve_grpc_port(role, explicit=...)` applies the *identical* precedence (explicit per-node config > role env var > legacy `GRPC_PORT`/`DAQ_DATA_GATEWAY_PORT` > 50051) so server and client can't silently desync. `HEADNODE_GRPC_PORT`/`DAQNODE_GRPC_PORT` must differ when the head node and a DAQ node are co-located on one machine (both run `network_mode: host`); `pseti health` checks this before any container is touched.
+
+**Gotcha — two independent CLI entry points.** `pseti-grpc server` (the real `[project.scripts]` console command everyone actually runs) is `panoseti_grpc.cli:standalone_app`, which lazily dispatches its `server` subcommand to `panoseti_grpc._cli.server:app` — a **separate**, Typer-based reimplementation of "load config, apply --services, run PanosetiServer". `unified_main.py`'s `main()` (argparse-based) is only reached via `python -m panoseti_grpc`, which nothing in this repo's deployment path invokes. These two duplicate the config-load/port-resolve/run sequence and have already drifted apart once (confirmed live against real hardware: a `--port-env` fix landed only in `unified_main.py` and was silently dead code, crash-looping the real DAQ node container with "No such option: --port-env"). Both call the same shared `resolve_bind_port()` so the precedence logic itself can't drift again, but **any new CLI flag on the server command must be added to `_cli/server.py`, not just `unified_main.py`** — `tests/unified_server/unit/test_config.py::test_cli_server_app_exposes_port_env_option` is a regression guard for exactly this (invokes `_cli/server.py`'s real Typer app via `CliRunner`).
 
 **DAQ Data service** — the most actively used service. Streams `PanoImage` objects from Hashpipe shared memory to any subscriber. Client usage:
 ```python
@@ -233,6 +237,18 @@ logger.info("message", extra={"git_commit": "abc1234", "run_id": "run_001"})
 - `grpc_utils.retries` — `build_retry_service_config()` for declarative transport-level retry policy
 
 **Proto files** live in `../panoseti_grpc/protos/`. The `panoseti_util/` sub-package inside `panoseti_grpc` re-exports PFF reading/writing (`pff.py`) and config utilities (`config_file.py`) for use within the gRPC servers — prefer these over duplicating logic.
+
+### Deployment & orchestration (`pseti admin`, `pseti health`)
+
+`pseti admin deploy/build/down/status/attach/logs <node-or-headnode-or-all> --mode docker|bare-metal` (`control/src/control/admin/cli.py`) drives the containerized (or bare-metal) stack per node, over per-node Docker contexts for DAQ nodes (`docker_context` field in `daq_config.json`, falling back to `pseti-daq-<ip-with-dashes>`) and locally (no SSH) for the head node.
+
+- **Env propagation is deterministic, not just inherited.** Every compose invocation materializes the resolved env (`_write_compose_env_file()`) to a temp file under `PanoPaths.tmp_dir()` and passes it via `--env-file`, so `PSETI_ENV_FILE`-selected values reach compose interpolation regardless of the caller's CWD (compose also auto-reads its own `.env` from the project directory, which would otherwise silently compete). `_daq_compose_env()`/`_compose_prefix()` centralize this so no new call site can forget it the way `down()`/`status()` originally did.
+- **Bare-metal env propagation** (`--mode bare-metal`): `_write_remote_env_file()` writes/updates `/etc/panoseti/grpc.env` on the remote node over SSH before restarting `panoseti_grpc`/`panoseti_alloy` — the systemd units read it via `EnvironmentFile=-` (see `grpc/scripts/setup_panoseti_grpc.sh`). Without this there is no path for a head-node `.env` change to reach a bare-metal node at all.
+- **Co-location** (head + DAQ node on one machine, e.g. Lick): both unified servers run `network_mode: host`, so `HEADNODE_GRPC_PORT`/`DAQNODE_GRPC_PORT` must differ, and `DAQ_DATA_DIR`/`PSETI_DATA_DIR` must not overlap. `pseti admin deploy` auto-skips the DAQ node's standalone Alloy container when that node `is_local()` to the head (the head's own compose stack already runs Alloy).
+
+`pseti health` (`control/src/control/health.py`) is the single all-systems-green check, consolidating what `pseti val`/`pseti stat`/`pseti admin status`/`pseti test hw check-env` otherwise cover separately: config validity, WPS, Quabo TFTP reachability, a **co-located port/data-dir collision check** (pure, no network, runs first), head+DAQ gRPC health probed on the exact endpoint a real client resolves to (not a hardcoded port), container status, and the transfer daemon. Container status checks must pass `-p <project_name>` matching `pseti admin`'s exact project-naming convention (`pseti-headnode` / `pseti-daqnode-<host>`) — `docker compose ps` without it silently queries the wrong default project and always reports no containers running, even when they demonstrably are.
+
+**Grafana provisioning.** `control/deploy/docker-compose.headnode.yml`'s `grafana` service bind-mounts dashboards/datasources straight from the `grafana/` submodule (`grafana_provisioning/dashboards|datasources`, read-only) and persists Grafana's own sqlite DB (dashboards/alerts/auth state) at `${PSETI_DATA_DIR}/grafana`. `dashboard.yml` sets `editable: true` + `allowUiUpdates: true`, so operators can edit provisioned dashboards from the web UI (edits land in the sqlite DB, not back in the JSON files — hand-edit the JSON under `grafana/grafana_provisioning/` and redeploy for source-controlled changes). The `grafana/grafana:latest` image runs as UID 472 GID 0 by default (not root); the compose service pins `user: "472:0"` to match. If Docker ever auto-creates `${PSETI_DATA_DIR}/grafana` as root:root (a fresh/never-provisioned data dir), the container crash-loops on `mkdir: can't create directory '/var/lib/grafana/plugins': Permission denied` — fix with `chown -R 472:0 ${PSETI_DATA_DIR}/grafana` on the host (same pattern as the `loki` service's own documented `10001:10001` fix in that file).
 
 ### Timing
 
