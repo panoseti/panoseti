@@ -127,14 +127,28 @@ services:
     image: grafana/grafana:latest
     network_mode: host
     restart: always
+    # The grafana/grafana image runs as UID 472, GID 0 by default (not
+    # root) -- pin it explicitly, same reasoning as loki's user: above.
+    # Docker auto-creates a missing bind-mount source as root:root, which
+    # then makes /var/lib/grafana unwritable to UID 472 and crash-loops the
+    # container on "mkdir: can't create directory '/var/lib/grafana/plugins':
+    # Permission denied" (confirmed live) -- `chown -R 472:0
+    # ${PSETI_DATA_DIR}/grafana` on the host fixes an already-broken volume.
+    user: "472:0"
     volumes:
+      # Dashboards/datasources are provisioned straight from the grafana/
+      # submodule -- editing grafana/grafana_provisioning/**/*.json|yml and
+      # redeploying is the source-controlled way to change them.
       - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       # Grafana's own sqlite DB (dashboards/alerts/auth created via the UI,
       # as opposed to the provisioned dashboards above which come from repo
       # files and don't need this). Not persisted in the HITL test profile
       # this was adapted from, since throwaway UI state there doesn't matter;
-      # it does here.
+      # it does here. dashboard.yml's `editable: true` + `allowUiUpdates:
+      # true` (see grafana/grafana_provisioning/dashboards/dashboard.yml)
+      # let operators edit provisioned dashboards from the web UI; those
+      # edits land in this sqlite DB, not back in the JSON files.
       - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/grafana:/var/lib/grafana
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
