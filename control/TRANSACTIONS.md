@@ -130,8 +130,8 @@ If an exception occurs anywhere in the `with` block, `__aexit__` triggers the ro
 ### Start Flow Diagram
 ```mermaid
 flowchart TD
-    Z[--no-check-daq? no] --> A0[Pre-flight DAQ gRPC reachability sweep]
-    A0 --> A[Start Request] --> B[tx.__aenter__: Acquire Control Lock]
+    A[Start Request] --> A0[DAQ gRPC reachability sweep, unless skipped]
+    A0 --> B[tx.__aenter__: Acquire Control Lock]
     B --> C0[Config + head-node + stale-ledger + HK + Redis + PH-baseline checks]
     C0 --> C1[Initialize Ledger: STARTING]
     C1 --> C2[Create run directories, associate configs]
@@ -293,7 +293,7 @@ flowchart TD
     A[Stop Request] --> B[tx.__aenter__: Acquire Control Lock]
     B --> C0[Head-node identity, load ledger, resolve run name]
     C0 -- no run resolved --> C0a[Return success: nothing to stop]
-    C0 --> C1{Ledger status stoppable\nor --force-stop?}
+    C0 --> C1{Ledger status stoppable\nor force flag set?}
     C1 -- No --> C1a[ValidationError -- treated as clean no-op]
     C1 -- Yes --> C2[Set Ledger: STOPPING]
     C2 --> D[tx.__aexit__: Teardown Ladder]
@@ -301,7 +301,7 @@ flowchart TD
     D1 --> D2[2. Kill local daemons: HV, HK, temp monitor]
     D2 --> D3[3. Stop Quabo data flow]
     D3 --> D4{can_enqueue?\nwith-block exc is None\nAND run dir exists}
-    D4 -- Yes, not --no-transfer --> D4a[Build+enqueue TransferJob\nsnapshot transfer_job.toml + run_ledger.toml into run dir]
+    D4 -- Yes, transfer enabled --> D4a[Build+enqueue TransferJob\nsnapshot transfer_job.toml + run_ledger.toml into run dir]
     D4 -- No --> D4b[Skip enqueue]
     D4a --> D5
     D4b --> D5{with-block exc is None?}
