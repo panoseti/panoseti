@@ -118,12 +118,18 @@ Primary software QA suite. Run `pseti test sw2 -h` for all options.
 PSETI unified gRPC CLI. Connects to the unified server and issues RPCs.
 
 ### `pseti admin`
-Admin/deployment tools for remote DAQ nodes — manages the containerized (or bare-metal)
-gRPC server + Hashpipe stack and Grafana Alloy log shipping on each node from the head node.
+Admin/deployment tools for remote DAQ nodes and the head node — manages the containerized
+(or bare-metal) gRPC server + Hashpipe stack and Grafana Alloy log shipping, from one place.
 
-- **`pseti admin deploy <nodes> [--mode docker|bare-metal]`**: Deploy the DAQ node stack.
-  `<nodes>` is a comma-separated list of IPs/hostnames, or `all` (resolved from the
-  `daq_nodes` list in `daq_config.json`).
+- **`pseti admin deploy <nodes> [--mode docker|bare-metal]`**: Deploy the DAQ node stack
+  and/or the head node stack. `<nodes>` is a comma-separated list of IPs/hostnames,
+  `headnode`, or `all` (every DAQ node in `daq_config.json`'s `daq_nodes` list, plus the
+  head node). **Runs every node's job concurrently** (`asyncio.TaskGroup`), not one at a
+  time — output is multiplexed with a `[host]` prefix per line (same convention as
+  docker compose/ansible/pm2) so N nodes' interleaved build/deploy output stays readable,
+  and a pass/fail summary table prints at the end. One node's failure (bad SSH host,
+  network blip) doesn't cancel the others still in flight; the command exits non-zero if
+  any node failed.
   - `--mode docker` (default): builds and starts the gRPC server **and** Grafana Alloy
     containers on the node via `docker --context <ctx> compose -f grpc/deploy/…yml up -d
     --build`. The docker context comes from the node's `docker_context` field in
@@ -132,13 +138,30 @@ gRPC server + Hashpipe stack and Grafana Alloy log shipping on each node from th
     ```bash
     docker context create <ctx> --docker "host=ssh://<user>@<node-ip>"
     ```
+    The DAQ node image (`grpc/deploy/Dockerfile.daqnode`) builds `panoseti-grpc` from the
+    **local checked-out source** (the `grpc/` submodule), not PyPI — the image always
+    matches exactly the commit this checkout has pinned, with no publish step in between.
   - `--mode bare-metal`: SSHes into the node, activates the `grpc-py314` conda env,
-    upgrades `panoseti-grpc` from PyPI, and restarts the `panoseti_grpc` systemd service
-    (installed by `grpc/scripts/setup_panoseti_grpc.sh`). Assumes that conda env and a
-    `panoseti` sudo password already exist on the target node.
+    installs `panoseti-grpc` via `pip install git+https://github.com/panoseti/panoseti_grpc.git@<sha>`
+    pinned to the exact commit this checkout's `grpc/` submodule has checked out (not
+    PyPI, same "always matches what's actually committed" guarantee as `--mode docker`),
+    writes/updates `/etc/panoseti/grpc.env`, and restarts the `panoseti_grpc`/`panoseti_alloy`
+    systemd services (installed by `grpc/scripts/setup_panoseti_grpc.sh`). Assumes that
+    conda env and a `panoseti` sudo password already exist on the target node.
+- **`pseti admin build <nodes> [--mode docker]`**: Build images without starting
+  containers. Same concurrent multi-node execution and summary as `deploy`.
 - **`pseti admin status <nodes> [--mode docker|bare-metal]`**: Report whether the gRPC
   server and Alloy are running on each node (`docker compose ps`, or
   `systemctl is-active panoseti_grpc panoseti_alloy` in bare-metal mode).
+- **`pseti admin down <nodes> [--mode docker|bare-metal]`**: Tear down the stack on each node.
+- **`pseti admin attach <node> [service]`**: Open an interactive shell in a running
+  service container (default `headnode-server`/`daqnode-server`). Execs in as
+  `HOST_UID:HOST_GID`, not root — the image's baked-in default user for a fresh `exec`
+  session is root (the main process itself drops to a non-root `panoseti` user at startup
+  via `gosu`, but a new `exec` session doesn't inherit that), so without this, anything
+  written through a bind mount (e.g. editing configs with `pseti cfg edit`) would land
+  root-owned on the host.
+- **`pseti admin logs <node> [service] [--follow/-f]`**: Tail a service's container logs.
 
 ---
 
