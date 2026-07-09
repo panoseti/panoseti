@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from dotenv import dotenv_values, load_dotenv
 
@@ -31,7 +31,7 @@ def load_pseti_env() -> None:
         load_dotenv(dotenv_path=env_path, override=True)
 
 
-def get_env_info() -> dict:
+def get_env_info() -> dict[str, Any]:
     """
     Return a snapshot of the pseti environment for display purposes.
 

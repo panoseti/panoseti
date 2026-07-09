@@ -128,9 +128,9 @@ def show_env() -> None:
     console = Console()
     info = get_env_info()
     env_file = info["env_file"]
-    dotenv_vars: dict = info["dotenv_vars"]
-    pseti_vars: dict = info["pseti_vars"]
-    runtime_vars: dict = info["runtime_vars"]
+    dotenv_vars: dict[str, Any] = info["dotenv_vars"]
+    pseti_vars: dict[str, Any] = info["pseti_vars"]
+    runtime_vars: dict[str, Any] = info["runtime_vars"]
 
     # ── .env file header ──────────────────────────────────────────────────────
     if env_file:

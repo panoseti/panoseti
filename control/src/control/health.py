@@ -254,11 +254,18 @@ def _check_daqnode_containers() -> list[tuple[str, bool, str]]:
             continue
         host = str(node.ip_addr)
         context = get_docker_context_for_node(host)
+        # Must match pseti admin's project name (admin/cli.py's deploy_node)
+        # exactly -- `docker compose ps` without -p resolves its own default
+        # project name (derived from the compose file's directory), which is
+        # never what pseti admin actually deployed under. Confirmed live:
+        # containers demonstrably Up reported "no running containers" here
+        # before this fix, because it was querying the wrong project.
+        project_name = f"pseti-daqnode-{host.replace('.', '-')}"
         grpc_ok, grpc_detail = _compose_ps_running(
-            ["docker", "--context", context, "compose", "-f", str(daqnode_compose), "ps", "--format", "json"]
+            ["docker", "--context", context, "compose", "-p", project_name, "-f", str(daqnode_compose), "ps", "--format", "json"]
         )
         alloy_ok, alloy_detail = _compose_ps_running(
-            ["docker", "--context", context, "compose", "-f", str(alloy_compose), "ps", "--format", "json"]
+            ["docker", "--context", context, "compose", "-p", project_name, "-f", str(alloy_compose), "ps", "--format", "json"]
         )
         detail = f"grpc={'up' if grpc_ok else 'down ' + grpc_detail} alloy={'up' if alloy_ok else 'down ' + alloy_detail}"
         results.append((host, grpc_ok and alloy_ok, detail))
@@ -271,7 +278,11 @@ def _check_headnode_containers() -> tuple[bool, str]:
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
     if not compose_file.exists():
         return False, f"{compose_file} not found"
-    ok, detail = _compose_ps_running(["docker", "compose", "-f", str(compose_file), "ps", "--format", "json"])
+    # -p pseti-headnode must match admin/cli.py's deploy_headnode() project
+    # name -- same bug class as _check_daqnode_containers() above.
+    ok, detail = _compose_ps_running(
+        ["docker", "compose", "-p", "pseti-headnode", "-f", str(compose_file), "ps", "--format", "json"]
+    )
     return ok, detail
 
 

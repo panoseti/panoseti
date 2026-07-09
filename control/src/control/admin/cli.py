@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import contextlib
 import os
 import subprocess
 import tempfile
@@ -36,7 +37,7 @@ _PRINTABLE_ENV_KEYS = (
 # _PRINTABLE_ENV_KEYS: some compose-relevant vars aren't interesting enough
 # to echo on every invocation but must still reach compose interpolation
 # deterministically).
-_ENV_FILE_KEYS = _PRINTABLE_ENV_KEYS + ("GRPC_PORT", "DAQ_DATA_GATEWAY_HOST", "REDIS_HOST", "LOKI_URL")
+_ENV_FILE_KEYS = (*_PRINTABLE_ENV_KEYS, "GRPC_PORT", "DAQ_DATA_GATEWAY_HOST", "REDIS_HOST", "LOKI_URL")
 
 # A `pseti admin` invocation can call _write_compose_env_file() several
 # times (once per compose file, per node). Track them for best-effort
@@ -48,10 +49,8 @@ _tmp_env_files: list[Path] = []
 @atexit.register
 def _cleanup_tmp_env_files() -> None:
     for p in _tmp_env_files:
-        try:
+        with contextlib.suppress(OSError):
             p.unlink()
-        except OSError:
-            pass
 
 
 def _write_compose_env_file(env: dict[str, str]) -> Path:
@@ -195,7 +194,7 @@ def deploy_headnode(mode: str) -> bool:
         return False
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-    cmd = _compose_prefix(None, "pseti-headnode", compose_file, env) + ["up", "-d", "--build"]
+    cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "up", "-d", "--build"]
     return run_cmd("headnode", cmd, env=env)
 
 
@@ -210,7 +209,7 @@ def status_headnode(mode: str) -> None:
         return
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-    cmd = _compose_prefix(None, "pseti-headnode", compose_file, env) + ["ps"]
+    cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "ps"]
     console.print("[[bold cyan]headnode[/bold cyan]] Status:")
     run_cmd("headnode", cmd, env=env, quiet=True)
 
@@ -270,7 +269,7 @@ async def deploy_node(host: str, mode: str) -> None:
         project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-        cmd = _compose_prefix(context, project_name, compose_file, env) + ["up", "-d", "--build"]
+        cmd = [*_compose_prefix(context, project_name, compose_file, env), "up", "-d", "--build"]
         run_cmd(host, cmd, env=env)
 
         # Grafana Alloy (log shipping) is a separate host-network container on the same node.
@@ -280,7 +279,7 @@ async def deploy_node(host: str, mode: str) -> None:
         is_headnode = is_local(host, get_daq_config())
         if not is_headnode:
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = _compose_prefix(context, project_name, alloy_compose_file, env) + ["up", "-d", "--build"]
+            alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "up", "-d", "--build"]
             run_cmd(host, alloy_cmd, env=env)
 
     elif mode == "bare-metal":
@@ -346,7 +345,7 @@ def build(
         env = get_headnode_compose_env()
         if env is not None:
             compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-            cmd = _compose_prefix(None, "pseti-headnode", compose_file, env) + ["build"]
+            cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "build"]
             run_cmd("headnode", cmd, env=env)
 
     for host in daq_targets:
@@ -355,7 +354,7 @@ def build(
         project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-        cmd = _compose_prefix(context, project_name, compose_file, env) + ["build"]
+        cmd = [*_compose_prefix(context, project_name, compose_file, env), "build"]
         run_cmd(host, cmd, env=env)
 
         from control.utils.util import is_local
@@ -363,7 +362,7 @@ def build(
         is_headnode = is_local(host, get_daq_config())
         if not is_headnode:
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = _compose_prefix(context, project_name, alloy_compose_file, env) + ["build"]
+            alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "build"]
             run_cmd(host, alloy_cmd, env=env)
 
 
@@ -383,7 +382,7 @@ def down(
         env = get_headnode_compose_env()
         if env is not None:
             compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-            cmd = _compose_prefix(None, "pseti-headnode", compose_file, env) + ["down"]
+            cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "down"]
             run_cmd("headnode", cmd, env=env)
 
     for host in daq_targets:
@@ -399,7 +398,7 @@ def down(
         project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-        cmd = _compose_prefix(context, project_name, compose_file, env) + ["down"]
+        cmd = [*_compose_prefix(context, project_name, compose_file, env), "down"]
         run_cmd(host, cmd, env=env)
 
         from control.utils.util import is_local
@@ -407,7 +406,7 @@ def down(
         is_headnode = is_local(host, get_daq_config())
         if not is_headnode:
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = _compose_prefix(context, project_name, alloy_compose_file, env) + ["down"]
+            alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "down"]
             run_cmd(host, alloy_cmd, env=env)
 
 @app.command()
@@ -506,7 +505,7 @@ def status(
             project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-            cmd = _compose_prefix(context, project_name, compose_file, env) + ["ps"]
+            cmd = [*_compose_prefix(context, project_name, compose_file, env), "ps"]
             console.print(f"[[bold cyan]{host}[/bold cyan]] DAQ Node Status:")
             run_cmd(host, cmd, env=env, quiet=True)
 
@@ -515,7 +514,7 @@ def status(
             is_headnode = is_local(host, get_daq_config())
             if not is_headnode:
                 alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-                alloy_cmd = _compose_prefix(context, project_name, alloy_compose_file, env) + ["ps"]
+                alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "ps"]
                 console.print(f"[[bold cyan]{host}[/bold cyan]] Alloy Status:")
                 run_cmd(host, alloy_cmd, env=env, quiet=True)
         else:
