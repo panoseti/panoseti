@@ -172,7 +172,21 @@ services:
       - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/data:${PSETI_DATA_DIR:-/mnt/panoseti-data}/data
       - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
       - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
-      - ${PSETI_CONFIG}:/mnt/config:ro
+      # Read-write: `pseti cfg edit` (run via `pseti admin attach headnode`)
+      # writes edited configs and .bak-cfg-N backups through this same
+      # mount. Was :ro, which made every edit fail with EROFS. `attach`
+      # execs in as HOST_UID:HOST_GID (see admin/cli.py), not root, so
+      # writes land with correct host ownership, not root:root.
+      - ${PSETI_CONFIG}:/mnt/config
+      # Some config directories (e.g. the hardware-software test harness's)
+      # use a variant-swapping scheme where a config file is a symlink
+      # escaping PSETI_CONFIG (e.g. data_config.json -> ../core_obs_configs/
+      # <variant>.json). Without this, that symlink dangles inside the
+      # container since its target's directory was never mounted. See
+      # get_headnode_compose_env() for how PSETI_CORE_OBS_CONFIGS is
+      # derived (auto-detected sibling dir, or a harmless self-mount of
+      # PSETI_CONFIG when there's no such sibling).
+      - ${PSETI_CORE_OBS_CONFIGS}:/mnt/core_obs_configs:ro
       - ./grpc-server-headnode.toml:/app/grpc-server-headnode.toml:ro
       # Read-write: get_logger() writes {service}.jsonl here; Alloy (above)
       # tails it read-only. Without this mount, every service silently

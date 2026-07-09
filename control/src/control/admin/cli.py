@@ -170,6 +170,23 @@ def get_headnode_compose_env() -> dict[str, str] | None:
     env = os.environ.copy()
     env["PSETI_ROOT_BUILD"] = str(PanoPaths.software_root_dir())
     env.setdefault("PSETI_CONFIG", str(PanoPaths.config_dir()))
+    # Some config directories (e.g. the hardware-software test harness's
+    # configs/) use a variant-swapping scheme where a file like
+    # data_config.json is a symlink escaping the directory (e.g.
+    # `data_config.json -> ../core_obs_configs/<variant>.json`, matching
+    # compose_env.py's PSETI_CORE_OBS_CONFIGS for docker-compose.hw-sw.yml).
+    # Bind-mounting only PSETI_CONFIG leaves that symlink dangling inside
+    # the container (its sibling directory was never mounted). Mount the
+    # sibling automatically when it exists; when it doesn't (a normal site
+    # config dir with no escaping symlinks), fall back to re-mounting
+    # PSETI_CONFIG itself -- a harmless no-op read-only self-mount that
+    # keeps docker-compose.headnode.yml's ${PSETI_CORE_OBS_CONFIGS} mount
+    # from ever resolving to an unset/missing path.
+    core_obs_configs = Path(env["PSETI_CONFIG"]).parent / "core_obs_configs"
+    env.setdefault(
+        "PSETI_CORE_OBS_CONFIGS",
+        str(core_obs_configs) if core_obs_configs.is_dir() else env["PSETI_CONFIG"],
+    )
     env.setdefault("PSETI_DATA_DIR", "/mnt/panoseti-data")
     env["HOST_UID"] = str(os.getuid())
     env["HOST_GID"] = str(os.getgid())
@@ -463,9 +480,19 @@ def attach(
     resolved = _get_compose_cmd_base(node, service)
     if resolved:
         cmd_base, env = resolved
+        # Without --user, `compose exec` uses the image's baked-in default
+        # (root, for headnode-server/daqnode-server -- see Dockerfile.ci's
+        # `headnode` stage, which ends on `USER root`). The main process
+        # itself drops to `panoseti` via entrypoint.sh's `exec gosu panoseti
+        # "$@"`, but a fresh exec session doesn't inherit that -- it starts
+        # over from the image default. Left as root, anything the operator
+        # writes through a bind mount (e.g. `pseti cfg edit` editing
+        # /mnt/config) lands root-owned on the host. Match the main
+        # process's user explicitly instead.
+        user = f"{env.get('HOST_UID', '1000')}:{env.get('HOST_GID', '1000')}"
         # Try bash first, fallback to sh
         shell_cmd = ["/bin/sh", "-c", "if command -v bash >/dev/null; then exec bash; else exec sh; fi"]
-        subprocess.run([*cmd_base, "exec", "-it", service, *shell_cmd], env=env)
+        subprocess.run([*cmd_base, "exec", "-it", "--user", user, service, *shell_cmd], env=env)
 
 @app.command()
 def logs(
