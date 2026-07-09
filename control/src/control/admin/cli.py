@@ -250,6 +250,31 @@ def _write_remote_env_file(host: str) -> bool:
     return True
 
 
+def _grpc_pinned_commit() -> str | None:
+    """Return the exact commit SHA this checkout's grpc/ submodule has checked out.
+
+    This is what `--mode bare-metal` installs from (via `pip install
+    git+https://...@<sha>`) instead of PyPI, so a bare-metal deploy always
+    matches the exact commit this head node has -- the same guarantee
+    `--mode docker` gets from building the DAQ node image against local
+    source (see grpc/deploy/Dockerfile.daqnode). Returns None (rather than
+    raising) if the submodule directory isn't a git checkout at all, so
+    callers can fail the deploy with a clear message instead of a raw
+    traceback.
+    """
+    grpc_dir = PanoPaths.software_root_dir() / "grpc"
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(grpc_dir), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
 async def deploy_node(host: str, mode: str) -> None:
     """Deploy the DAQ node software using the specified strategy."""
 
@@ -283,8 +308,26 @@ async def deploy_node(host: str, mode: str) -> None:
             run_cmd(host, alloy_cmd, env=env)
 
     elif mode == "bare-metal":
-        # For bare-metal, we just SSH in, install from PyPI, and restart the service
-        # Ensure we have the SSH key available or it will prompt
+        # For bare-metal, we just SSH in, install from the exact commit
+        # pinned by this checkout's grpc/ submodule gitlink, and restart
+        # the service. Ensure we have the SSH key available or it will prompt.
+        #
+        # Was `pip install --upgrade panoseti-grpc` (PyPI) -- a published
+        # release necessarily lags behind whatever's actually committed
+        # here by however long since the last version bump, so a fix
+        # landed in the grpc submodule was invisible to every bare-metal
+        # deploy until someone remembered to cut a new release. Installing
+        # from git+https pinned to _grpc_pinned_commit() means bare-metal
+        # deploys always match the exact commit this head node has
+        # checked out -- same guarantee `--mode docker` gets by building
+        # from local source (see grpc/deploy/Dockerfile.daqnode). PyPI
+        # remains the documented install path for external client-script
+        # consumers (see grpc/README.md); this only changes the internal
+        # deployment path.
+        pinned_commit = _grpc_pinned_commit()
+        if pinned_commit is None:
+            console.print(f"[[bold red]{host}[/bold red]] Could not resolve the grpc/ submodule's pinned commit; aborting bare-metal deploy.")
+            return
         _write_remote_env_file(host)
         # panoseti_alloy is restarted separately (not `systemctl restart A B`
         # as one call) and its failure doesn't fail the whole command --
@@ -293,7 +336,7 @@ async def deploy_node(host: str, mode: str) -> None:
         # failed grpc restart.
         remote_cmd = (
             "source ~/miniconda3/etc/profile.d/conda.sh && conda activate grpc-py314 && "
-            "pip install --upgrade panoseti-grpc && "
+            f"pip install --upgrade 'git+https://github.com/panoseti/panoseti_grpc.git@{pinned_commit}' && "
             "echo panoseti | sudo -S systemctl restart panoseti_grpc && "
             "(echo panoseti | sudo -S systemctl restart panoseti_alloy || "
             "echo 'panoseti_alloy not installed/active on this node, skipping')"
