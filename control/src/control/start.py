@@ -117,7 +117,19 @@ async def start_recording(
     cancel_event: asyncio.Event,
     tx: StartTransaction,
     net_client: NetworkClient,
-    startdaq_timeout: float = 10.0,
+    # 20s, not 10s: the daq_control server's own StartDaq handler has a
+    # documented, legitimate worst-case budget of up to 15s (WAIT_TIMEOUT=5s
+    # for a PID + THREAD_WAIT_TIMEOUT=10s for full thread count -- see
+    # grpc/src/panoseti_grpc/daq_control/server.py). A 10s client deadline
+    # was tighter than that: confirmed live in CI (hardware-software-tests)
+    # that the very first StartDaq call of a run legitimately took >10s,
+    # hit DEADLINE_EXCEEDED, and -- because the TimeoutError branch below
+    # deliberately doesn't retry ("timeout usually means non-transient") --
+    # failed hard while the server kept running the same call in the
+    # background, holding its internal lock and poisoning every subsequent
+    # StartDaq call in the run with lock contention for the rest of the
+    # test suite. 20s gives 5s of headroom above the server's own worst case.
+    startdaq_timeout: float = 20.0,
     startdaq_retries: int = 3,
     force_clean_semaphores: bool = False,
 ) -> None:
@@ -549,7 +561,7 @@ async def start_run(
                 logger.info('starting recording (Phase 3: Transactional)')
                 await start_recording(
                     obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx, net_client,
-                    startdaq_timeout=10.0, startdaq_retries=15,
+                    startdaq_timeout=20.0, startdaq_retries=15,
                     force_clean_semaphores=force_clean_semaphores,
                 )
                 # Init & check daq_data servers
