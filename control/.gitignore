@@ -26,3 +26,6 @@ lib/*.css
 
 # Transient operation state
 state/
+
+# pseti cfg edit's automatic pre-edit backups (any configs/ directory)
+*.bak-cfg-*
