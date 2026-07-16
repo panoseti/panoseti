@@ -1,5 +1,10 @@
 control/__pycache__/*
 control/flashuid
+# get_flashuid() (control/src/control/driver/quabo_tftp.py) writes to a
+# fixed 'flashuid' path relative to cwd -- the new pseti CLI can be
+# invoked from anywhere, so this can also land at the repo root, not just
+# under control/ (the entry above).
+flashuid
 control/quabo_uids.json
 control/obs_config.json
 control/daq_config.json

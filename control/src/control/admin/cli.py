@@ -4,8 +4,9 @@ import contextlib
 import os
 import subprocess
 import tempfile
+from collections.abc import Coroutine
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -99,6 +100,51 @@ def run_cmd(host: str, cmd: list[str], env: dict[str, str] | None = None, quiet:
         console.print(f"[[bold green]{host}[/bold green]] Command succeeded.")
     return True
 
+
+async def run_cmd_async(host: str, cmd: list[str], env: dict[str, str] | None = None) -> bool:
+    """Async counterpart to run_cmd(), for running several nodes' jobs concurrently.
+
+    `deploy`/`build` used to loop over nodes and `run_cmd()` (subprocess.run,
+    blocking) each one in turn -- correct but O(N) wall-clock in the number
+    of nodes, since a slow/remote docker --context build for one node blocks
+    every node after it in the list. subprocess.run's rationale ("output
+    streams nicely") stops applying once N nodes run at once: N processes
+    writing straight to the same terminal fd would interleave mid-line into
+    unreadable byte-soup.
+
+    Instead, capture each subprocess's merged stdout+stderr via a pipe and
+    print it line-by-line, every line prefixed with [host] -- the same
+    convention docker compose/ansible/pm2 use for multiplexed job output.
+    This does NOT need an explicit lock: asyncio is single-threaded
+    cooperative concurrency, and console.print() contains no `await`, so it
+    always runs to completion before the next task gets scheduled -- lines
+    from different nodes interleave with each other (expected, desired),
+    never *within* a line.
+    """
+    if env:
+        shown = " ".join(f"{k}={env[k]}" for k in _PRINTABLE_ENV_KEYS if k in env)
+        if shown:
+            console.print(f"[[bold cyan]{host}[/bold cyan]] {shown} \\")
+    console.print(f"[[bold cyan]{host}[/bold cyan]] Executing: {' '.join(cmd)}")
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    assert proc.stdout is not None
+    async for raw_line in proc.stdout:
+        line = raw_line.decode(errors="replace").rstrip("\n")
+        console.print(f"[[bold cyan]{host}[/bold cyan]] {line}")
+    returncode = await proc.wait()
+
+    if returncode != 0:
+        console.print(f"[[bold red]{host}[/bold red]] Command failed with exit code {returncode}")
+        return False
+    console.print(f"[[bold green]{host}[/bold green]] Command succeeded.")
+    return True
+
+
 def _daq_compose_env() -> dict[str, str]:
     """Build the env dict shared by every DAQ-node compose invocation.
 
@@ -141,6 +187,47 @@ def get_docker_context_for_node(host: str) -> str:
     except Exception:
         pass
     return f"pseti-daq-{host.replace('.', '-')}"
+
+async def _run_node_job(label: str, coro: Coroutine[Any, Any, bool | None], results: dict[str, bool]) -> None:
+    """Run one node's build/deploy job under a TaskGroup, recording its outcome.
+
+    Catches exceptions here (rather than letting them propagate to the
+    TaskGroup) so one node's failure -- a bad SSH host, a network blip --
+    doesn't cancel every other node's already-in-flight job. This is the
+    "best-effort fan-out" shape (see grpc/CLAUDE.md's TaskGroup guidance):
+    concurrent, but every node gets to finish and report its own outcome
+    independently. `results` is shared across all concurrent tasks but
+    each task only ever writes its own `label` key, so this needs no lock.
+    """
+    try:
+        ok = await coro
+        results[label] = ok is not False
+    except Exception as exc:
+        console.print(f"[[bold red]{label}[/bold red]] Job raised an exception: {exc}")
+        results[label] = False
+
+
+def _print_job_summary(action: str, results: dict[str, bool]) -> None:
+    """Print a compact pass/fail table after a concurrent multi-node run.
+
+    Individual nodes' output above is interleaved (by design -- see
+    run_cmd_async), so a final summary is what actually answers "did
+    everything succeed" without having to scroll back through it.
+    """
+    console.print(f"\n[bold]{action} summary:[/bold]")
+    for label, ok in results.items():
+        # [[...]] (not [...]) -- a bare f"[{label}]" gets swallowed as
+        # unrecognized Rich markup for labels that look like a style/tag
+        # name (e.g. "headnode" -- silently prints as "", no error, no
+        # brackets); labels with dots (e.g. "192.168.0.228") happen not to
+        # parse as markup and are unaffected, which is what made this easy
+        # to miss. [[ / ]] is Rich's literal-bracket escape; matches the
+        # convention already used everywhere else in this file (run_cmd()).
+        status = "[bold green]OK[/bold green]" if ok else "[bold red]FAILED[/bold red]"
+        console.print(f"  [[bold cyan]{label}[/bold cyan]] {status}")
+    if not all(results.values()):
+        raise typer.Exit(1)
+
 
 def resolve_target_nodes(nodes: str) -> tuple[list[str], bool]:
     """Expand a comma-separated node list, resolving 'all' from daq_config.json.
@@ -200,7 +287,49 @@ def get_headnode_compose_env() -> dict[str, str] | None:
     return env
 
 
-def deploy_headnode(mode: str) -> bool:
+# Services in docker-compose.headnode.yml that a deployment may already run
+# bare-metal elsewhere and want to skip starting a duplicate of here.
+# loki/alloy/headnode-server are never optional: alloy is the log-shipping
+# path this whole stack exists to provide, and headnode-server is the gRPC
+# server pseti admin deploy is fundamentally deploying.
+_HEADNODE_OPTIONAL_SERVICES = ("redis", "influxdb", "grafana")
+
+
+def _headnode_enabled_services() -> list[str] | None:
+    """Service args to append to a headnode compose `up`/`build` command.
+
+    Returns None (append nothing -- compose then targets every service, the
+    prior/default behavior) unless PSETI_HEADNODE_DISABLE_SERVICES names one
+    or more of _HEADNODE_OPTIONAL_SERVICES to skip, e.g.:
+        PSETI_HEADNODE_DISABLE_SERVICES=redis,influxdb
+    for a deployment that already runs Redis/InfluxDB bare-metal on this
+    host. Compose only starts/builds services actually named on the command
+    line when any are named at all, so the disabled ones are simply omitted
+    -- `down`/`status`/`logs` are unaffected (they operate on whatever is
+    actually running, not on what a prior deploy/build did or didn't start).
+    """
+    raw = os.environ.get("PSETI_HEADNODE_DISABLE_SERVICES", "").strip()
+    if not raw:
+        return None
+    disabled = {s.strip() for s in raw.split(",") if s.strip()}
+    unknown = disabled - set(_HEADNODE_OPTIONAL_SERVICES)
+    if unknown:
+        console.print(
+            f"[bold red][headnode][/bold red] PSETI_HEADNODE_DISABLE_SERVICES names "
+            f"unrecognized/non-optional service(s): {', '.join(sorted(unknown))}. "
+            f"Only {', '.join(_HEADNODE_OPTIONAL_SERVICES)} can be disabled."
+        )
+        raise typer.Exit(1)
+    enabled_optional = [s for s in _HEADNODE_OPTIONAL_SERVICES if s not in disabled]
+    if disabled:
+        console.print(
+            f"[yellow][headnode][/yellow] Skipping service(s) already running "
+            f"elsewhere: {', '.join(sorted(disabled))}"
+        )
+    return [*enabled_optional, "loki", "alloy", "headnode-server"]
+
+
+async def deploy_headnode_async(mode: str) -> bool:
     """Deploy the head node's observability + gRPC gateway stack (local machine, no SSH)."""
     if mode != "docker":
         console.print(f"[yellow][headnode][/yellow] --mode {mode} is not supported for the head node; use --mode docker.")
@@ -212,7 +341,10 @@ def deploy_headnode(mode: str) -> bool:
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
     cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "up", "-d", "--build"]
-    return run_cmd("headnode", cmd, env=env)
+    enabled = _headnode_enabled_services()
+    if enabled is not None:
+        cmd += enabled
+    return await run_cmd_async("headnode", cmd, env=env)
 
 
 def status_headnode(mode: str) -> None:
@@ -292,7 +424,7 @@ def _grpc_pinned_commit() -> str | None:
     return result.stdout.strip()
 
 
-async def deploy_node(host: str, mode: str) -> None:
+async def deploy_node(host: str, mode: str) -> bool:
     """Deploy the DAQ node software using the specified strategy."""
 
     if mode == "docker":
@@ -300,29 +432,36 @@ async def deploy_node(host: str, mode: str) -> None:
         context = get_docker_context_for_node(host)
 
         # We assume the context is already created by the user, just like in hw-sw tests.
-        # Check if the context exists
-        res = subprocess.run(["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True)
+        # Check if the context exists. asyncio.to_thread instead of a bare
+        # subprocess.run: deploy_node() now runs concurrently for every
+        # node (see deploy()'s asyncio.gather), and a blocking call here
+        # would stall every *other* node's task on the single shared event
+        # loop for its duration.
+        res = await asyncio.to_thread(
+            subprocess.run, ["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True
+        )
         if context not in res.stdout:
             console.print(f"[[yellow]{host}[/yellow]] Docker context '{context}' not found. Please create it first:")
             console.print(f"    docker context create {context} --docker \"host=ssh://<user>@{host}\"")
-            return
+            return False
 
         env = _daq_compose_env()
         project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
         compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
         cmd = [*_compose_prefix(context, project_name, compose_file, env), "up", "-d", "--build"]
-        run_cmd(host, cmd, env=env)
+        ok = await run_cmd_async(host, cmd, env=env)
 
         # Grafana Alloy (log shipping) is a separate host-network container on the same node.
         # Skip if this DAQ node is the head node (headnode-server stack already runs it).
-        from control.utils.util import is_local
         from control.utils.config_file import get_daq_config
+        from control.utils.util import is_local
         is_headnode = is_local(host, get_daq_config())
         if not is_headnode:
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
             alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "up", "-d", "--build"]
-            run_cmd(host, alloy_cmd, env=env)
+            ok = await run_cmd_async(host, alloy_cmd, env=env) and ok
+        return ok
 
     elif mode == "bare-metal":
         # For bare-metal, we just SSH in, install from the exact commit
@@ -341,11 +480,11 @@ async def deploy_node(host: str, mode: str) -> None:
         # remains the documented install path for external client-script
         # consumers (see grpc/README.md); this only changes the internal
         # deployment path.
-        pinned_commit = _grpc_pinned_commit()
+        pinned_commit = await asyncio.to_thread(_grpc_pinned_commit)
         if pinned_commit is None:
             console.print(f"[[bold red]{host}[/bold red]] Could not resolve the grpc/ submodule's pinned commit; aborting bare-metal deploy.")
-            return
-        _write_remote_env_file(host)
+            return False
+        await asyncio.to_thread(_write_remote_env_file, host)
         # panoseti_alloy is restarted separately (not `systemctl restart A B`
         # as one call) and its failure doesn't fail the whole command --
         # setup_panoseti_grpc.sh's --no-alloy lets a node skip installing it
@@ -359,10 +498,11 @@ async def deploy_node(host: str, mode: str) -> None:
             "echo 'panoseti_alloy not installed/active on this node, skipping')"
         )
         cmd = ["ssh", host, f"bash -c '{remote_cmd}'"]
-        run_cmd(host, cmd)
+        return await run_cmd_async(host, cmd)
 
     else:
         console.print(f"[red]Unknown deployment mode: {mode}[/red]")
+        return False
 
 @app.command()
 def deploy(
@@ -377,16 +517,26 @@ def deploy(
     daq_targets, include_headnode = resolve_target_nodes(nodes)
 
     described = (["headnode"] if include_headnode else []) + daq_targets
-    console.print(f"[bold]Starting {mode} deployment on: {', '.join(described)}[/bold]")
+    console.print(f"[bold]Starting {mode} deployment on: {', '.join(described)} (concurrently)[/bold]")
 
-    # Run sequentially: subprocess stdout interleaves if concurrent, and we
-    # print each full invocation as it runs so the log doubles as a
-    # re-runnable/modifiable script.
-    if include_headnode:
-        deploy_headnode(mode)
+    # Deploy every node concurrently instead of one at a time -- this used
+    # to be O(N) wall-clock in the number of nodes (each node's full
+    # `compose up -d --build` blocked the next). run_cmd_async() handles
+    # the readability side (per-line [host]-prefixed output instead of N
+    # processes' raw stdout garbling together); _run_node_job() handles
+    # fault isolation (one node's SSH/build failure doesn't cancel the
+    # others still in flight -- best-effort fan-out, not all-or-nothing).
+    async def _run_all() -> dict[str, bool]:
+        results: dict[str, bool] = {}
+        async with asyncio.TaskGroup() as tg:
+            if include_headnode:
+                tg.create_task(_run_node_job("headnode", deploy_headnode_async(mode), results))
+            for host in daq_targets:
+                tg.create_task(_run_node_job(host, deploy_node(host, mode), results))
+        return results
 
-    for host in daq_targets:
-        asyncio.run(deploy_node(host, mode))
+    results = asyncio.run(_run_all())
+    _print_job_summary("Deploy", results)
 
 
 @app.command()
@@ -401,29 +551,53 @@ def build(
 
     daq_targets, include_headnode = resolve_target_nodes(nodes)
 
-    if include_headnode:
-        env = get_headnode_compose_env()
-        if env is not None:
-            compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
-            cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "build"]
-            run_cmd("headnode", cmd, env=env)
+    described = (["headnode"] if include_headnode else []) + daq_targets
+    console.print(f"[bold]Starting build on: {', '.join(described)} (concurrently)[/bold]")
 
-    for host in daq_targets:
-        context = get_docker_context_for_node(host)
-        env = _daq_compose_env()
-        project_name = f"pseti-daqnode-{host.replace('.', '-')}"
+    async def _run_all() -> dict[str, bool]:
+        results: dict[str, bool] = {}
+        async with asyncio.TaskGroup() as tg:
+            if include_headnode:
+                tg.create_task(_run_node_job("headnode", _build_headnode_async(), results))
+            for host in daq_targets:
+                tg.create_task(_run_node_job(host, _build_node_async(host), results))
+        return results
 
-        compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
-        cmd = [*_compose_prefix(context, project_name, compose_file, env), "build"]
-        run_cmd(host, cmd, env=env)
+    results = asyncio.run(_run_all())
+    _print_job_summary("Build", results)
 
-        from control.utils.util import is_local
-        from control.utils.config_file import get_daq_config
-        is_headnode = is_local(host, get_daq_config())
-        if not is_headnode:
-            alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-            alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "build"]
-            run_cmd(host, alloy_cmd, env=env)
+
+async def _build_headnode_async() -> bool:
+    """Async build-only counterpart to deploy_headnode_async() (no `up -d`, just `build`)."""
+    env = get_headnode_compose_env()
+    if env is None:
+        return False
+    compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
+    cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "build"]
+    enabled = _headnode_enabled_services()
+    if enabled is not None:
+        cmd += enabled
+    return await run_cmd_async("headnode", cmd, env=env)
+
+
+async def _build_node_async(host: str) -> bool:
+    """Async build-only counterpart to deploy_node()'s docker branch (no `up -d`, just `build`)."""
+    context = get_docker_context_for_node(host)
+    env = _daq_compose_env()
+    project_name = f"pseti-daqnode-{host.replace('.', '-')}"
+
+    compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
+    cmd = [*_compose_prefix(context, project_name, compose_file, env), "build"]
+    ok = await run_cmd_async(host, cmd, env=env)
+
+    from control.utils.config_file import get_daq_config
+    from control.utils.util import is_local
+    is_headnode = is_local(host, get_daq_config())
+    if not is_headnode:
+        alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+        alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "build"]
+        ok = await run_cmd_async(host, alloy_cmd, env=env) and ok
+    return ok
 
 
 @app.command()
@@ -461,8 +635,8 @@ def down(
         cmd = [*_compose_prefix(context, project_name, compose_file, env), "down"]
         run_cmd(host, cmd, env=env)
 
-        from control.utils.util import is_local
         from control.utils.config_file import get_daq_config
+        from control.utils.util import is_local
         is_headnode = is_local(host, get_daq_config())
         if not is_headnode:
             alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
@@ -579,8 +753,8 @@ def status(
             console.print(f"[[bold cyan]{host}[/bold cyan]] DAQ Node Status:")
             run_cmd(host, cmd, env=env, quiet=True)
 
-            from control.utils.util import is_local
             from control.utils.config_file import get_daq_config
+            from control.utils.util import is_local
             is_headnode = is_local(host, get_daq_config())
             if not is_headnode:
                 alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"

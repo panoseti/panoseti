@@ -25,6 +25,14 @@
 #
 # Usage:
 #   docker compose -f docker-compose.headnode.yml up -d --build
+#
+# To skip redis/influxdb/grafana (e.g. a deployment already runs them
+# bare-metal on this host), don't edit this file -- set
+# PSETI_HEADNODE_DISABLE_SERVICES (see .env.example) and use
+# `pseti admin deploy headnode` / `pseti admin build headnode`, which
+# translate it into an explicit service list on the `up`/`build` command
+# line. A bare `docker compose up`, without going through pseti admin,
+# always starts every service in this file regardless of that var.
 
 configs:
   alloy_config:

@@ -1,0 +1,334 @@
+#! /usr/bin/env python3
+
+# stop and finish a recording run if one is in progress.
+# stop recording activities whether or not a run is in progress.
+#
+# - tell DAQs to stop recording
+# - stop HK recorder process
+# - tell quabos to stop sending data
+# - if a run is in progress, copy data files to head and delete from DAQs
+#
+# options:
+#   --verbose           print details
+#   --no_collect        don't copy data files to head node
+#   --no_cleanup        don't delete files from DAQ nodes
+#   --run X             clean up run X (default: read from current_run)
+
+import os, sys
+from argparse import ArgumentParser
+import signal
+import logging
+
+from utils import collect
+from driver import quabo_driver
+from utils.util import *
+from utils import pff, config_file
+from tools.interleave import PID_FILE
+
+
+
+def stop_interleave(retry_limit=10):
+    """
+    Checks if the interleave process is running and cleanly shuts it down.
+    This prevents background mode switching after DAQ has been commanded to stop.
+    """
+    pid_file = PID_FILE
+    if os.path.exists(pid_file):
+        print("Active interleave process detected. Stopping it gracefully...")
+        try:
+            with open(pid_file, "r") as f:
+                pid = int(f.read().strip())
+            os.kill(pid, signal.SIGTERM)
+
+            # Wait briefly for it to clean up and restore defaults
+
+            for r in range(retry_limit):
+                if not os.path.exists(pid_file):
+                    break
+                logger.warning(f"Stopping interleave process: {pid}. Attempt [{r}/{retry_limit}]")
+                time.sleep(0.5)
+        except (OSError, ValueError):
+            os.remove(pid_file)
+
+
+from argparse import ArgumentParser
+import logging
+
+import builtins
+import tempfile
+from datetime import datetime, timezone
+
+# =========================
+# Print -> also prepend to UT log file
+# =========================
+
+_ORIG_PRINT = builtins.print
+
+def _ut_human_timestamp():
+    # Human-readable UTC timestamp
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UT')
+
+def _ut_yyyymmdd():
+    return datetime.now(timezone.utc).strftime('%Y%m%d')
+
+def _datarec_log_path():
+    yyyymmdd = _ut_yyyymmdd()
+    log_dir = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
+    os.makedirs(log_dir, exist_ok=True)
+    return os.path.join(log_dir, f"datarec_{yyyymmdd}.log")
+
+def _prepend_line_to_file(path, line):
+    # Prepend efficiently by writing a temp file then replacing.
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+
+    old = b""
+    try:
+        with open(path, "rb") as f:
+            old = f.read()
+    except FileNotFoundError:
+        old = b""
+
+    new_bytes = (line + "\n").encode("utf-8", errors="replace")
+
+    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_datarec_", dir=d or None)
+    try:
+        with os.fdopen(fd, "wb") as tf:
+            tf.write(new_bytes)
+            tf.write(old)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except Exception:
+            pass
+
+def print(*args, **kwargs):
+    # Console print as-is + prepend to UT log file with timestamp.
+    msg = " ".join(str(a) for a in args)
+    try:
+        _prepend_line_to_file(_datarec_log_path(), f"{_ut_human_timestamp()}: {msg}")
+    except Exception:
+        pass
+    _ORIG_PRINT(*args, **kwargs)
+
+builtins.print = print
+
+# write message to error log
+#
+def log_error(msg, run_dir):
+    print(msg)
+    log_path = '%s/stop_errors'%run_dir if run_dir else 'stop_errors'
+    with open(log_path, 'a') as f:
+        f.write('%s: %s\n'%(now_str(), msg))
+
+# tell the quabos to stop sending data
+#
+def stop_data_flow(quabo_uids, network_config):
+    logger = logging.getLogger('PANOSETI.Stop.stop_data_flow')
+    daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
+    for dome in quabo_uids['domes']:
+        for module in dome['modules']:
+            if 'daq_node' not in module:
+                continue
+            base_ip_addr = module['ip_addr']
+            for i in range(4):
+                quabo = module['quabos'][i]
+                if quabo['uid'] == '':
+                    continue
+                ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
+                ip_ports = get_quabo_ip_port(base_ip_addr, i, network_config)
+                real_ip = ip_ports['ip_addr']
+                cmd_port = ip_ports['cmd_port']
+                logger.info('Quabo IP: %s'%ip_addr)
+                logger.info('Real IP: %s'%real_ip)
+                logger.info('Cmd Port: %d'%cmd_port)
+                quabo = quabo_driver.QUABO(real_ip, cmd_port)
+                quabo.send_daq_params(daq_params)
+                quabo.close()
+
+# tell all DAQ nodes to stop recording
+#
+def stop_recording(daq_config, run_dir, verbose):
+    logger = logging.getLogger('PANOSETI.Stop.stop_recording')
+    for node in daq_config['daq_nodes']:
+        if 'port_forwarding' in node:
+            real_ip = node['port_forwarding']['gw_ip']
+            port = node['port_forwarding']['port']
+            logger.info('Use port forwarding')
+            logger.info('Real IP: %s'%real_ip)
+            logger.info('Port: %d'%port)
+            cmd = 'ssh -p %d %s@%s "cd %s; ./stop_daq.py"'%(
+                port, node['username'], real_ip, node['data_dir']
+            )
+        else:
+            cmd = 'ssh %s@%s "cd %s; ./stop_daq.py"'%(
+                node['username'], node['ip_addr'], node['data_dir']
+            )
+        if verbose:
+            print(cmd)
+        ret = os.system(cmd)
+        if ret:
+            msg = '%s returned %d'%(cmd, ret)
+            logger.error(msg, run_dir)
+            raise Exception(msg)
+
+# write a "complete file" in the run dir
+#
+def write_complete_file(run_dir, filename):
+    path = '%s/%s'%(run_dir, filename)
+    with open(path , 'w') as f:
+        f.write(now_str())
+
+def complete_file_exists(run_dir, filename):
+    path = '%s/%s'%(run_dir, filename)
+    return os.path.exists(path)
+
+# make symlinks to the first nonempty image and ph files in that dir
+#
+def make_links(run_dir, verbose):
+    if os.path.lexists(img_symlink):
+        os.unlink(img_symlink)
+    if os.path.lexists(ph_symlink):
+        os.unlink(ph_symlink)
+    if os.path.lexists(hk_symlink):
+        os.unlink(hk_symlink)
+    did_img = False
+    did_ph = False
+    did_hk = False
+    for f in os.listdir(run_dir):
+        path = '%s/%s'%(run_dir, f)
+        if not pff.is_pff_file(path): continue
+        if os.path.getsize(path) == 0: continue
+        ftype = pff.pff_file_type(f)
+        if not did_img and ftype in ['img16', 'img8']:
+            os.symlink(path, img_symlink)
+            did_img = True
+            if verbose:
+                print('linked %s to %s'%(img_symlink, f))
+        elif not did_ph and ftype in ['ph256', 'ph1024']:
+            os.symlink(path, ph_symlink)
+            did_ph = True
+            if verbose:
+                print('linked %s to %s'%(ph_symlink, f))
+        elif not did_hk and ftype == 'hk':
+            os.symlink(path, hk_symlink)
+            did_hk = True
+            if verbose:
+                print('linked %s to %s'%(hk_symlink, f))
+        if did_img and did_ph and did_hk: break
+    if not did_img:
+        print('make_links(): No nonempty image file')
+    if not did_ph:
+        print('make_links(): No nonempty PH file')
+    if not did_hk:
+        print('make_links(): No nonempty housekeeping file')
+
+def stop_run(
+    daq_config, network_config, quabo_uids, verbose=False, no_cleanup=False, no_collect=False,
+    run = None
+):
+    # convert head node name to IP address
+    head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
+    if head_node_ip not in local_ip():
+        raise Exception(
+            'This computer (%s) is not the head node specified in daq_config.json (%s)'%(
+                local_ip(), daq_config['head_node_ip_addr']
+            )
+        )
+
+    if not run:
+        run = read_run_name()
+    data_dir = daq_config['head_node_data_dir']
+    run_dir = '%s/%s'%(data_dir, run)
+    if not os.path.exists(run_dir):
+        run_dir = None
+
+    # do things that don't depend on having a run dir
+
+    print("stopping data recording")
+    stop_recording(daq_config, run_dir, verbose)
+
+    print("stopping HV updater")
+    kill_hv_updater()
+
+    print("stopping HK recording")
+    kill_hk_recorder()
+
+    print("stopping Temperature monitor")
+    kill_module_temp_monitor()
+
+    print("stopping data generation")
+    stop_data_flow(quabo_uids, network_config)
+
+    if run_dir:
+        if not complete_file_exists(run_dir, recording_ended_filename):
+            write_complete_file(run_dir, recording_ended_filename)
+        collect_error = ''
+        if not no_collect and not complete_file_exists(run_dir, collect_complete_filename):
+            print("collecting data from DAQ nodes")
+            collect_error = collect.collect_data(daq_config, run, verbose)
+            if collect_error == '':
+                write_complete_file(run_dir, collect_complete_filename)
+        if collect_error == '':
+            if not no_cleanup:
+                if verbose:
+                    print("cleaning up DAQ nodes")
+                error_msg = collect.cleanup_daq(daq_config, run, verbose)
+                if error_msg != '':
+                    log_error(error_msg, run_dir)
+            make_links(run_dir, verbose)
+            write_complete_file(run_dir, run_complete_filename)
+            print('completed run %s'%run)
+        else:
+            log_error(collect_error, run_dir)
+        remove_run_name()
+    else:
+        print("No run is in progress")
+
+if __name__ == "__main__":
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    logfile = 'logs/stop.log'
+    create_logger(logfile, 'PANOSETI.Stop', 'a')
+    logger = logging.getLogger('PANOSETI.Stop')
+    logger.info('************************************')
+    i = 1;
+    argv = sys.argv
+    verbose = False
+    no_cleanup = False
+    no_collect = False
+    run = None
+    parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
+    parser.add_argument('--no_cleanup', dest='no_cleanup', action='store_true', default=False,
+                        help='Don\'t clean up the data files on the DAQ nodes.')
+    parser.add_argument('--no_collect', dest='no_collect', action='store_true', default=False,
+                        help='Don\'t collect the data files to the head node.')
+    parser.add_argument('--run', dest='run', type=str, default=None,
+                        help='Move the data files for the specific run to the head node.')
+    parser.add_argument('--verbose', dest='verbose', action='store_true', default=False,
+                        help='Print commands.')
+    args = parser.parse_args()
+    verbose = args.verbose
+    no_cleanup = args.no_cleanup
+    no_collect = args.no_collect
+    run = args.run
+    daq_config = config_file.get_daq_config()
+    quabo_uids = config_file.get_quabo_uids()
+    network_config = config_file.get_network_config()
+    attach_daq_config(daq_config, network_config)
+    config_file.associate(daq_config, quabo_uids)
+
+    # Kill interleaving before stopping primary data flow
+    try:
+        stop_interleave(retry_limit=10)
+    except Exception as e:
+        logger.critical('Failed to stop interleave!')
+        logger.exception(e)
+
+    # Stop run
+    stop_run(daq_config, network_config, quabo_uids, verbose, no_cleanup, no_collect, run)
+
+

@@ -1,15 +1,20 @@
 {
     "comment": "GitHub Self-hosted Hardware-Software Runner",
-    "head_node_data_dir": "/mnt/panoseti-test/",
+    "head_node_data_dir": "/mnt/panoseti-data/data/",
     "head_node_ip_addr": "192.168.88.103",
     "head_node_container": true,
+    "daq_node_module_limit": 4,
     "daq_nodes": [
         {
             "username": "panoseti",
             "data_dir": "/mnt/panoseti-test/",
             "ip_addr": "192.168.0.228",
-            "module_ids": "254",
-            "bindhost": "enp171s0"
+            "module_ids": [
+                254
+            ],
+            "bindhost": "enp171s0",
+            "docker_context": "pseti-daq-ucb1",
+            "modules": []
         }
     ]
 }
