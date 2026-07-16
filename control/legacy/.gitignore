@@ -1,0 +1,6 @@
+# Host-specific scratch symlink created by _config_bridge.py at runtime.
+_config_bridge/
+
+# Runtime logs written by quabo_driver.py / util.create_logger().
+logs/*.log
+
