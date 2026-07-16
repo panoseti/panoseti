@@ -108,6 +108,28 @@ def test_admin_down_all(mock_get_daq_config, mock_is_local, mock_get_ctx):
         assert found_headnode
         assert found_daqnode
 
+@patch.dict(os.environ, {"HEADNODE_IP": "127.0.0.1", "PSETI_HEADNODE_DISABLE_SERVICES": "redis,influxdb"})
+def test_admin_deploy_headnode_disable_services():
+    """PSETI_HEADNODE_DISABLE_SERVICES should omit named services from the
+    compose `up` command's service args while still including the
+    never-optional ones (loki, alloy, headnode-server) and any optional
+    service *not* named (grafana)."""
+    with _mock_create_subprocess_exec() as mock_exec:
+        result = runner.invoke(app, ["deploy", "headnode"])
+        assert result.exit_code == 0, f"Command failed: {result.stdout}"
+
+        found = False
+        for call_args in mock_exec.call_args_list:
+            cmd = call_args[0]
+            if "up" in cmd and "pseti-headnode" in cmd:
+                found = True
+                assert "redis" not in cmd, f"redis should be omitted: {cmd}"
+                assert "influxdb" not in cmd, f"influxdb should be omitted: {cmd}"
+                for expected in ("grafana", "loki", "alloy", "headnode-server"):
+                    assert expected in cmd, f"{expected} should still be present: {cmd}"
+        assert found, f"Expected headnode up command, got: {mock_exec.call_args_list}"
+
+
 @patch.dict(os.environ, {"HEADNODE_IP": "127.0.0.1"})
 def test_admin_attach():
     with patch('control.admin.cli.subprocess.run') as mock_run:

@@ -287,6 +287,48 @@ def get_headnode_compose_env() -> dict[str, str] | None:
     return env
 
 
+# Services in docker-compose.headnode.yml that a deployment may already run
+# bare-metal elsewhere and want to skip starting a duplicate of here.
+# loki/alloy/headnode-server are never optional: alloy is the log-shipping
+# path this whole stack exists to provide, and headnode-server is the gRPC
+# server pseti admin deploy is fundamentally deploying.
+_HEADNODE_OPTIONAL_SERVICES = ("redis", "influxdb", "grafana")
+
+
+def _headnode_enabled_services() -> list[str] | None:
+    """Service args to append to a headnode compose `up`/`build` command.
+
+    Returns None (append nothing -- compose then targets every service, the
+    prior/default behavior) unless PSETI_HEADNODE_DISABLE_SERVICES names one
+    or more of _HEADNODE_OPTIONAL_SERVICES to skip, e.g.:
+        PSETI_HEADNODE_DISABLE_SERVICES=redis,influxdb
+    for a deployment that already runs Redis/InfluxDB bare-metal on this
+    host. Compose only starts/builds services actually named on the command
+    line when any are named at all, so the disabled ones are simply omitted
+    -- `down`/`status`/`logs` are unaffected (they operate on whatever is
+    actually running, not on what a prior deploy/build did or didn't start).
+    """
+    raw = os.environ.get("PSETI_HEADNODE_DISABLE_SERVICES", "").strip()
+    if not raw:
+        return None
+    disabled = {s.strip() for s in raw.split(",") if s.strip()}
+    unknown = disabled - set(_HEADNODE_OPTIONAL_SERVICES)
+    if unknown:
+        console.print(
+            f"[bold red][headnode][/bold red] PSETI_HEADNODE_DISABLE_SERVICES names "
+            f"unrecognized/non-optional service(s): {', '.join(sorted(unknown))}. "
+            f"Only {', '.join(_HEADNODE_OPTIONAL_SERVICES)} can be disabled."
+        )
+        raise typer.Exit(1)
+    enabled_optional = [s for s in _HEADNODE_OPTIONAL_SERVICES if s not in disabled]
+    if disabled:
+        console.print(
+            f"[yellow][headnode][/yellow] Skipping service(s) already running "
+            f"elsewhere: {', '.join(sorted(disabled))}"
+        )
+    return [*enabled_optional, "loki", "alloy", "headnode-server"]
+
+
 async def deploy_headnode_async(mode: str) -> bool:
     """Deploy the head node's observability + gRPC gateway stack (local machine, no SSH)."""
     if mode != "docker":
@@ -299,6 +341,9 @@ async def deploy_headnode_async(mode: str) -> bool:
 
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
     cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "up", "-d", "--build"]
+    enabled = _headnode_enabled_services()
+    if enabled is not None:
+        cmd += enabled
     return await run_cmd_async("headnode", cmd, env=env)
 
 
@@ -529,6 +574,9 @@ async def _build_headnode_async() -> bool:
         return False
     compose_file = PanoPaths.base_dir() / "deploy" / "docker-compose.headnode.yml"
     cmd = [*_compose_prefix(None, "pseti-headnode", compose_file, env), "build"]
+    enabled = _headnode_enabled_services()
+    if enabled is not None:
+        cmd += enabled
     return await run_cmd_async("headnode", cmd, env=env)
 
 
