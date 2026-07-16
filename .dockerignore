@@ -24,3 +24,11 @@
 # build context above, and can contain root-owned files that break the build.
 **/loki-data/
 **/grafana_provisioning/
+
+# control/state/ is PanoPaths.state_dir()'s default location -- a local run/test
+# on the machine doing `docker build` leaves a real ledger, locks, and daemon logs
+# there. Gitignored but (like the entries above) not excluded from the build
+# context, so it was getting baked into the image verbatim: a stale
+# state/logs/transfer_daemon/stderr.log from a pre-uv/miniconda interpreter showed
+# up inside a freshly built container that never actually ran the transfer daemon.
+**/control/state/
