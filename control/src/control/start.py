@@ -208,9 +208,17 @@ async def start_recording(
                 break # Timeout usually means non-transient or black hole
             except Exception as e:
                 last_err = str(e)
-                # Simple check for UNAVAILABLE
-                if "UNAVAILABLE" in last_err and attempt < startdaq_retries:
-                    logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{startdaq_retries})...")
+                # Simple check for UNAVAILABLE (transient network/connection issue), or
+                # a stuck-thread-count start the server already self-healed from (kills
+                # the wedged hashpipe process and clears its stale shared-memory
+                # semaphore before returning -- see daq_control/server.py's StartDaq --
+                # so the *next* attempt starts from a clean slate, not the same stuck
+                # state). Confirmed live in CI: this exact condition recurs under rapid
+                # HITL start/stop cycling, and the server's own error message says
+                # "retry StartDaq" -- but nothing here was retrying it before this fix.
+                retryable = "UNAVAILABLE" in last_err or "stale semaphore cleared" in last_err
+                if retryable and attempt < startdaq_retries:
+                    logger.warning(f"Node {node_validator.ip_addr} transient StartDaq failure (attempt {attempt}/{startdaq_retries}): {last_err}. Retrying...")
                     await asyncio.sleep(1.0)
                     continue
                 break
