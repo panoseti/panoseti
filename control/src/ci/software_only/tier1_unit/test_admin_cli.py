@@ -131,6 +131,34 @@ def test_admin_deploy_headnode_disable_services():
 
 
 @patch.dict(os.environ, {"HEADNODE_IP": "127.0.0.1"})
+@patch('control.admin.cli._grpc_pinned_commit', return_value='abc1234')
+@patch('control.admin.cli._resolve_bare_metal_ssh_target', return_value=['192.168.0.228'])
+def test_admin_deploy_bare_metal_dry_run(mock_ssh_target, mock_pinned_commit):
+    """--dry-run must print the per-node bare-metal commands (env file write,
+    pinned pip install, systemctl restarts) and must NOT touch the network --
+    no `ssh`/`sudo` subprocess, no docker compose call either. This is the
+    replacement for a real bare-metal deploy when an operator doesn't want
+    `pseti admin` running `sudo` over non-interactive SSH on their behalf
+    (see deploy_node()'s bare-metal branch: the old hardcoded
+    `echo <password> | sudo -S` is gone, and --dry-run is the alternative
+    for a site without passwordless sudo configured)."""
+    with patch('control.admin.cli.subprocess.run') as mock_run, _mock_create_subprocess_exec() as mock_exec:
+        result = runner.invoke(app, ["deploy", "192.168.0.228", "--mode", "bare-metal", "--dry-run"])
+        assert result.exit_code == 0, f"Command failed: {result.stdout}"
+
+        # No SSH/subprocess execution of any kind -- this is a print-only path.
+        mock_run.assert_not_called()
+        mock_exec.assert_not_called()
+
+        assert "abc1234" in result.stdout
+        assert "pip install --upgrade" in result.stdout
+        assert "sudo systemctl restart panoseti_grpc" in result.stdout
+        assert "sudo systemctl restart panoseti_alloy" in result.stdout
+        # The literal hardcoded password must never appear.
+        assert "echo panoseti" not in result.stdout
+
+
+@patch.dict(os.environ, {"HEADNODE_IP": "127.0.0.1"})
 def test_admin_attach():
     with patch('control.admin.cli.subprocess.run') as mock_run:
         result = runner.invoke(app, ["attach", "headnode"])
