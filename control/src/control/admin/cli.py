@@ -375,7 +375,37 @@ _BARE_METAL_ENV_FILE = "/etc/panoseti/grpc.env"
 _BARE_METAL_ENV_KEYS = ("HEADNODE_IP", "HEADNODE_GRPC_PORT", "DAQNODE_GRPC_PORT", "PSETI_GRPC_PROFILE")
 
 
-def _write_remote_env_file(host: str) -> bool:
+def _resolve_bare_metal_ssh_target(host: str) -> list[str]:
+    """Resolve the actual SSH args to reach a bare-metal DAQ node.
+
+    `host` is typically the DAQ node's internal IP (daq_config.json's
+    ip_addr), which for a gateway-forwarded site (see network_config.json's
+    port_forwarding) is only reachable *through* the gateway, not directly.
+    `--mode docker` never hits this because the docker context created for
+    the node already points at the gateway's SSH endpoint -- but `--mode
+    bare-metal` SSHes directly, so it needs the same port_forwarding
+    resolution daq_grpc_endpoint()/build_rsync_cmd() already apply elsewhere
+    (see control/src/control/transfer/rsync.py). Returns plain `[host]`
+    (the prior behavior) if no forwarding is configured for this node, or if
+    daq_config/network_config can't be loaded -- e.g. `host` is already a
+    directly-reachable hostname/gateway address.
+    """
+    try:
+        from control.utils.config_file import get_daq_config, get_network_config
+        from control.utils.util import attach_daq_config
+        daq_config = get_daq_config()
+        network_config = get_network_config()
+        attach_daq_config(daq_config, network_config)
+        node = daq_config.get_node_by_ip(host)
+        pf = node.port_forwarding
+        if pf is not None and pf.status and pf.port is not None:
+            return ["-p", str(pf.port), f"{node.username}@{pf.gw_ip}"]
+    except Exception:
+        pass
+    return [host]
+
+
+def _write_remote_env_file(host: str, dry_run: bool = False) -> bool:
     """Write/update the bare-metal node's systemd EnvironmentFile over SSH.
 
     Before this, a head-node .env port/host change had NO path onto a
@@ -385,13 +415,21 @@ def _write_remote_env_file(host: str) -> bool:
     PSETI_LOGS. This is what makes `pseti admin deploy --mode bare-metal`
     actually reconfigurable via .env instead of requiring an operator to
     SSH in and hand-edit the unit file.
+
+    `dry_run=True` prints the command a dev would run (with interactive
+    sudo) instead of executing it -- see deploy_node()'s bare-metal branch.
     """
     lines = [f"{k}={os.environ[k]}" for k in _BARE_METAL_ENV_KEYS if k in os.environ]
     if not lines:
         return True  # nothing to forward; leave whatever's already there
     content = "\n".join(lines) + "\n"
     remote_cmd = f"sudo mkdir -p $(dirname {_BARE_METAL_ENV_FILE}) && sudo tee {_BARE_METAL_ENV_FILE} >/dev/null"
-    result = subprocess.run(["ssh", host, remote_cmd], input=content, text=True)
+    ssh_target = _resolve_bare_metal_ssh_target(host)
+    if dry_run:
+        console.print(f"[[bold cyan]{host}[/bold cyan]] (dry-run) Would write {_BARE_METAL_ENV_FILE}:")
+        console.print(f"    ssh {' '.join(ssh_target)} '{remote_cmd}' <<'EOF'\n{content}EOF")
+        return True
+    result = subprocess.run(["ssh", *ssh_target, remote_cmd], input=content, text=True)
     if result.returncode != 0:
         console.print(f"[[bold red]{host}[/bold red]] Failed to write {_BARE_METAL_ENV_FILE} over SSH.")
         return False
@@ -424,8 +462,13 @@ def _grpc_pinned_commit() -> str | None:
     return result.stdout.strip()
 
 
-async def deploy_node(host: str, mode: str) -> bool:
-    """Deploy the DAQ node software using the specified strategy."""
+async def deploy_node(host: str, mode: str, dry_run: bool = False) -> bool:
+    """Deploy the DAQ node software using the specified strategy.
+
+    `dry_run` only affects `mode == "bare-metal"` -- docker mode's compose
+    invocation is already printed in full by run_cmd_async() before it
+    runs, so there's nothing extra a dry-run would add there.
+    """
 
     if mode == "docker":
         # We use docker --context to build and deploy natively over SSH
@@ -484,20 +527,39 @@ async def deploy_node(host: str, mode: str) -> bool:
         if pinned_commit is None:
             console.print(f"[[bold red]{host}[/bold red]] Could not resolve the grpc/ submodule's pinned commit; aborting bare-metal deploy.")
             return False
-        await asyncio.to_thread(_write_remote_env_file, host)
+        await asyncio.to_thread(_write_remote_env_file, host, dry_run)
         # panoseti_alloy is restarted separately (not `systemctl restart A B`
         # as one call) and its failure doesn't fail the whole command --
         # setup_panoseti_grpc.sh's --no-alloy lets a node skip installing it
         # entirely, and a genuinely missing unit shouldn't be reported as a
         # failed grpc restart.
+        #
+        # Plain `sudo` (not a hardcoded `echo <password> | sudo -S`) -- a
+        # literal password checked into source control is a real credential
+        # leak, not just an inconvenience, and it also silently assumes
+        # every operator's remote account uses that exact password. Restart
+        # requires either passwordless sudo configured for this command on
+        # the remote node, or `--dry-run` + the operator running the
+        # printed commands themselves in their own interactive terminal.
         remote_cmd = (
             "source ~/miniconda3/etc/profile.d/conda.sh && conda activate grpc-py314 && "
             f"pip install --upgrade 'git+https://github.com/panoseti/panoseti_grpc.git@{pinned_commit}' && "
-            "echo panoseti | sudo -S systemctl restart panoseti_grpc && "
-            "(echo panoseti | sudo -S systemctl restart panoseti_alloy || "
+            "sudo systemctl restart panoseti_grpc && "
+            "(sudo systemctl restart panoseti_alloy || "
             "echo 'panoseti_alloy not installed/active on this node, skipping')"
         )
-        cmd = ["ssh", host, f"bash -c '{remote_cmd}'"]
+        ssh_target = _resolve_bare_metal_ssh_target(host)
+        if dry_run:
+            console.print(
+                f"[[bold cyan]{host}[/bold cyan]] (dry-run) Bare-metal deploy would run "
+                f"the following on this node -- copy/paste and run manually (needs "
+                f"interactive sudo):"
+            )
+            console.print(f"    ssh -t {' '.join(ssh_target)}")
+            for step in remote_cmd.split(" && "):
+                console.print(f"    {step.strip()}")
+            return True
+        cmd = ["ssh", "-t", *ssh_target, f"bash -c '{remote_cmd}'"]
         return await run_cmd_async(host, cmd)
 
     else:
@@ -507,7 +569,20 @@ async def deploy_node(host: str, mode: str) -> bool:
 @app.command()
 def deploy(
     nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, 'headnode', or 'all' (every DAQ node + the head node).")],
-    mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker"
+    mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker",
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", "-n",
+            help=(
+                "Bare-metal only: print the per-node commands (env file write, "
+                "pinned pip install, systemctl restarts) instead of running them "
+                "over SSH -- for a dev to review/run manually with interactive "
+                "sudo. No effect in --mode docker (its compose commands are "
+                "already printed in full before they run)."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Deploy the DAQ node gRPC/telemetry stack and/or the head node stack."""
     if mode not in ["docker", "bare-metal"]:
@@ -517,7 +592,8 @@ def deploy(
     daq_targets, include_headnode = resolve_target_nodes(nodes)
 
     described = (["headnode"] if include_headnode else []) + daq_targets
-    console.print(f"[bold]Starting {mode} deployment on: {', '.join(described)} (concurrently)[/bold]")
+    action = "Dry-run" if (dry_run and mode == "bare-metal") else "Starting"
+    console.print(f"[bold]{action} {mode} deployment on: {', '.join(described)} (concurrently)[/bold]")
 
     # Deploy every node concurrently instead of one at a time -- this used
     # to be O(N) wall-clock in the number of nodes (each node's full
@@ -532,7 +608,7 @@ def deploy(
             if include_headnode:
                 tg.create_task(_run_node_job("headnode", deploy_headnode_async(mode), results))
             for host in daq_targets:
-                tg.create_task(_run_node_job(host, deploy_node(host, mode), results))
+                tg.create_task(_run_node_job(host, deploy_node(host, mode, dry_run), results))
         return results
 
     results = asyncio.run(_run_all())
@@ -731,7 +807,14 @@ def _get_compose_cmd_base(node: str, service: str) -> tuple[list[str], dict[str,
 @app.command()
 def status(
     nodes: Annotated[str, typer.Argument(help="Comma-separated list of hostnames/IPs, 'headnode', or 'all' (every DAQ node + the head node).")],
-    mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker"
+    mode: Annotated[str, typer.Option("--mode", help="'docker' or 'bare-metal' deployment strategy.")] = "docker",
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", "-n",
+            help="Bare-metal only: print the systemctl status command instead of running it over SSH.",
+        ),
+    ] = False,
 ) -> None:
     """Check the status of the DAQ node services and/or the head node stack."""
     daq_targets, include_headnode = resolve_target_nodes(nodes)
@@ -762,7 +845,13 @@ def status(
                 console.print(f"[[bold cyan]{host}[/bold cyan]] Alloy Status:")
                 run_cmd(host, alloy_cmd, env=env, quiet=True)
         else:
-            cmd = ["ssh", host, "systemctl is-active panoseti_grpc panoseti_alloy"]
+            ssh_target = _resolve_bare_metal_ssh_target(host)
+            remote_check = "systemctl is-active panoseti_grpc panoseti_alloy"
+            if dry_run:
+                console.print(f"[[bold cyan]{host}[/bold cyan]] (dry-run) Would check status via:")
+                console.print(f"    ssh {' '.join(ssh_target)} '{remote_check}'")
+                continue
+            cmd = ["ssh", *ssh_target, remote_check]
             run_cmd(host, cmd, quiet=True)
 
 if __name__ == "__main__":
