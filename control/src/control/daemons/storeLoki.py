@@ -24,10 +24,10 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 try:
-    from panoseti_grpc.telemetry.config import TelemetryConfig
+    from panoseti_grpc.telemetry.config import LogSeverity, TelemetryConfig
     from panoseti_grpc.telemetry.logger import get_logger
 except ImportError:
-    from panoseti_grpc.telemetry.config import TelemetryConfig
+    from panoseti_grpc.telemetry.config import LogSeverity, TelemetryConfig
     from panoseti_grpc.telemetry.logger import get_logger
 
 logger = get_logger("storeLoki", level=10, grpc_enabled=False)
@@ -41,6 +41,14 @@ MAX_BUFFER_SIZE = 10000   # Safety valve: clear buffer if it reaches this size
 FLUSH_INTERVAL = 1.0      # Flush at least every 1 second
 MAX_BACKOFF_SECONDS = 60  # Cap retry wait time
 MAX_FLUSH_SIZE_BYTES = 512 * 1024  # 512 KB compressed limit
+
+# Grafana/Loki's built-in numeric-level auto-detection assumes syslog (RFC 5424)
+# ordering (lower number = more severe), the opposite of LogSeverity's ordering
+# (higher number = more severe). Emitting the raw number as a label makes
+# Grafana misrender e.g. INFO(2) as "Critical" and ERROR(4) as "Warning".
+# SEVERITY_NAMES lets us emit an explicit text label instead, which Grafana
+# always renders literally.
+SEVERITY_NAMES = {s.value: s.name for s in LogSeverity}
 
 
 class LokiPublisher:
@@ -163,6 +171,7 @@ class LokiPublisher:
                 "host":          entry.get("host", "unknown"),
                 "service":       entry.get("service_name", "unknown"),
                 "severity":      str(entry.get("severity", 2)),
+                "level":         SEVERITY_NAMES.get(int(entry.get("severity", 2)), "INFO"),
                 "function_name": entry.get("function_name", "unknown"),
                 "git_branch":    entry.get("git_branch", "unknown"),
                 "git_commit":    entry.get("git_commit", "unknown"),
