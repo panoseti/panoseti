@@ -91,7 +91,9 @@ def _check_wps() -> list[tuple[str, bool, str]]:
         wps = WpsConfig(**wps_data) if isinstance(wps_data, dict) else wps_data
         try:
             state = quabo_power_query(wps)
-            results.append((key, state is not None, "reachable" if state is not None else "no response"))
+            reachable = state is not None
+            detail = f"reachable (power {'on' if state else 'off'})" if reachable else "no response"
+            results.append((key, reachable, detail))
         except Exception as e:
             results.append((key, False, str(e)))
     return results

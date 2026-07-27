@@ -46,7 +46,7 @@ def quabo_power(wps: WpsConfig | dict[str, Any], on: bool) -> None:
         raise Exception(f'{cmd} returned {ret}')
 
 
-# return True if power is on
+# Query the power state of a Quabo socket.
 #
 def quabo_power_query(wps: WpsConfig | dict[str, Any]) -> str | None:
     """Query the power state of a Quabo socket.
@@ -55,7 +55,10 @@ def quabo_power_query(wps: WpsConfig | dict[str, Any]) -> str | None:
         wps: Configuration for the WPS unit.
 
     Returns:
-        The state string from the WPS response if successful, otherwise None.
+        'true' if the WPS responded and the socket is powered on, ''
+        (falsy, but distinct from None) if the WPS responded and the
+        socket is powered off, or None if the WPS could not be queried
+        at all (unreachable, or a response that could not be parsed).
     """
     if isinstance(wps, WpsConfig):
         url = wps.url
@@ -63,16 +66,19 @@ def quabo_power_query(wps: WpsConfig | dict[str, Any]) -> str | None:
     else:
         url = wps['url']
         socket = wps['quabo_socket']
-    
+
     cmd = f'curl -s {url}/status'
     out = os.popen(cmd).read()
     off = out.find('state">')
+    if off == -1:
+        return None
     off += len('state">')
     y = out[off:off+2]
-    status = int(y, 16)
-    if status & (1 << (socket - 1)):
-        return 'true'
-    return None
+    try:
+        status = int(y, 16)
+    except ValueError:
+        return None
+    return 'true' if status & (1 << (socket - 1)) else ''
 
 
 def do_wps(name: str, obs_config: ObsConfig, op: str) -> None:
