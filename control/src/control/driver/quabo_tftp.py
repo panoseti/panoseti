@@ -15,10 +15,20 @@ class tftpw:
         self.client = tftpy.TftpClient(self.ip, port)
         PanoPaths.logs_dir().mkdir(parents=True, exist_ok=True)
         self.logger = get_logger(service_name='quabo_tftp', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
-        # deal with the tftpy warning messages
-        log_tags = ["tftpy.TftpStates", "tftpy.TftpContext"]
+        # Route tftpy's own loggers through our pipeline (file/jsonl/grpc) but
+        # suppress console output -- otherwise its RichHandler default (console=True)
+        # prints tftpy's internal state-machine chatter to the terminal.
+        log_tags = [
+            "tftpy.TftpClient",
+            "tftpy.TftpContext",
+            "tftpy.TftpPacketFactory",
+            "tftpy.TftpPacketTypes",
+            "tftpy.TftpServer",
+            "tftpy.TftpShared",
+            "tftpy.TftpStates",
+        ]
         for tag in log_tags:
-            get_logger(service_name=tag, log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
+            get_logger(service_name=tag, log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True, console=False)
     
     #print help information
     def help(self) -> None:
