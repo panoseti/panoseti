@@ -84,10 +84,17 @@ def do_wps(name, obs_config, op):
         quabo_power(wps, False)
         log_print("%s: turned power off" % name)
 
-
 def do_all(obs_config, op):
     for key in [k for k in obs_config.keys() if 'wps' in k.lower()]:
         do_wps(key, obs_config, op)
+
+    if op == 'on':
+        os.system("~/panoseti_mount/panoseti/control/config.py --redis_daemons")
+        os.system("cd ~/panoseti_mount/panoseti/test && ./capture_pcap2c.py --silent")
+
+    elif op == 'off':
+        os.system("~/panoseti_mount/panoseti/control/config.py --stop_redis_daemons")
+        os.system("cd ~/panoseti_mount/panoseti/test && ./stop_pcap2c.py --silent")
 
 
 if __name__ == "__main__":

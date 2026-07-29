@@ -36,6 +36,7 @@ firmware_config_filename = 'configs/firmware.json'
 # quabo realted files
 quabo_info_filename = 'quabos/quabo_info.json'
 detector_info_filename = 'quabos/detector_info.json'
+detector_hv_offsets_filename = 'quabos/detector_hv_offsets.json'
 quabo_calib_filename = 'quabos/detovervol_%dv/%s/quabo_calib_%s.json'
 # These files are creatd during the run,
 # and will be copied to the final data dir
@@ -184,35 +185,67 @@ def get_quabo_uids():
     # return load_and_validate(QuaboUidsValidator, quabo_uids_filename, dir, "UID Config", assign_numbers)
     return quabo_uids_conf
 
+def get_detector_hv_offsets():
+    """
+    Load optional per-detector HV offsets from JSON file.
+
+    Expected format:
+    {
+        "160": 0.15,
+        "1068": -0.08,
+        "1070": 0.0
+    }
+
+    Missing file -> return empty dict.
+    """
+    if not os.path.exists(detector_hv_offsets_filename):
+        return {}
+
+    with open(detector_hv_offsets_filename) as f:
+        offsets_raw = json.load(f)
+
+    offsets = {}
+    for serialno, offset in offsets_raw.items():
+        offsets[str(serialno)] = float(offset)
+
+    return offsets
+
+
 # get detector info as an array indexed by serialno
 #
 def get_detector_info():
     check_config_file(detector_info_filename)
+
     with open(detector_info_filename) as f:
-        s = f.read()
-    c = json.loads(s)
-    d = {}
-    with open(obs_config_filename) as f:
-        s = f.read()
-    obs_config = json.loads(s)
+        c = json.load(f)
+
     with open(data_config_filename) as f:
-        s = f.read()
-    data_config = json.loads(s)
+        data_config = json.load(f)
+
+    hv_offsets = get_detector_hv_offsets()
+    default_overvoltage = float(data_config.get('detector_overvoltage', 3))
+
+    d = {}
     for det in c:
-        try:
-            d[str(det['serialno'])] = float(det['operating_voltage'])
-        except:
-            try:
-                d[str(det['serialno'])] = float(det['breakdown_voltage']) + data_config['detector_overvoltage']
-            except:
-                d[str(det['serialno'])] = float(det['breakdown_voltage']) + 3
+        serial = str(det['serialno'])
+        hv_offset = hv_offsets.get(serial, 0.0)
+
+        if 'operating_voltage' in det:
+            base_hv = float(det['operating_voltage'])
+        elif 'breakdown_voltage' in det:
+            base_hv = float(det['breakdown_voltage']) + default_overvoltage
+        else:
+            raise KeyError(f"Detector {serial} has neither operating_voltage nor breakdown_voltage")
+
+        d[serial] = base_hv + hv_offset
+
     if 'detector_overvoltage' not in data_config:
         print('**************************************************************************')
         print('detector_overvoltage is not set in data_config.json')
         print('Use the default overvoltage: 3V')
         print('**************************************************************************')
-    return d;
 
+    return d
 # get quabo info as an array indexed by uid
 #
 def get_quabo_info():

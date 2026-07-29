@@ -113,7 +113,7 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
             logger.debug(f'     Target HV{detector_index}: -{target_hv:.3f}V')
             logger.debug(f'  Monitored HV{detector_index}: -{monitored_hv[detector_index]:.3f}V')
             logger.debug(f'  Detector Cur{detector_index}:  {monitored_det_cur[detector_index]*1000:.3f}mA')
-            logger.debug(f'   Adjusted HV{detector_index}: -{adjusted_hv[detector_index]:.3f}V')
+            logger.debug(f'   Adjusted HV{detector_index}: -{adjusted_hv[detector_index]+HV_OFFSET:.3f}V')
             logger.debug(' ')
             # Save int encoding
             adjusted_hv_values[detector_index] = int((adjusted_hv[detector_index] + HV_OFFSET) / 0.0011453)

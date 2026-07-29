@@ -262,7 +262,7 @@ def main():
                 msg = f"[{name}] {iso} | NO DATA (mount offline or INDI unreachable)"
                 print(msg); write_log(logf, msg)
                 combined["mounts"][name] = {
-                    "timestamp": iso, "Computer_UTC": time.time(), "mount": name, "status": "OFFLINE",
+                    "timestamp": iso, "mount": name, "status": "OFFLINE",
                     "ra_hours": None, "dec_deg": None, "alt_deg": None, "az_deg": None,
                     "ra_hours_j2000": None, "dec_deg_j2000": None,
                     "side": None, "side_code": None, "tracking": None, "tracking_code": None,
@@ -270,7 +270,7 @@ def main():
                 }
                 # still update Redis to reflect offline state
                 if r:
-                    r.hset(f"MOUNT_{name.upper()}", mapping=safe_redis_mapping(combined["mounts"][name]))
+                    r.hset(f"MOUNT_{name.upper()}", mapping={"timestamp": iso, "status": "OFFLINE"})
                 continue
 
             ra_h  = parse_ra_hours(ra_str)
@@ -280,7 +280,7 @@ def main():
                 print(msg); write_log(logf, msg)
                 # record placeholder so UI still shows a panel
                 snap = {
-                    "timestamp": iso, "Computer_UTC": time.time(), "mount": name, "status": "BAD_RADEC",
+                    "timestamp": iso, "mount": name, "status": "BAD_RADEC",
                     "ra_hours": None, "dec_deg": None, "alt_deg": None, "az_deg": None,
                     "ra_hours_j2000": None, "dec_deg_j2000": None,
                     "side": None, "side_code": None, "tracking": None, "tracking_code": None,
@@ -336,7 +336,7 @@ def main():
             # ---------- Snapshot ----------
             snap = dict(
                 timestamp=iso,
-                Computer_UTC=time.time(),
+                computer_utc=time.time(),
                 mount=name,
                 status="OK",
                 ra_hours=round(ra_h, 6),
@@ -384,3 +384,4 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n[INFO] Stopped by user.\n")
+

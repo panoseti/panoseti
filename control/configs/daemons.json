@@ -4,8 +4,7 @@
         "gps": false,
         "telemetry_service": true,
         "guider": false,
-        "power": false,
-        "datarecweb": true,
+        "power": false,    
         "guider_im": true,
         "webhk": true,
         "wr": false
@@ -16,6 +15,7 @@
         "palomar_webcam": true,
         "weather2": true,
         "webcam": true,
+        "datarecweb": true,
         "power_switches": true,
         "dome": true,
         "cond_overall": true,
