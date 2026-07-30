@@ -1,0 +1,190 @@
+#! /usr/bin/env python3
+
+##############################################################
+# Script for capturing Housekeeping data from the quabos
+# and writing their associated values into the Redis database.
+# All packet information is time stamped by the computer and
+# and added to each set of values with a variable labeled as
+# 'Computer_UTC'.
+##############################################################
+
+
+import socket
+import time
+from signal import SIGINT, signal
+from sys import exit
+from typing import Any
+
+import redis
+
+from control.daemons.capture_hk import metadata_status_monitor_utils as md_utils
+from control.daemons.capture_hk.panosetiSIconvert import HKconvert
+from control.utils.redis_utils import redis_init
+
+HKconv = HKconvert()
+HKconv.changeUnits('V')
+HKconv.changeUnits('A')
+
+HOST = '0.0.0.0'
+PORT = 60002
+OBSERVATORY = "lick"
+
+COUNTER = "\rPackets Captured So Far {}"
+
+signed = [
+    0,                        # BOARDLOC
+    0, 0, 0, 0,          # HVMON (0 to -80V)
+    0, 0, 0, 0, # HVIMON ((65535-HVIMON) * 38.1nA) (0 to 2.5mA)
+    0,                        # RAWHVMON (0 to -80V)
+    0,                      # V12MON (19.07uV/LSB) (1.2V supply)
+    0,                      # V18MON (38.14uV/LSB) (1.8V supply)
+    0,                      # V33MON (76.20uV/LSB) (3.3V supply)
+    0,                      # V37MON (76.20uV/LSB) (3.7V supply)
+    0,                      # I10MON (182uA/LSB) (1.0V supply)
+    0,                      # I18MON (37.8uA/LSB) (1.8V supply)
+    0,                      # I33MON (37.8uA/LSB) (3.3V supply)
+    1,                        # TEMP1 (0.25*N)
+    0,                      # TEMP2 (N/130.04-273.15)
+    0,                      # VCCINT (N*3/65536)
+    0,                      # VCCAUX (N*3/65536)
+    0,0,0,0,                    # UID
+    0,                        # SHUTTER, LIGHT_SENSOR STATUS, and PCBREV_N
+    0,                        # unused
+    0,0,0,0                     # FWID0 and FWID1
+]
+
+def get_true_detector_current(raw_detector_current_uA: float, detector_hv_volts: float) -> float:
+    """The detector current metadata we receive from the quabos has a voltage-dependent offset from the true detector current.
+    (See https://github.com/panoseti/panoseti/issues/149 for more details).
+
+    raw_detector_current_uA = HVIMONx, the raw measured current in uA for detector array x. 
+    detector_hv_volts = HVMONx, the detector high-voltage in volts for detector array x.
+
+    Returns the true current for detector array x.
+    """
+    true_detector_current = raw_detector_current_uA - (abs(detector_hv_volts) / 0.499) / 1000000
+    return true_detector_current
+
+
+def handler(signal_recieved: Any, frame: Any) -> None:
+    print('\nSIGINT or CTRL-C detected. Exiting')
+    exit(0)
+    
+def getUID(intArr: list[int]) -> int:
+    return intArr[0] + (intArr[1] << 16) + (intArr[2] << 32) + (intArr[3] << 48)
+    
+def storeInRedis(packet: bytes, r: redis.Redis) -> bool:
+    array: list[int] = []
+    startUp = 0
+    
+    if int.from_bytes(packet[0:1], byteorder='little') != 0x20:
+        return False
+    if int.from_bytes(packet[1:2], byteorder='little') == 0xaa:
+        startUp = 1
+
+    # Reads the housekeeping bytes with offsets 2 through 63 two at a time, converts the
+    # 16-bit number to an integer with a sign determined by the corresponding entry in signed,
+    # and appends the result to array.
+    # The byte with offset 2 <= n <= 63 in the HK packet is obtained as follows:
+    #              array[(n - 2) // 2] & 0x00FF, if n is even
+    #       (array[(n - 2) // 2] & 0xFF00) >> 8, if n is odd.
+    for i, sign in zip(range(2,len(packet), 2), signed, strict=False):
+        array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=bool(sign)))
+
+
+    # See the following docs for the packet format in the housekeeping packet:
+    # https://github.com/panoseti/panoseti/wiki/Quabo-packet-interface#housekeeping-packet-64-bytes
+
+    boardName = "QUABO_" + str(array[0])
+    
+    redis_set: dict[str, Any] = {
+        'Computer_UTC': time.time(),#datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        'BOARDLOC': array[0],
+        'HVMON0': HKconv.convertValue('HVMON0', array[1]),
+        'HVMON1': HKconv.convertValue('HVMON1', array[2]),
+        'HVMON2': HKconv.convertValue('HVMON2', array[3]),
+        'HVMON3': HKconv.convertValue('HVMON3', array[4]),
+
+        'HVIMON0': HKconv.convertValue('HVIMON0', array[5]),
+        'HVIMON1': HKconv.convertValue('HVIMON1', array[6]),
+        'HVIMON2': HKconv.convertValue('HVIMON2', array[7]),
+        'HVIMON3': HKconv.convertValue('HVIMON3', array[8]),
+
+        'RAWHVMON': HKconv.convertValue('RAWHVMON', -array[9]),
+
+        'V12MON': HKconv.convertValue('V12MON', array[10]),
+        'V18MON': HKconv.convertValue('V18MON', array[11]),
+        'V33MON': HKconv.convertValue('V33MON', array[12]),
+        'V37MON': HKconv.convertValue('V37MON', array[13]),
+
+        'I10MON': HKconv.convertValue('I10MON', array[14]),
+        'I18MON': HKconv.convertValue('I18MON', array[15]),
+        'I33MON': HKconv.convertValue('I33MON', array[16]),
+
+        'TEMP1': HKconv.convertValue('TEMP1', array[17]),
+        'TEMP2': HKconv.convertValue('TEMP2', array[18]),
+
+        'VCCINT': HKconv.convertValue('VCCINT', array[19]),
+        'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
+
+        'UID': f'0x{array[24]:04x}{array[23]:04x}{array[22]:04x}{array[21]:04x}',
+
+        'SHUTTER_STATUS': array[25]&0x01,
+        'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
+
+        # PCBrev_n represents the quabo version. If 0, the quabo is BGA version; if 1, the qubao is QFP version
+        # Bit 0 in the byte with offset 53.
+        'PCBREV_N': ((array[25]&0xFF00) >> 8) & 0x01,
+
+        'FWTIME': f'0x{array[28]:04x}{array[27]:04x}',
+        'FWVER': bytes.fromhex(f'{array[30]:04x}{array[29]:04x}').decode("ASCII"),
+        
+        'StartUp': startUp,
+        'AGG_STATUS_MSG': "",
+        'AGG_STATUS_LEVEL': 0
+    }
+
+    # Extract 10MHz and 1PPS
+    ext_10mhz_status = (array[25] & 0x08) >> 3  # 52[3] EXT_10MHz_STATUS
+    ext_1pps_status = (array[25] & 0x010) >> 4  # 52[4] EXT_1PPS_STATUS
+    redis_set['EXT_10MHz_STATUS'] = ext_10mhz_status
+    redis_set['EXT_1PPS_STATUS'] = ext_10mhz_status & ext_1pps_status  # 1PPs is valid only if 10 MHz is valid
+
+    md_utils.write_status("housekeeping", boardName, redis_set)
+
+    for x in range(4):
+        hv_val = redis_set[f'HVMON{x}']
+        im_val = redis_set[f'HVIMON{x}']
+        if hv_val is not None and im_val is not None:
+            true_detector_x_current_uA = get_true_detector_current(float(im_val), float(hv_val))
+            redis_set[f'DETR{x}_CURR'] = true_detector_x_current_uA
+
+    for key in redis_set:
+        r.hset(boardName, key, str(redis_set[key]))
+    return True
+
+def initialize() -> tuple[socket.socket, redis.Redis]:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if hasattr(socket, "SO_REUSEPORT"):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    r = redis_init()
+    return sock, r
+    
+
+    
+signal(SIGINT, handler)
+
+def main() -> None:
+    sock, r = initialize()
+    print('Running')
+    sock.bind((HOST,PORT))
+    num = 0
+    while(True):
+        packet, _addr = sock.recvfrom(64)
+        num += 1
+        storeInRedis(packet, r)
+        print(COUNTER.format(num), end='')
+
+if __name__ == "__main__":
+    main()

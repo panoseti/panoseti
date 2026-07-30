@@ -1,0 +1,27 @@
+#! /usr/bin/env python3
+
+# Tell a single quabo to send image packets (for timing test)
+# You can use this as a script or a module.
+
+
+
+from control.driver import quabo_driver
+from control.utils import config_file
+
+
+def qstart(s: bool) -> None:
+    obs_config = config_file.get_obs_config()
+    d = obs_config.domes[0]
+    m = d.modules[0]
+    from ipaddress import ip_address
+    ip_addr = m.ip_addr
+    quabo = quabo_driver.QUABO(ip_address(str(ip_addr)))
+    quabo.send_daq_params(
+        quabo_driver.DAQ_PARAMS(
+            s, 1000-1, False, False, True
+        )
+    )
+    quabo.close()
+
+if __name__ == "__main__":
+    qstart(True)

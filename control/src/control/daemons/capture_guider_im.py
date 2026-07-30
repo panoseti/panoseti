@@ -1,0 +1,517 @@
+#!/usr/bin/env python3
+import argparse
+import base64
+import contextlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import time
+from datetime import UTC, datetime
+from typing import Any
+
+import matplotlib.pyplot as plt
+import numpy as np
+import paramiko
+from astropy.io import fits
+
+# ---------------- CONFIG ----------------
+CONFIG_FILE = "/home/obs/panoseti_mount/panoseti/control/daemons/capture_guider/sites.conf"
+REMOTE_DIR = "/home/panoseti/Pictures"
+TRAIN_NAME = "Primary"
+WAIT_SECONDS = 15
+LOOP_INTERVAL_MIN = 3
+LOCAL_BASE = "/mnt/data11/data/palomar/L0"
+OPTIPNG_LEVEL = 5  # 0..7 (lossless). 5 is a good speed/ratio balance.
+
+# ---- CYLON upload config (same style as your working script) ----
+CYLON_REMOTE_SERVER = "panoseti@132.239.146.24"
+CYLON_REMOTE_DIR = "/web/panoseti-palomar/current"
+CYLON_REMOTE_DIR2 = "/web/panoseti-palomar/current"  # used for chmod
+CYLON_BANDWIDTH_LIMIT = 40000  # kbit/s scp limit
+# ----------------------------------------
+
+
+# Tracks last-downloaded remote file per site (extra safety against repeats)
+LAST_EKOS_REMOTE: dict[str, Any] = {}
+  # site_name -> remote_path
+
+
+def load_sites(config_file: str) -> list[dict[str, Any]]:
+    """Read sites.conf and return list of dicts: name, host, user, password, port."""
+    sites = []
+    with open(config_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 5:
+                continue
+            name, host, user, password, port = parts
+            sites.append({
+                "name": name,
+                "host": host,
+                "user": user,
+                "password": password,
+                "port": int(port)
+            })
+    return sites
+
+
+def ssh_connect(site: dict[str, Any]) -> paramiko.SSHClient:
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(
+        site["host"],
+        port=site["port"],
+        username=site["user"],
+        password=site["password"],
+        timeout=10
+    )
+    return ssh
+
+
+def ssh_exec(ssh: paramiko.SSHClient, cmd: str, timeout: float | None = None) -> tuple[str, str]:
+    """Execute remote command, return (stdout, stderr) strings."""
+    _stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    out = stdout.read().decode(errors="replace").strip()
+    err = stderr.read().decode(errors="replace").strip()
+    return out, err
+
+
+# ==============================
+# CYLON upload helpers
+# ==============================
+def run_cmd(cmd: str) -> None:
+    """Run a shell command and show if error occurs."""
+    try:
+        subprocess.run(cmd, shell=True, check=True)
+    except subprocess.CalledProcessError:
+        print(f"[!] Command failed: {cmd}")
+
+
+def upload_png_to_cylon(local_png_path: str, site_name: str) -> None:
+    """
+    Upload PNG to cylon with a fixed name:
+      /web/panoseti-palomar/current/Guider_<site>_current.png
+    Uses the same approach as your JSON uploader:
+    - copy to /tmp first
+    - scp with bandwidth limit
+    - chmod via ssh
+    """
+    if not local_png_path or (not os.path.exists(local_png_path)):
+        print(f"?? [{site_name}] PNG not found, not uploading to cylon: {local_png_path}")
+        return
+
+    # Fixed destination name on cylon
+    remote_name = f"Guider_{site_name}_current.png"
+    tmp = f"/tmp/{remote_name}"
+
+    # Copy locally first
+    run_cmd(f"cp '{local_png_path}' '{tmp}'")
+
+    # Upload to cylon
+    run_cmd(
+        f"scp -l {CYLON_BANDWIDTH_LIMIT} '{tmp}' "
+        f"{CYLON_REMOTE_SERVER}:{CYLON_REMOTE_DIR}/{remote_name}"
+    )
+
+    # Fix permissions (best-effort)
+    run_cmd(
+        f'ssh {CYLON_REMOTE_SERVER} "chmod 644 {CYLON_REMOTE_DIR2}/{remote_name} || true"'
+    )
+
+    print(f"? [{site_name}] Updated {remote_name} on cylon ({CYLON_REMOTE_DIR})")
+
+
+# ==============================
+# PNG lossless recompression
+# ==============================
+def optipng_available() -> bool:
+    """Return True if optipng is available in PATH on THIS machine (local)."""
+    return shutil.which("optipng") is not None
+
+
+def recompress_png_lossless(png_path: str, level: int = OPTIPNG_LEVEL) -> None:
+    """Losslessly recompress a PNG in-place using optipng."""
+    if not optipng_available():
+        print(f"?? optipng not found, skipping PNG recompression: {png_path}")
+        return
+
+    try:
+        size_before = os.path.getsize(png_path)
+        subprocess.run(
+            ["optipng", f"-o{level}", png_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False
+        )
+        size_after = os.path.getsize(png_path)
+        if size_after < size_before:
+            print(
+                f"? PNG recompressed (lossless): {png_path} "
+                f"({size_before/1024:.1f} KB -> {size_after/1024:.1f} KB)"
+            )
+        else:
+            print(f"? PNG recompressed (lossless): {png_path} (no gain)")
+    except Exception as e:
+        print(f"?? optipng failed for {png_path}: {e}")
+
+
+def convert_fits_to_png(fits_path: str) -> str | None:
+    """
+    Convert FITS to PNG and then losslessly recompress PNG (optipng).
+    Returns the PNG path on success, else None.
+    """
+    try:
+        with fits.open(fits_path) as hdul:
+            data = hdul[0].data
+
+        if data is None:
+            print(f"?? No image data in {fits_path}")
+            return None
+
+        data = np.nan_to_num(data)
+        vmin, vmax = np.percentile(data, (1, 99))
+        if vmax <= vmin:
+            print(f"?? Invalid percentile range for {fits_path} (vmin={vmin}, vmax={vmax})")
+            return None
+
+        data = np.clip(data, vmin, vmax)
+        data = (data - vmin) / (vmax - vmin)
+
+        png_path = fits_path.replace(".fits", ".png").replace(".fit", ".png")
+        plt.imsave(png_path, data, cmap="gray", origin="lower")
+        print(f"? FITS converted to PNG -> {png_path}")
+
+        recompress_png_lossless(png_path, level=OPTIPNG_LEVEL)
+        return png_path
+
+    except Exception as e:
+        print(f"? FITS conversion failed: {e}")
+        return None
+
+
+# ==============================
+# Ekos Guide status / control
+# ==============================
+def ekos_get_guide_status(ssh: paramiko.SSHClient) -> tuple[int | None, str, str]:
+    """
+    Return (status_int_or_None, raw_stdout, raw_stderr).
+
+    NOTE: status integer mapping depends on KStars/Ekos version.
+    We only display the raw integer for traceability.
+    """
+    cmd = (
+        "qdbus org.kde.kstars /KStars/Ekos/Guide "
+        "org.freedesktop.DBus.Properties.Get org.kde.kstars.Ekos.Guide status"
+    )
+    out, err = ssh_exec(ssh, cmd)
+
+    status = None
+    try:
+        nums = re.findall(r"-?\d+", out)
+        if nums:
+            status = int(nums[-1])
+    except Exception:
+        status = None
+
+    return status, out, err
+
+
+def ekos_guide_suspend(ssh: paramiko.SSHClient) -> tuple[str, str]:
+    cmd = "qdbus org.kde.kstars /KStars/Ekos/Guide org.kde.kstars.Ekos.Guide.suspend"
+    return ssh_exec(ssh, cmd)
+
+
+def ekos_guide_resume(ssh: paramiko.SSHClient) -> tuple[str, str]:
+    cmd = "qdbus org.kde.kstars /KStars/Ekos/Guide org.kde.kstars.Ekos.Guide.resume"
+    return ssh_exec(ssh, cmd)
+
+
+# ==============================
+# PHD2 helpers (optional)
+# ==============================
+def phd2_running_via_ssh(site: dict[str, Any]) -> bool:
+    try:
+        ssh = ssh_connect(site)
+        cmd = "echo '{\"method\":\"get_app_state\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 2 localhost 4400"
+        out, _err = ssh_exec(ssh, cmd)
+        ssh.close()
+        return ("PHDVersion" in out) or ('"result"' in out)
+    except Exception:
+        return False
+
+
+def capture_phd2_once(site: dict[str, Any]) -> None:
+    print(f"? [{site['name']}] Capturing via PHD2 ...")
+    try:
+        ssh = ssh_connect(site)
+        cmd = "echo '{\"method\":\"get_star_image\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 5 localhost 4400"
+        output, err = ssh_exec(ssh, cmd)
+        ssh.close()
+
+        reply = None
+        for line in output.splitlines():
+            try:
+                reply = json.loads(line)
+            except Exception:
+                continue
+
+        if not reply or "result" not in reply or "image" not in reply["result"]:
+            print(f"?? [{site['name']}] No image data from PHD2.")
+            if err:
+                print(f"?? [{site['name']}] PHD2 stderr: {err}")
+            return
+
+        img_b64 = reply["result"]["image"]
+        w = reply["result"]["width"]
+        h = reply["result"]["height"]
+        arr = np.frombuffer(base64.b64decode(img_b64), dtype=np.uint16).reshape(h, w)
+
+        date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
+        ts = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
+        local_dir = os.path.join(LOCAL_BASE, date_str, site["name"], "guider")
+        os.makedirs(local_dir, exist_ok=True)
+
+        fits_path = os.path.join(local_dir, f"guider_{site['name']}_{ts}.fits")
+        fits.writeto(fits_path, arr, overwrite=True)
+
+        print(f"? [{site['name']}] FITS saved: {fits_path}")
+        png_path = convert_fits_to_png(fits_path)
+
+        # ---- Upload PNG to cylon (fixed name) ----
+        if png_path:
+            upload_png_to_cylon(png_path, site["name"])
+
+    except Exception as e:
+        print(f"? [{site['name']}] PHD2 capture failed: {e}")
+
+
+# ==============================
+# Robust Ekos FITS detection
+# ==============================
+def remote_find_newest_fits_with_mtime(ssh: paramiko.SSHClient) -> tuple[float | None, str, str]:
+    """
+    Return (mtime_float_or_None, path_or_empty, stderr).
+    Uses recursive search under REMOTE_DIR.
+    """
+    cmd = (
+        f'find {REMOTE_DIR} -type f -name "*.fit*" '
+        '-printf "%T@ %p\\n" | sort -nr | head -n 1'
+    )
+    out, err = ssh_exec(ssh, cmd)
+    if not out:
+        return None, "", err
+
+    # Expected: "<mtime> <path>"
+    parts = out.split(" ", 1)
+    if len(parts) != 2:
+        return None, "", err
+
+    try:
+        mtime = float(parts[0])
+    except Exception:
+        mtime = None
+
+    path = parts[1].strip()
+    return mtime, path, err
+
+
+def wait_for_new_fits(ssh: paramiko.SSHClient, site_name: str, baseline_mtime: float | None, max_wait_seconds: float) -> tuple[float | None, str]:
+    """
+    Poll until we see a FITS with mtime strictly greater than baseline_mtime,
+    and not equal to the last downloaded path for this site (extra safety).
+    Returns (new_mtime, new_path) or (None, "") on timeout.
+    """
+    poll_interval = 1.0
+    deadline = time.time() + max_wait_seconds
+    last_seen = LAST_EKOS_REMOTE.get(site_name)
+
+    print(
+        f"? [{site_name}] Waiting for new FITS (baseline mtime={baseline_mtime}) "
+        f"max_wait={max_wait_seconds}s ..."
+    )
+
+    while time.time() < deadline:
+        mtime, path, err = remote_find_newest_fits_with_mtime(ssh)
+        if err:
+            # Not fatal; keep polling
+            print(f"?? [{site_name}] find stderr: {err}")
+
+        if path and (mtime is not None) and (baseline_mtime is None or mtime > baseline_mtime) and (path != last_seen):
+            print(f"? [{site_name}] New FITS detected: mtime={mtime:.3f} path={path}")
+            return mtime, path
+
+        time.sleep(poll_interval)
+
+    print(f"?? [{site_name}] Timed out waiting for a new FITS.")
+    return None, ""
+
+
+# ==============================
+# Ekos capture (default, robust)
+# ==============================
+def capture_ekos_once(site: dict[str, Any]) -> None:
+    print(f"? [{site['name']}] Capturing via Ekos (robust: baseline->capture->poll->download) ...")
+    ssh = None
+
+    max_wait_seconds = WAIT_SECONDS * 3
+
+    try:
+        ssh = ssh_connect(site)
+
+        # ---- Guiding status before ----
+        st, raw, err = ekos_get_guide_status(ssh)
+        if st is None:
+            print(f"?? [{site['name']}] Guide status read failed. Raw: '{raw}' Err: '{err}'")
+        else:
+            print(f"? [{site['name']}] Guide status BEFORE suspend: {st}")
+
+        # ---- Baseline newest FITS before capture ----
+        baseline_mtime, baseline_path, baseline_err = remote_find_newest_fits_with_mtime(ssh)
+        if baseline_path:
+            print(f"? [{site['name']}] Baseline newest FITS: mtime={baseline_mtime:.3f} path={baseline_path}")
+        else:
+            print(f"?? [{site['name']}] No baseline FITS found under {REMOTE_DIR} (this is OK).")
+            if baseline_err:
+                print(f"?? [{site['name']}] baseline find stderr: {baseline_err}")
+
+        # ---- Suspend guiding ----
+        print(f"? [{site['name']}] Suspending guiding...")
+        out, serr = ekos_guide_suspend(ssh)
+        if out:
+            print(f"? [{site['name']}] suspend() returned: {out}")
+        if serr:
+            print(f"?? [{site['name']}] suspend() stderr: {serr}")
+
+        st2, raw2, err2 = ekos_get_guide_status(ssh)
+        if st2 is None:
+            print(f"?? [{site['name']}] Guide status AFTER suspend read failed. Raw: '{raw2}' Err: '{err2}'")
+        else:
+            print(f"? [{site['name']}] Guide status AFTER suspend: {st2}")
+
+        # ---- Start Ekos capture ----
+        print(f"? [{site['name']}] Starting Ekos Capture for optical train '{TRAIN_NAME}'...")
+        out_cap, err_cap = ssh_exec(
+            ssh,
+            f'qdbus org.kde.kstars /KStars/Ekos/Capture '
+            f'org.kde.kstars.Ekos.Capture.start "{TRAIN_NAME}"'
+        )
+        if out_cap:
+            print(f"? [{site['name']}] Capture.start returned: {out_cap}")
+        if err_cap:
+            print(f"?? [{site['name']}] Capture.start stderr: {err_cap}")
+
+        # ---- Robust: poll for a new FITS newer than baseline ----
+        _new_mtime, new_path = wait_for_new_fits(
+            ssh=ssh,
+            site_name=site["name"],
+            baseline_mtime=baseline_mtime,
+            max_wait_seconds=max_wait_seconds
+        )
+        if not new_path:
+            return
+
+        # Record last downloaded remote file to avoid repeats across loops
+        LAST_EKOS_REMOTE[site["name"]] = new_path
+
+        # ---- Download to local ----
+        date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
+        ts = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
+        local_dir = os.path.join(LOCAL_BASE, date_str, site["name"], "guider")
+        os.makedirs(local_dir, exist_ok=True)
+
+        local_fits = os.path.join(local_dir, f"guider_{site['name']}_{ts}.fits")
+        print(f"? [{site['name']}] Downloading: {new_path} -> {local_fits}")
+
+        sftp = ssh.open_sftp()
+        sftp.get(new_path, local_fits)
+        sftp.close()
+
+        print(f"? [{site['name']}] Ekos FITS saved: {local_fits}")
+        png_path = convert_fits_to_png(local_fits)
+
+        # ---- Upload PNG to cylon (fixed name) ----
+        if png_path:
+            upload_png_to_cylon(png_path, site["name"])
+
+    except Exception as e:
+        print(f"? [{site['name']}] Ekos capture failed: {e}")
+
+    finally:
+        if ssh is not None:
+            # ---- Resume guiding (best-effort) ----
+            try:
+                st3, raw3, err3 = ekos_get_guide_status(ssh)
+                if st3 is None:
+                    print(f"?? [{site['name']}] Guide status BEFORE resume read failed. Raw: '{raw3}' Err: '{err3}'")
+                else:
+                    print(f"? [{site['name']}] Guide status BEFORE resume: {st3}")
+
+                print(f"? [{site['name']}] Resuming guiding...")
+                out, serr = ekos_guide_resume(ssh)
+                if out:
+                    print(f"? [{site['name']}] resume() returned: {out}")
+                if serr:
+                    print(f"?? [{site['name']}] resume() stderr: {serr}")
+
+                st4, raw4, err4 = ekos_get_guide_status(ssh)
+                if st4 is None:
+                    print(f"?? [{site['name']}] Guide status AFTER resume read failed. Raw: '{raw4}' Err: '{err4}'")
+                else:
+                    print(f"? [{site['name']}] Guide status AFTER resume: {st4}")
+
+            except Exception as e:
+                print(f"?? [{site['name']}] Guide resume/status check failed: {e}")
+
+            with contextlib.suppress(Exception):
+                ssh.close()
+
+
+# ==============================
+# Main loop / CLI
+# ==============================
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Capture guider images periodically from remote sites. Ekos by default; optional PHD2."
+    )
+    p.add_argument(
+        "--use-phd2",
+        action="store_true",
+        help="Use PHD2 get_star_image if PHD2 is running on the remote host; otherwise fall back to Ekos."
+    )
+    return p.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    sites = load_sites(CONFIG_FILE)
+
+    print(f"? Active sites: {[s['name'] for s in sites]}")
+    print(f"? Mode: {'PHD2 (if running) else Ekos' if args.use_phd2 else 'Ekos only (default)'}")
+    print(f"? Local optipng: {'FOUND' if optipng_available() else 'NOT FOUND'} (lossless PNG recompression)")
+    print(f"? Robust wait: MAX_WAIT_SECONDS = WAIT_SECONDS * 3 = {WAIT_SECONDS * 3}s")
+    print(f"? Cylon upload: {CYLON_REMOTE_SERVER}:{CYLON_REMOTE_DIR}/Guider_<site>_current.png (scp -l {CYLON_BANDWIDTH_LIMIT})")
+
+    while True:
+        start = time.time()
+
+        for site in sites:
+            if args.use_phd2 and phd2_running_via_ssh(site):
+                capture_phd2_once(site)
+            else:
+                capture_ekos_once(site)
+
+        elapsed = time.time() - start
+        sleep_time = max(0, LOOP_INTERVAL_MIN * 60 - elapsed)
+        print(f"\n? Sleeping {sleep_time/60:.1f} min...\n")
+        time.sleep(sleep_time)
+
+
+if __name__ == "__main__":
+    main()
+
+

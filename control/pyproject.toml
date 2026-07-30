@@ -1,0 +1,139 @@
+[build-system]
+requires = ["setuptools>=82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pseti-ctl"
+version = "0.1.0"
+description = "PANOSETI observatory instrument control system"
+requires-python = ">=3.14"
+dependencies = [
+  "astropy>=5.2",
+  "numpy>=1.24",
+  "influxdb>=5.3",
+  "redis>=7",
+  "psutil>=5.9",
+  "haversine>=2.9",
+  "GitPython>=3.1",
+  "PyYAML>=6.0",
+  "pyserial>=3.5",
+  "requests>=2.31",
+  "rich>=13.0",
+  "pydantic>=2.0",
+  "tftpy>=0.8.2",
+  "paramiko",
+  "orjson",
+  "typing_extensions>=4.5",
+  "typer",
+  "matplotlib",
+  "networkx",
+  "pyvis",
+  "jsonpickle",
+  "panoseti_grpc>=0.4.10",
+  "questionary>=2.0.1",
+  "testcontainers>=4.14.2",
+  "docker>=7.1.0",
+  "blake3",
+  "xxhash",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-mock>=3.12",
+  "pytest-timeout>=2.0",
+  "pytest-xdist>=3.0",
+  "docker>=7.0",
+  "pypff",
+  "filelock>=3.18",
+  "python-dotenv>=1.2.2",
+  "textual",
+]
+
+  [project.optional-dependencies]
+  dev = [
+    "fakeredis>=2.26",
+    "mypy>=1.9",
+    "ruff>=0.4",
+    "numpy>=1.24",
+    "testcontainers[redis]>=4.0",
+    "types-requests",
+    "types-paramiko",
+  ]
+
+  [project.scripts]
+  pseti = "control.pseti:app"
+
+  [tool.setuptools.packages.find]
+  where = ["src"]
+  include = ["control*", "ci*"]
+
+  [tool.pytest.ini_options]
+  pythonpath = ["src"]
+  testpaths = ["src/ci"]
+  asyncio_mode = "auto"
+  timeout = 30
+  log_cli = true
+  log_cli_level = "INFO"
+  log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+  log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+markers = [
+    "tier1: Pure in-process logic and Pydantic validation (no containers)",
+    "tier2: State-machine logic with isolated workspace (no containers)",
+    "tier3: Distributed fleet with sim daqnodes (testcontainers)",
+    "tier4: Fault injection over a live fleet (testcontainers + chaos)",
+    "tier5: Real hashpipe binary, static Docker Compose stack",
+    "hw_class(name): hardware test class name (env_check, boot_sequence, happy_path)",
+    "slow_hw: marks tests that require full hardware I/O (may take minutes)",
+    "requires_docker: marks tests that require a local Docker daemon (software-only CI)",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "I", "ASYNC", "RUF", "SIM"]
+ignore = [
+    "E501",   # line too long – handled separately
+    "B008",   # function calls in default args (common in Pydantic)
+    "F841",   # unused variables
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = [
+	"E501",
+	"E402",
+	"F401"
+] # Add rule codes you want to ignore here
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+python_version = "3.14"
+exclude = ["ci"]
+
+strict = true
+check_untyped_defs = true
+strict_equality = true
+extra_checks = true
+ignore_missing_imports = true
+warn_return_any = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = false
+warn_unused_ignores = false
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = "control.ci.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+
+[tool.uv.sources]
+panoseti_grpc = { path = "../grpc", editable = true }
+pypff = { path = "../pypff", editable = true }
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true

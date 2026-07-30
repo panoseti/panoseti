@@ -1,0 +1,899 @@
+"""
+HITL (Hardware-in-the-Loop) test orchestration CLI.
+
+Subcommands: build, deploy, down, attach, plan, run, preflight, status,
+safe-down, list-classes, explain, check-env.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import fnmatch
+import os
+import shutil
+import subprocess
+import tomllib
+from pathlib import Path
+from typing import Annotated, Any
+
+import typer
+from rich.console import Console
+
+from ci.compose_env import CONTROL_DIR as _CONTROL_DIR
+from ci.compose_env import HW_CONFIGS_DIR as _HW_CONFIGS_DIR
+from ci.compose_env import HW_CORE_OBS_CONFIGS_DIR as _HW_CORE_OBS_CONFIGS_DIR
+from ci.compose_env import compose_env
+
+app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True)
+console = Console()
+
+# Directory containing hw_tests.toml and the suites/ tree
+_HW_SW_DIR = Path(__file__).parent.parent
+# Compose file for headnode/daqnode services (Redis, InfluxDB, etc.)
+_COMPOSE_FILE = _CONTROL_DIR / "src/ci/docker-compose.hw-sw.yml"
+
+_STATE_FILE = Path.home() / ".pseti" / "hw_runtime_state.json"
+
+
+def _get_sm():
+    from ci.hardware_software.hw_utils.state_machine import HardwareStateMachine
+    return HardwareStateMachine()
+
+
+def _get_topology():
+    from ci.fixtures.topology_fixtures import ObservatoryTopology
+    return ObservatoryTopology()
+
+
+def _read_state() -> str | None:
+    from ci.hardware_software.hw_utils.state_machine import read_state
+    return read_state(_STATE_FILE)
+
+
+def _compose_env() -> dict[str, str]:
+    """Env vars required by docker-compose.hw-sw.yml. See ci.compose_env."""
+    return compose_env()
+
+
+def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """Print command and execute it."""
+    console.print(f"[dim]Running:[/dim] [cyan]{' '.join(cmd)}[/cyan]")
+    return subprocess.run(cmd, **kwargs)
+
+
+def _uv_pytest(*args: str) -> list[str]:
+    """Return a command list that runs pytest via `uv run` in the control project env."""
+    return ["uv", "run", "--no-sync", "--directory", str(_CONTROL_DIR), "pytest", *args]
+
+
+def _run_compose(
+    tool: str,
+    context: str | None,
+    profile: str,
+    action: str,
+    args: list[str] | None = None,
+    env: dict[str, str] | None = None,
+) -> int:
+    """Helper to run a docker-compose command on a specific context."""
+    cmd = [tool]
+    if context:
+        cmd.extend(["--context", context])
+    cmd.extend(["compose", "-f", str(_COMPOSE_FILE), "--profile", profile, action])
+    if args:
+        cmd.extend(args)
+    return _run(cmd, env=env).returncode
+
+
+@app.callback()
+def hw_main(ctx: typer.Context):
+    """Hardware-in-the-Loop (HITL) physical lab tests"""
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(_HW_CONFIGS_DIR)
+
+
+# ---------------------------------------------------------------------------
+# build
+# ---------------------------------------------------------------------------
+
+@app.command(name="build")
+def hw_build(
+    tool: Annotated[str, typer.Option("--tool", help="Container tool (docker or podman).")] = "docker",
+) -> None:
+    """Build headnode and daqnode container images locally.
+
+    Automatically injects HOST_UID and HOST_GID from the current user so that
+    files created inside the container are owned by the same user on the host.
+    """
+    env = {**os.environ, **_compose_env()}
+    console.print(f"[dim]Injecting HOST_UID={env.get('HOST_UID')} HOST_GID={env.get('HOST_GID')}[/dim]")
+
+    # 1. Build headnode locally
+    console.print("[cyan]Building profile: headnode locally...[/cyan]")
+    ret = _run_compose(tool, None, "headnode", "build", env=env)
+    if ret != 0:
+        raise typer.Exit(code=ret)
+
+    # 2. Build daqnode on all remote nodes
+    try:
+        topo = _get_topology()
+        # Get available contexts to skip missing ones
+        import subprocess as sp
+        res = sp.run(["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True)
+        available_contexts = set(res.stdout.splitlines())
+
+        for node in topo.daq_nodes():
+            context = node.docker_context or f"pseti-daq-{node.host.replace('.', '-')}"
+            if context not in available_contexts:
+                console.print(f"[yellow]Skipping daqnode build on {node.host}: context '{context}' not found.[/yellow]")
+                continue
+            console.print(f"[cyan]Building profile: daqnode on {node.host} (context: {context})...[/cyan]")
+            _run_compose(tool, context, "daqnode", "build", env=env)
+    except Exception as exc:
+        console.print(f"[yellow]Warning: Could not build on DAQ nodes: {exc}[/yellow]")
+
+    console.print("[green]Build complete.[/green]")
+
+
+# ---------------------------------------------------------------------------
+# deploy
+# ---------------------------------------------------------------------------
+
+@app.command(name="deploy")
+def hw_deploy(
+    tool: Annotated[str, typer.Option("--tool", help="Container tool (docker or podman).")] = "docker",
+    no_build: Annotated[bool, typer.Option("--no-build", help="Use existing images; skip build.")] = False,
+) -> None:
+    """Start the HITL service stack (Redis, InfluxDB, headnode-server) in the background."""
+    env = {**os.environ, **_compose_env()}
+    args = ["-d"]
+    if no_build:
+        args.append("--no-build")
+
+    # 1. Deploy headnode locally
+    console.print("[cyan]Deploying headnode profile locally...[/cyan]")
+    ret = _run_compose(tool, None, "headnode", "up", args=args, env=env)
+    if ret != 0:
+        raise typer.Exit(code=ret)
+
+    # 2. Deploy daqnode to all remote nodes
+    try:
+        topo = _get_topology()
+        for node in topo.daq_nodes():
+            context = node.docker_context or f"pseti-daq-{node.host.replace('.', '-')}"
+            console.print(f"[cyan]Deploying daqnode profile to {node.host} (context: {context})...[/cyan]")
+            _run_compose(tool, context, "daqnode", "up", args=args, env=env)
+    except Exception as exc:
+        console.print(f"[yellow]Warning: Could not deploy to DAQ nodes: {exc}[/yellow]")
+
+
+# ---------------------------------------------------------------------------
+# down
+# ---------------------------------------------------------------------------
+
+@app.command(name="down")
+def hw_down(
+    tool: Annotated[str, typer.Option("--tool", help="Container tool (docker or podman).")] = "docker",
+    volumes: Annotated[bool, typer.Option("--volumes", help="Also remove named volumes.")] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show verbose output.")] = False,
+) -> None:
+    """Stop the HITL service stack (preserves volumes unless -v is given)."""
+    env = {**os.environ, **_compose_env()}
+    args = []
+    if volumes:
+        args.append("--volumes")
+    
+    if verbose:
+        console.print(f"[dim]Compose file: {_COMPOSE_FILE}[/dim]")
+        console.print(f"[dim]Env: {env}[/dim]")
+
+    # 1. Down headnode locally
+    console.print("[yellow]Stopping headnode profile locally...[/yellow]")
+    ret = _run_compose(tool, None, "headnode", "down", args=args, env=env)
+    if verbose:
+        console.print(f"[dim]Local down exit code: {ret}[/dim]")
+
+    # 2. Down daqnode on all remote nodes
+    try:
+        topo = _get_topology()
+        for node in topo.daq_nodes():
+            context = node.docker_context or f"pseti-daq-{node.host.replace('.', '-')}"
+            console.print(f"[yellow]Stopping daqnode profile on {node.host} (context: {context})...[/yellow]")
+            ret = _run_compose(tool, context, "daqnode", "down", args=args, env=env)
+            if verbose:
+                console.print(f"[dim]Remote down ({node.host}) exit code: {ret}[/dim]")
+    except Exception as exc:
+        console.print(f"[yellow]Warning: Could not stop on DAQ nodes: {exc}[/yellow]")
+
+
+# ---------------------------------------------------------------------------
+# attach
+# ---------------------------------------------------------------------------
+
+@app.command(name="attach")
+def hw_attach(
+    tool: Annotated[str, typer.Option("--tool", help="Container tool (docker or podman).")] = "docker",
+    service: Annotated[str, typer.Option("--service", "-s", help="Service to attach to.")] = "headnode-server",
+) -> None:
+    """Enter the headnode container shell for interactive debugging."""
+    env = {**os.environ, **_compose_env()}
+    # Use os.system so stdin/stdout/stderr are inherited (interactive shell).
+    console.print(f"[cyan]Attaching to {service}...[/cyan]")
+    os.execvpe(tool, [tool, "compose", "-f", str(_COMPOSE_FILE),
+                      "--profile", "headnode", "exec", service, "/bin/bash"], env)
+
+
+# ---------------------------------------------------------------------------
+# plan
+# ---------------------------------------------------------------------------
+
+@app.command(name="plan")
+def hw_plan(
+    hw_class: Annotated[str | None, typer.Option("--class", "-c", help="Filter to one test class.")] = None,
+    assume_state: Annotated[str | None, typer.Option("--assume-state", help="Assume hardware is already in this state.")] = None,
+) -> None:
+    """Dry-run: print the batch plan + estimated wall clock. No hardware touched."""
+    import tomllib
+
+    try:
+        sm = _get_sm()
+        toml_path = _HW_SW_DIR / "hw_tests.toml"
+        with toml_path.open("rb") as f:
+            data = tomllib.load(f)
+
+        classes = data.get("classes", {})
+        if hw_class:
+            classes = {k: v for k, v in classes.items() if k == hw_class}
+        if not classes:
+            console.print("[yellow]No matching HITL test classes found.[/yellow]")
+            return
+
+        # Group classes by batch_priority (same priority = same batch)
+        from itertools import groupby
+        sorted_classes = sorted(classes.items(), key=lambda kv: kv[1].get("batch_priority", 99))
+        batches = [
+            (priority, list(group))
+            for priority, group in groupby(sorted_classes, key=lambda kv: kv[1].get("batch_priority", 99))
+        ]
+
+        current = assume_state or sm.initial
+        total_cost = 0.0
+        console.print(f"\n[bold]HITL Batch Plan[/bold]  (start state: [green]{current}[/green])\n")
+
+        for _priority, group in batches:
+            names = [k for k, _ in group]
+            target = group[0][1].get("required_state", sm.initial)
+            leaves = group[-1][1].get("leaves_state", target)
+
+            transition_str = ""
+            transition_cost = 0.0
+            if current != target:
+                try:
+                    plan = sm.plan(current, target)
+                    transition_cost = sm.cost(plan)
+                    total_cost += transition_cost
+                    steps = " → ".join(
+                        f"[dim]{p.name}[/dim] ({p.budget_s['typical']:.0f}s)" for p in plan
+                    )
+                    transition_str = f"\n    [dim]Transition:[/dim] {steps}  [dim]({transition_cost:.0f}s)[/dim]"
+                except ValueError as exc:
+                    transition_str = f"\n    [red]No path to {target}: {exc}[/red]"
+
+            classes_str = ", ".join(f"[cyan]{n}[/cyan]" for n in names)
+            console.print(
+                f"  Batch [{classes_str}]  target=[green]{target}[/green]"
+                f"  leaves=[green]{leaves}[/green]"
+                f"{transition_str}"
+            )
+            current = leaves
+
+        if current != sm.safe:
+            try:
+                teardown = sm.plan(current, sm.safe)
+                teardown_cost = sm.cost(teardown)
+                total_cost += teardown_cost
+                steps = " → ".join(f"[dim]{p.name}[/dim] ({p.budget_s['typical']:.0f}s)" for p in teardown)
+                console.print(
+                    f"\n  [yellow]Final teardown → {sm.safe}:[/yellow] {steps}  [dim]({teardown_cost:.0f}s)[/dim]"
+                )
+            except ValueError:
+                pass
+
+        console.print(f"\n  [bold]Estimated transition overhead:[/bold] {total_cost:.0f}s "
+                      f"([dim]excludes test execution time[/dim])\n")
+
+    except Exception as exc:
+        console.print(f"[red]Plan failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+@app.command(name="ls")
+def hw_ls(
+    hw_class: Annotated[str | None, typer.Option("--class", "-c", help="Filter to one test class.")] = None,
+    hw_state: Annotated[str | None, typer.Option("--state", "-s", help="Filter by required state.")] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show full node IDs.")] = False,
+) -> None:
+    """List all available HITL tests grouped by hardware state and class."""
+    try:
+        # 1. Load TOML for class metadata
+        with (_HW_SW_DIR / "hw_tests.toml").open("rb") as f:
+            data = tomllib.load(f)
+        classes = data.get("classes", {})
+        mappings = data.get("mapping", [])
+
+        # 2. Collect tests via pytest
+        result = subprocess.run(
+            _uv_pytest(
+                str(_HW_SW_DIR),
+                "-p", "ci.hardware_software.hw_utils.pytest_plugin",
+                "--collect-only", "-q", "--no-header",
+            ),
+            capture_output=True, text=True,
+            cwd=_CONTROL_DIR,
+        )
+        
+        # 3. Classify and group
+        state_groups: dict[str, dict[str, list[str]]] = {}
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line or line.startswith("=") or "warning" in line.lower() or "collected" in line.lower() or line.startswith("TEST_METRICS_JSON"):
+                continue
+            
+            # Match to class
+            matched_cls = None
+            for m in mappings:
+                if fnmatch.fnmatch(line, f"*{m['glob'].lstrip('*')}*") or fnmatch.fnmatch(line, m["glob"]):
+                    matched_cls = m["class"]
+                    break
+            
+            if not matched_cls:
+                matched_cls = "unclassified"
+            
+            # Filter by class
+            if hw_class and matched_cls != hw_class:
+                continue
+            
+            cfg = classes.get(matched_cls, {})
+            state = cfg.get("required_state", "UNKNOWN")
+            
+            # Filter by state
+            if hw_state and state != hw_state:
+                continue
+            
+            state_groups.setdefault(state, {}).setdefault(matched_cls, []).append(line)
+
+        # 4. Render
+        if not state_groups:
+            console.print("[yellow]No tests found matching filters.[/yellow]")
+            return
+
+        for state in sorted(state_groups.keys()):
+            console.print(f"\n[bold green]State: {state}[/bold green]")
+            for cls_name in sorted(state_groups[state].keys()):
+                test_list = state_groups[state][cls_name]
+                desc = classes.get(cls_name, {}).get("description", "")
+                console.print(f"  [bold cyan]{cls_name}[/bold cyan]  [dim]({len(test_list)} tests) - {desc}[/dim]")
+                for test in sorted(test_list):
+                    display_name = test if verbose else test.split("::")[-1]
+                    console.print(f"    • {display_name}")
+
+    except Exception as exc:
+        console.print(f"[red]Discovery failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+
+# ---------------------------------------------------------------------------
+# run
+# ---------------------------------------------------------------------------
+
+@app.command(name="run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def hw_run(
+    ctx: typer.Context,
+    dev: Annotated[bool, typer.Option("--dev", help="Dev mode: skip power cycles, keep hardware running.")] = False,
+    hw_class: Annotated[str | None, typer.Option("--class", "-c", help="Filter to one TOML test class.")] = None,
+    hw_state: Annotated[str | None, typer.Option("--state", "-s", help="Run only tests requiring this state.")] = None,
+    assume_state: Annotated[str | None, typer.Option("--assume-state", help="Trust that hardware is already in this state.")] = None,
+    no_power_cycle: Annotated[bool, typer.Option("--no-power-cycle", help="Refuse high-safety (power cycle) primitives.")] = False,
+    keep_running: Annotated[bool, typer.Option("--keep-running", help="Skip final safety teardown (dev/lab use only).")] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt.")] = False,
+    explain: Annotated[str | None, typer.Option("--explain", help="Print state plan for a single test ID and exit.")] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Print detailed logs of the test execution.")] = False,
+) -> None:
+    """
+    Run HITL tests with state-aware batching.
+    
+    All standard pytest flags (e.g. -k, -v, -s, -x) can be passed at the end.
+    Example: pseti test hw run -k "test_hk" -v
+    """
+    if dev:
+        console.print("[bold yellow]DEV MODE[/bold yellow] — power cycles skipped; hardware will NOT be returned to safe state.")
+        keep_running = True
+        if assume_state is None:
+            assume_state = "MASKS_CONFIGURED"
+
+    if explain:
+        _cmd_explain(explain)
+        return
+
+    # If --assume-state is given, persist it to the state file so pytest_runtest_setup
+    # uses the correct starting point for transition planning.
+    if assume_state:
+        from ci.hardware_software.hw_utils.state_machine import _write_state
+        _write_state(_STATE_FILE, assume_state)
+        console.print(f"[dim]Assuming hardware state: [green]{assume_state}[/green][/dim]")
+
+    # Ensure PSETI_CONFIG is set for both this process and the pytest subprocess.
+    # hw_main callback may not run when dispatched via the lazy test_cli proxy.
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(_HW_CONFIGS_DIR)
+
+    pytest_args = list(ctx.args)
+    if hw_class:
+        pytest_args += ["-m", hw_class]
+    if hw_state:
+        pytest_args += ["-m", hw_state]
+    if verbose:
+        if "-v" not in pytest_args:
+            pytest_args.append("-v")
+        if "-s" not in pytest_args:
+            pytest_args.append("-s")
+
+    cmd = _uv_pytest(
+        str(_HW_SW_DIR),
+        "-p", "ci.hardware_software.hw_utils.pytest_plugin",
+        "--tb=short",
+        *pytest_args,
+    )
+
+    if not yes and not _confirm_run(cmd):
+        raise typer.Exit(code=0)
+
+    if not keep_running:
+        sm = _get_sm()
+        from ci.hardware_software.hw_utils.safety import SafetyManager
+        mgr = SafetyManager(sm, _STATE_FILE, keep_running=keep_running)
+        mgr.register()
+
+    ret = _run(cmd, cwd=_CONTROL_DIR).returncode
+    raise typer.Exit(code=ret)
+
+
+# ---------------------------------------------------------------------------
+# preflight
+# ---------------------------------------------------------------------------
+
+@app.command(name="preflight", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def hw_preflight(ctx: typer.Context) -> None:
+    """Run only tests with preflight=true in their TOML class (pre-observation subset)."""
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(_HW_CONFIGS_DIR)
+
+    import tomllib
+    toml_path = _HW_SW_DIR / "hw_tests.toml"
+    with toml_path.open("rb") as f:
+        data = tomllib.load(f)
+    preflight_classes = [
+        name for name, cfg in data.get("classes", {}).items()
+        if cfg.get("preflight", False)
+    ]
+    if not preflight_classes:
+        console.print("[yellow]No preflight classes defined in hw_tests.toml.[/yellow]")
+        return
+
+    marker_expr = " or ".join(f"hw_class({c!r})" for c in preflight_classes)
+    cmd = _uv_pytest(
+        str(_HW_SW_DIR),
+        "-p", "ci.hardware_software.hw_utils.pytest_plugin",
+        "-m", marker_expr,
+        "--tb=short",
+        *ctx.args,
+    )
+    ret = _run(cmd, cwd=_CONTROL_DIR).returncode
+    raise typer.Exit(code=ret)
+
+
+# ---------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------
+
+@app.command(name="status")
+def hw_status() -> None:
+    """Report current believed hardware state and reachability."""
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(_HW_CONFIGS_DIR)
+    state = _read_state()
+    if state:
+        console.print(f"Last known state: [green]{state}[/green] (from {_STATE_FILE})")
+    else:
+        console.print("[dim]No persisted hardware state found.[/dim]")
+
+    try:
+        topo = _get_topology()
+        # Every configured quabo, not just the first module -- a status
+        # summary that silently only covers 1/N modules is misleading once
+        # the topology has more than one.
+        for q in topo.quabo_ips():
+            import subprocess as sp
+            r = sp.run(["ping", "-c1", "-W1", q.ip], capture_output=True, timeout=3)
+            reachable = "[green]✓[/green]" if r.returncode == 0 else "[red]✗[/red]"
+            console.print(f"  {reachable} {q.ip} (module {q.module_id} Q{q.quadrant})")
+    except Exception as exc:
+        console.print(f"[dim]Topology unavailable: {exc}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# safe-down
+# ---------------------------------------------------------------------------
+
+@app.command(name="safe-down")
+def hw_safe_down(
+    keep_running: Annotated[bool, typer.Option("--keep-running", help="Print banner but do not power off.")] = False,
+) -> None:
+    """Manually invoke emergency teardown (drive hardware to safe/UNPOWERED state)."""
+    sm = _get_sm()
+    from ci.hardware_software.hw_utils.safety import SafetyManager
+    mgr = SafetyManager(sm, _STATE_FILE, keep_running=keep_running)
+
+    if keep_running:
+        console.print("[bold yellow]--keep-running set: skipping power-off.[/bold yellow]")
+        mgr.emergency_teardown()
+        return
+
+    current = _read_state() or sm.initial
+    target = sm.safe
+    console.print(f"[yellow]safe-down: driving {current!r} → {target!r}...[/yellow]")
+
+    if current == target:
+        console.print(f"[green]Already in safe state ({target}).[/green]")
+        return
+
+    try:
+        plan = sm.plan(current, target)
+        steps = " → ".join(p.name for p in plan)
+        console.print(f"  Steps: {steps}")
+    except ValueError:
+        console.print("[dim]  (using emergency WPS-off fallback)[/dim]")
+
+    mgr.emergency_teardown()
+    console.print(f"[green]safe-down complete. Hardware state: {target}[/green]")
+
+
+# ---------------------------------------------------------------------------
+# list-classes
+# ---------------------------------------------------------------------------
+
+@app.command(name="list-classes")
+def hw_list_classes() -> None:
+    """Print TOML class definitions and attempt to count tests in each class."""
+    import tomllib
+    toml_path = _HW_SW_DIR / "hw_tests.toml"
+    with toml_path.open("rb") as f:
+        data = tomllib.load(f)
+    classes = data.get("classes", {})
+    mappings = data.get("mapping", [])
+
+    # Attempt test count via pytest --collect-only
+    counts: dict[str, int] = {}
+    try:
+        result = subprocess.run(
+            _uv_pytest(
+                str(_HW_SW_DIR),
+                "-p", "ci.hardware_software.hw_utils.pytest_plugin",
+                "--collect-only", "-q", "--no-header",
+            ),
+            capture_output=True, text=True,
+            cwd=_CONTROL_DIR,
+            timeout=30,
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line or line.startswith("=") or "warning" in line.lower():
+                continue
+            for entry in mappings:
+                glob = entry.get("glob", "")
+                cls_name = entry.get("class", "")
+                if fnmatch.fnmatch(line, f"*{glob.lstrip('*')}*") or fnmatch.fnmatch(line, glob):
+                    counts[cls_name] = counts.get(cls_name, 0) + 1
+                    break
+    except Exception:
+        pass  # Show without counts if collection fails
+
+    console.print("[bold]HITL Test Classes[/bold]")
+    for name, cfg in classes.items():
+        count_str = f"  [dim]{counts[name]} tests[/dim]" if name in counts else ""
+        console.print(
+            f"  [cyan]{name}[/cyan]  required_state=[green]{cfg.get('required_state', '?')}[/green]"
+            f"  priority={cfg.get('batch_priority', '?')}"
+            f"  preflight={'[green]yes[/green]' if cfg.get('preflight') else 'no'}"
+            f"{count_str}"
+            f"\n    {cfg.get('description', '')}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# explain
+# ---------------------------------------------------------------------------
+
+@app.command(name="explain")
+def hw_explain(
+    test_id: Annotated[str, typer.Argument(help="Test node ID to explain.")],
+    assume_state: Annotated[str | None, typer.Option("--assume-state")] = None,
+) -> None:
+    """Print the state transition plan a single test would trigger."""
+    _cmd_explain(test_id, assume_state)
+
+
+# ---------------------------------------------------------------------------
+# check-env
+# ---------------------------------------------------------------------------
+
+@app.command(name="check-env")
+def hw_check_env(
+    pre_deploy: Annotated[bool, typer.Option("--pre-deploy", help="Check environment before deployment.")] = False,
+    post_deploy: Annotated[bool, typer.Option("--post-deploy", help="Check environment after deployment.")] = False,
+) -> None:
+    """Verify HITL environment: config files, WPS reachability, network connectivity."""
+    from control.utils.run_state import RunStateManager
+
+    all_ok = True
+
+    if pre_deploy:
+        console.print("[dim]Running pre-deploy checks...[/dim]")
+        
+        # 1. Check for active runs
+        state_mgr = RunStateManager()
+        ledger = state_mgr.load_state()
+        if ledger and ledger.status == "recording":
+            console.print(f"[red]✗ Pre-deploy failed: An active run ({ledger.run_name}) is currently recording.[/red]")
+            console.print("  [yellow]Hardware may be left in a bad state. Please stop the run or let it finish.[/yellow]")
+            raise typer.Exit(code=1)
+        else:
+            console.print("[green]✓ No active runs recording.[/green]")
+            
+        # 2. Check Docker contexts
+        try:
+            topo = _get_topology()
+            r = subprocess.run(["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True, check=True)
+            contexts = r.stdout.splitlines()
+            for node in topo.daq_nodes():
+                expected_context = node.docker_context or f"pseti-daq-{node.host.replace('.', '-')}"
+                if expected_context not in contexts:
+                    console.print(f"[red]✗ Pre-deploy failed: Missing docker context '{expected_context}' for DAQ node {node.host}.[/red]")
+                    all_ok = False
+                else:
+                    console.print(f"[green]✓ Docker context '{expected_context}' exists.[/green]")
+        except Exception as exc:
+             console.print(f"[yellow]⚠ Failed to fully check docker contexts: {exc}[/yellow]")
+             # We don't fail immediately here in case they use podman or local deploy,
+             # but the topology check above should catch structural issues.
+
+        # 3. Smoke-check `pseti admin status` against real infrastructure.
+        # This is read-only (docker context connect + `compose ps`) and
+        # exercises the actual docker_context resolution + connectivity path
+        # that `pseti admin deploy` uses in production, which nothing else
+        # in this suite covers -- hw_build/hw_deploy above deploy via a
+        # different path (Dockerfile.ci + local editable source) so they
+        # can't stand in for it. Non-fatal: `pseti admin` targets production
+        # infra that may not be configured for CI-only environments.
+        console.print("[dim]Smoke-checking 'pseti admin status' (docker_context resolution)...[/dim]")
+        admin_res = subprocess.run(
+            ["pseti", "admin", "status", "all", "--mode", "docker"],
+            capture_output=True, text=True, timeout=30, env={**os.environ, **_compose_env()},
+        )
+        if admin_res.returncode != 0:
+            console.print(
+                f"[yellow]⚠ 'pseti admin status all --mode docker' failed (exit {admin_res.returncode}):[/yellow]\n"
+                f"{admin_res.stdout}\n{admin_res.stderr}"
+            )
+        else:
+            console.print("[green]✓ 'pseti admin status' reached all configured DAQ nodes.[/green]")
+
+        if not all_ok:
+             raise typer.Exit(code=1)
+
+    if post_deploy:
+        console.print("[dim]Running post-deploy checks...[/dim]")
+        post_deploy_env = {**os.environ, **_compose_env()}
+
+        # 1. Verify headnode is running
+        r = subprocess.run(
+            ["docker", "compose", "-f", str(_COMPOSE_FILE), "--profile", "headnode", "ps", "--format", "json"],
+            capture_output=True, text=True, env=post_deploy_env
+        )
+        if "headnode-server" not in r.stdout:
+            console.print("[red]✗ Post-deploy failed: headnode-server container is not running.[/red]")
+            all_ok = False
+        else:
+             console.print("[green]✓ headnode-server container is running.[/green]")
+
+        # 2. Execute pseti val inside container
+        console.print("[dim]Executing 'pseti val' inside headnode-server...[/dim]")
+        val_res = subprocess.run(
+            ["docker", "compose", "-f", str(_COMPOSE_FILE), "exec", "-T", "headnode-server", "pseti", "val"],
+            capture_output=True, text=True, env=post_deploy_env
+        )
+        if val_res.returncode != 0:
+            console.print(f"[red]✗ Post-deploy failed: 'pseti val' returned errors.[/red]\n{val_res.stdout}\n{val_res.stderr}")
+            all_ok = False
+        else:
+             console.print("[green]✓ 'pseti val' passed inside container.[/green]")
+
+        if not all_ok:
+             raise typer.Exit(code=1)
+
+
+    # ── Config ──────────────────────────────────────────────────────────────
+    console.print("[dim]Checking HITL configuration...[/dim]")
+    pseti_config = os.environ.get("PSETI_CONFIG", "")
+    if not pseti_config:
+        console.print(
+            "[yellow]⚠ PSETI_CONFIG is not set.[/yellow]\n"
+            "  Set it to the directory containing obs_config.json, e.g.:\n"
+            f"    export PSETI_CONFIG={_HW_CONFIGS_DIR}"
+        )
+        all_ok = False
+    else:
+        obs_path = Path(pseti_config) / "obs_config.json"
+        if not obs_path.exists():
+            console.print(f"[red]✗ obs_config.json not found at {obs_path}[/red]")
+            all_ok = False
+        else:
+            console.print(f"[green]✓ obs_config.json found at {obs_path}[/green]")
+
+    # ── Topology (if config is available) ──────────────────────────────────
+    topo = None
+    if all_ok:
+        try:
+            topo = _get_topology()
+            console.print(f"[green]✓ Topology loaded: {len(topo.module_ids())} module(s), "
+                          f"{len(topo.daq_nodes())} DAQ node(s)[/green]")
+            caps = topo.capabilities()
+            if caps:
+                console.print(f"  Capabilities: {sorted(caps)}")
+        except Exception as exc:
+            console.print(f"[red]✗ Failed to load topology: {exc}[/red]")
+            all_ok = False
+
+    # ── Disk space ──────────────────────────────────────────────────────────
+    console.print("[dim]Checking disk space...[/dim]")
+    for path in ("/mnt/panoseti-test", str(Path.home())):
+        if os.path.exists(path):
+            usage = shutil.disk_usage(path)
+            free_gb = usage.free / (2**30)
+            color = "green" if free_gb >= 10 else "yellow"
+            console.print(f"  [{color}]{path}: {free_gb:.1f} GB free[/{color}]")
+
+    # ── WPS reachability ────────────────────────────────────────────────────
+    if topo is not None:
+        console.print("[dim]Checking WPS outlets...[/dim]")
+        for wps in topo.wps_outlets():
+            url = getattr(wps, "url", None)
+            if url:
+                ret = subprocess.run(
+                    ["curl", "-s", "--connect-timeout", "2", "--head", url],
+                    capture_output=True, timeout=5,
+                ).returncode
+                icon = "[green]✓[/green]" if ret == 0 else "[red]✗[/red]"
+                console.print(f"  {icon} WPS {wps.name} at {url}")
+
+    # ── Quabo reachability ──────────────────────────────────────────────────
+    if topo is not None:
+        console.print("[dim]Checking quabo reachability (all configured modules, in parallel)...[/dim]")
+        # NOTE: quabo's command protocol (cmd_port, 60000-60003) is
+        # fire-and-forget -- there's no ack packet to wait for, so sending a
+        # command and blocking on recvfrom() always times out regardless of
+        # whether the quabo is actually up. This used to report every
+        # quabo unreachable unconditionally (a permanent false negative),
+        # which trained people to ignore this check. TFTP's get_flashuid
+        # (the same request/response call `pseti uids` already relies on)
+        # is the one protocol quabo actually acks over UDP, so it's the
+        # real liveness signal here.
+        #
+        # Each check (ping + a TFTP round-trip with its own internal
+        # retry/timeout loop) takes a few seconds; done one quabo at a time
+        # this is the dominant cost of check-env once you're past a single
+        # module (4 quabos -> 16 across a 4-dome fleet). Run them
+        # concurrently via a thread pool -- same pattern config.py's
+        # do_reboot() already uses for parallel module reboots -- and print
+        # results back in topology order afterward so output stays stable.
+        import tempfile
+        import uuid
+        from concurrent.futures import ThreadPoolExecutor
+        from control.driver.quabo_tftp import tftpw
+
+        quabo_addrs = topo.quabo_ips()
+
+        def _check_one(q: Any) -> tuple[bool, bool]:
+            r = subprocess.run(["ping", "-c1", "-W1", q.ip], capture_output=True, timeout=3)
+            ping_ok = r.returncode == 0
+
+            tftp_ok = False
+            # get_flashuid() defaults to a fixed 'flashuid' filename in the
+            # cwd -- fine for a single sequential caller (get_uids.py), but
+            # every quabo running this check concurrently would race on the
+            # same path ("Failed to acquire write lock", or silently reading
+            # back a different quabo's UID). Give each check its own file.
+            tmp_path = os.path.join(tempfile.gettempdir(), f"flashuid_{uuid.uuid4().hex}")
+            try:
+                x = tftpw(q.real_ip, q.reboot_port)
+                x.get_flashuid(tmp_path)
+                tftp_ok = True
+            except Exception:
+                pass
+            finally:
+                with contextlib.suppress(OSError):
+                    os.remove(tmp_path)
+            return ping_ok, tftp_ok
+
+        with ThreadPoolExecutor(max_workers=max(1, len(quabo_addrs))) as pool:
+            results = list(pool.map(_check_one, quabo_addrs))
+
+        for q, (ping_ok, tftp_ok) in zip(quabo_addrs, results, strict=True):
+            ping_icon = "[green]✓[/green]" if ping_ok else "[red]✗[/red]"
+            tftp_icon = "[green]✓[/green]" if tftp_ok else "[red]✗[/red]"
+            console.print(f"  {ping_icon} ICMP {q.ip:15} | {tftp_icon} TFTP {q.real_ip}:{q.reboot_port} (loc={q.boardloc})")
+            if not tftp_ok:
+                # During CI/Deployment, Quabos might be unpowered.
+                # We only fail if we are in a state that EXPLICITLY requires them to be reachable.
+                if not pre_deploy and not post_deploy:
+                    all_ok = False
+                else:
+                    status_type = "pre-deploy" if pre_deploy else "post-deploy"
+                    console.print(f"    [dim]Ignoring unreachable quabo during {status_type} check (may be unpowered).[/dim]")
+
+    # ── Daemon configuration ───────────────────────────────────────────────
+    console.print("[dim]Checking daemon configuration...[/dim]")
+    capture_script = _CONTROL_DIR / "src" / "control" / "daemons" / "capture_hk.py"
+    if capture_script.exists():
+        console.print(f"[green]✓ capture_hk.py found at {capture_script.name}[/green]")
+    else:
+        console.print(f"[red]✗ capture_hk.py NOT found at {capture_script}[/red]")
+        all_ok = False
+
+    console.print()
+    if all_ok:
+        console.print("[green]check-env OK[/green]")
+    else:
+        console.print("[red]check-env found issues (see above)[/red]")
+        raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _cmd_explain(test_id: str, assume_state: str | None = None) -> None:
+    import tomllib
+    toml_path = _HW_SW_DIR / "hw_tests.toml"
+    with toml_path.open("rb") as f:
+        data = tomllib.load(f)
+
+    from ci.hardware_software.hw_utils.scheduler import StateAwareScheduler
+    sm = _get_sm()
+    scheduler = StateAwareScheduler(sm)
+    cls_name = scheduler.class_for(test_id)
+    if not cls_name:
+        console.print(f"[yellow]{test_id!r} has no TOML class mapping.[/yellow]")
+        return
+
+    cls_cfg = data.get("classes", {}).get(cls_name, {})
+    target = cls_cfg.get("required_state", sm.initial)
+    current = assume_state or sm.initial
+    console.print(f"Test class: [cyan]{cls_name}[/cyan]  required_state=[green]{target}[/green]")
+    if current == target:
+        console.print("  [dim]No transition needed from current state.[/dim]")
+        return
+    try:
+        plan = sm.plan(current, target)
+        cost = sm.cost(plan)
+        steps = " → ".join(f"{p.name} ({p.budget_s['typical']:.0f}s)" for p in plan)
+        console.print(f"  Transition: {steps}")
+        console.print(f"  Total cost: {cost:.0f}s")
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+
+
+def _confirm_run(cmd: list[str]) -> bool:
+    console.print(f"[dim]Will run:[/dim] {' '.join(cmd)}")
+    ans = typer.prompt("Proceed? [y/N]", default="N")
+    return ans.strip().lower() in ("y", "yes")
+

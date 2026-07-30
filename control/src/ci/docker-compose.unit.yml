@@ -1,0 +1,30 @@
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  unit-test-runner:
+    image: pseti-test-runner:latest
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: test-runner
+      args:
+        LOCAL_UID: "${LOCAL_UID:-1000}"
+        LOCAL_GID: "${LOCAL_GID:-1000}"
+    depends_on:
+      redis:
+        condition: service_started
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PYTHONDONTWRITEBYTECODE: "1"
+    working_dir: /app
+    # Keeps container running in the background for `qa.py` execution
+    command: ["sleep", "infinity"]
+    profiles:
+      - unit

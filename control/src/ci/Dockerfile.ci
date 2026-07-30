@@ -1,0 +1,162 @@
+ARG LOCAL_UID=1000
+ARG LOCAL_GID=1000
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: base
+# Python + panoseti-grpc dev dependencies. Inherited by all test stages.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.14-slim AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT="/opt/venv" \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    iputils-ping \
+    iproute2 \
+    iptables \
+    gcc build-essential \
+    gosu \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy runtime entrypoints.
+COPY control/src/ci/scripts/entrypoint.sh /entrypoint.sh
+COPY control/src/ci/scripts/entrypoint-daqnode.sh /entrypoint-daqnode.sh
+COPY control/src/ci/scripts/entrypoint-headnode-hw.sh /entrypoint-headnode-hw.sh
+RUN chmod +x /entrypoint.sh /entrypoint-daqnode.sh /entrypoint-headnode-hw.sh
+
+ARG LOCAL_UID
+ARG LOCAL_GID
+
+# Create the panoseti user with Build-Time UID/GID injection.
+RUN groupadd -o -g ${LOCAL_GID} panoseti \
+ && useradd -o -u ${LOCAL_UID} -o -g ${LOCAL_GID} -m -s /bin/bash panoseti \
+ && (getent group docker || groupadd -o -g 999 docker || groupadd docker) \
+ && usermod -aG docker panoseti
+
+# Pre-allocate and chown environment/data/grpc dirs.
+RUN mkdir -p /opt/venv /grpc /data /app /etc/bash_completion.d \
+ && chown -R panoseti:panoseti /opt/venv /grpc /data /app /etc/bash_completion.d /tmp/
+
+USER panoseti
+
+# Dependency Caching Layer
+COPY --chown=panoseti:panoseti grpc/ /grpc/
+COPY --chown=panoseti:panoseti pypff/ /pypff/
+COPY --chown=panoseti:panoseti control/pyproject.toml control/uv.lock* ./
+RUN --mount=type=cache,uid=${LOCAL_UID},target=/home/panoseti/.cache/uv \
+    uv sync --no-install-project --all-extras
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: headnode
+# Unified runner for lint, unit, structural, and integration tests.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS headnode
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    rsync openssh-client docker.io curl \
+    vim tree procps htop \
+    && rm -rf /var/lib/apt/lists/*
+USER panoseti
+
+# Prepare directories with correct ownership before copying/syncing
+RUN mkdir -p /app/state /app/.pytest_cache /app/tmp/
+
+# Log directory for Alloy log-shipping (jsonl → Alloy sidecar → Loki).
+# get_logger() appends the hostname segment at runtime; we just need the root.
+USER root
+RUN mkdir -p /var/log/panoseti && chmod 1777 /var/log/panoseti
+USER panoseti
+ENV PANOSETI_LOG_DIR=/var/log/panoseti
+
+# Copy source code as the panoseti user
+COPY --chown=panoseti:panoseti control/ .
+
+ARG LOCAL_UID
+ARG LOCAL_GID
+
+RUN --mount=type=cache,uid=${LOCAL_UID},target=/home/panoseti/.cache/uv \
+    uv sync --all-extras
+
+# Install shell completion for pseti
+RUN /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["sleep", "infinity"]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: test-runner (alias of headnode)
+# ═══════════════════════════════════════════════════════════════════════════
+FROM headnode AS test-runner
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: hashpipe-builder (needed for integration)
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.14-slim AS hashpipe-builder
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git autoconf automake libtool g++ make \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
+WORKDIR /build/hashpipe/src
+RUN autoreconf -is && ./configure --prefix=/usr/local && make && make install
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: hashpipe-plugin-builder (needed for integration)
+# ═══════════════════════════════════════════════════════════════════════════
+FROM hashpipe-builder AS hashpipe-plugin-builder
+ENV PANOSETI_DAQ_BRANCH="dev"
+WORKDIR /build
+RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
+WORKDIR /build/panoseti_daq
+COPY control/src/ci/fixtures/build/Makefile .
+COPY control/src/ci/fixtures/build/databuf.h .
+RUN make
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: integration-daqnode
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS integration-daqnode
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    socat tcpreplay procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy core hashpipe binaries and libraries from builder surgically
+COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
+COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf && ldconfig
+
+USER panoseti
+
+COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /data/hashpipe.so
+COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
+
+# Copy source code as the panoseti user
+COPY --chown=panoseti:panoseti control/ .
+
+ARG LOCAL_UID
+ARG LOCAL_GID
+
+RUN --mount=type=cache,uid=${LOCAL_UID},target=/home/panoseti/.cache/uv \
+    uv sync --all-extras
+# Install shell completion for pseti
+RUN mkdir -p /etc/bash_completion.d && \
+    /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
+
+USER panoseti
+ENTRYPOINT ["/entrypoint-daqnode.sh"]
+CMD ["/bin/sh", "-c", "pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/src/ci/fixtures/configs/grpc/daqnode/server.toml}"]

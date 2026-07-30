@@ -1,0 +1,190 @@
+name: CI Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, dev, test-pseti]
+    paths:
+      - 'control/**'
+      - '.github/workflows/ci-tests.yml'
+  pull_request:
+    branches: [master, dev, test-pseti]
+    paths:
+      - 'control/**'
+
+jobs:
+  # 1. Warm up the base cache.
+  prepare-base:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize required submodules
+        run: git submodule update --init grpc grafana pypff
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install host dependencies
+        run: uv sync --all-extras
+        working-directory: control
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pre-build and Cache All Test Images
+        run: |
+          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
+            -f control/src/ci/docker-compose.integration.yml \
+            --pull=false \
+            --set *.context=. \
+            --set *.cache-from=type=gha,scope=pseti-ci \
+            --set *.cache-to=type=gha,mode=max,scope=pseti-ci
+        env:
+          PSETI_CONTROL_BUILD: "."
+          PSETI_ROOT_BUILD: ".."
+
+  # 2. Software Tests — v2 tiers (topology-driven, realistic containers)
+  software-tests-v2:
+    needs: prepare-base
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: ["sw unit", "sw logic", "sw fleet", "sw chaos", "sw integration"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize required submodules
+        run: git submodule update --init grpc grafana pypff
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Prepare Workspace
+        run: mkdir -p state .pytest_cache
+        working-directory: control
+
+      - name: Install host dependencies
+        run: uv sync --all-extras
+        working-directory: control
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build/Load Images (Tier-specific)
+        run: |
+          if [[ "${{ matrix.tier }}" == *"unit"* || "${{ matrix.tier }}" == *"logic"* ]]; then
+             compose_file="control/src/ci/docker-compose.unit.yml"
+          else
+             # fleet/chaos use testcontainers (pseti-test-runner:latest must be local);
+             # integration uses the full stack — both need docker-compose.integration.yml.
+             compose_file="control/src/ci/docker-compose.integration.yml"
+          fi
+          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
+            -f $compose_file \
+            --pull=false \
+            --set *.context=. \
+            --set *.cache-from=type=gha,scope=pseti-ci \
+            --load
+        env:
+          PSETI_CONTROL_BUILD: "."
+          PSETI_ROOT_BUILD: ".."
+
+      - name: Run v2 Test Tier
+        run: uv run pseti test --no-build ${{ matrix.tier }}
+        working-directory: control
+        env:
+          COMPOSE_PROJECT_NAME: ctl-v2-${{ github.run_id }}-${{ matrix.tier }}
+          BINDHOST: lo
+          GRPC_PORT: 50051
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-v2-${{ matrix.tier }}
+          path: control/.pytest_cache/
+          if-no-files-found: ignore
+
+  # 3. Sunset gate — fails if required v1↔v2 parity scenarios are missing
+  # sunset-gate:
+  #   needs: [software-tests-v2]
+  #   runs-on: ubuntu-24.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - name: Initialize required submodules
+  #       run: git submodule update --init grpc pypff
+
+  #     - name: Set up uv
+  #       uses: astral-sh/setup-uv@v5
+  #       with:
+  #         enable-cache: true
+
+  #     - name: Install host dependencies
+  #       run: uv sync --all-extras
+  #       working-directory: control
+
+  #     - name: Check parity coverage
+  #       run: |
+  #         uv run python - <<'EOF'
+  #         from ci.software_only_v2.infra.parity import sunset_gate_met, parity_coverage_report
+
+  #         REQUIRED = [
+  #             "workspace_seven_config_files",
+  #             "ledger_starts_empty",
+  #             "two_node_start_stop",
+  #             "config_validator_passes",
+  #             "fleet_boot_and_healthy",
+  #             "grpc_status_returns_idle",
+  #             "grpc_inject_unavailable",
+  #             "process_kill_and_restart",
+  #             "data_collection_happy_path",
+  #             "cleanup_blocked_while_hashpipe_running",
+  #         ]
+  #         met, missing = sunset_gate_met(REQUIRED)
+  #         print(parity_coverage_report())
+  #         if not met:
+  #             print(f"\nSUNSET GATE FAILED: {len(missing)} scenario(s) not yet registered:")
+  #             for s in missing:
+  #                 print(f"  - {s}")
+  #             raise SystemExit(1)
+  #         print("\nSunset gate passed.")
+  #         EOF
+  #       working-directory: control
+
+  # 4. Hardware Tests (HITL) — runs on self-hosted runner with real Quabos
+  hardware-software-tests:
+    needs: prepare-base
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize submodules
+        run: git submodule update --init grpc grafana pypff
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Prepare Workspace
+        run: mkdir -p state .pytest_cache
+        working-directory: control
+
+      - name: Build/Install local pseti package
+        run: uv sync --all-extras
+        working-directory: control
+
+      - name: Orchestrate HITL Sequence
+        run: uv run python3 src/ci/hw_ci_orchestrator.py --no-fail-fast
+        working-directory: control
+        env:
+          PSETI_CONTROL_BUILD: "."
+          PSETI_ROOT_BUILD: ".."

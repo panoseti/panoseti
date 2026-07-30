@@ -1,0 +1,28 @@
+{
+    "name": "sw-hw-gh-ucb",
+    "comment": "Physical HITL test environment: radio astronomy lab, 425 Campbell",
+    "wr_ip_addr": "10.0.1.36",
+    "gps_port": "/dev/ttyUSB0",
+    "detector_overvoltage": 2,
+    "domes": [
+        {
+            "name": "HITL Dome",
+            "obslat": 37.3414,
+            "obslon": -121.6429,
+            "obsalt": 1283,
+            "modules": [
+                {
+                    "mobo_serialno": "M11",
+                    "quabo_version": "qfp",
+                    "ip_addr": "192.168.3.248",
+                    "wps": "wps-gh-runner",
+                    "timing_mode": "gnss"
+                }
+            ]
+        }
+    ],
+    "wps-gh-runner": {
+        "url": "http://admin:1234@192.168.88.100",
+        "quabo_socket": 6
+    }
+}

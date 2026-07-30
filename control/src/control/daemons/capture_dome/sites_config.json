@@ -1,0 +1,8 @@
+{
+    "sites": [
+	{ "name": "Gattini",  "host": "panoseti-gattini" },
+	{ "name": "Winter",  "host": "panoseti-winter" },
+	{ "name": "Fern",  "host": "panoseti-fern" },
+	 { "name": "PTI",  "host": "panoseti-pti" }
+  ]
+}

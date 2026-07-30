@@ -1,0 +1,41 @@
+# docker-compose.integration.dev.yml — dev overlay for integration (tier5) stack.
+#
+# Usage: pseti test sw integration --dev
+#   (test_cli.py adds -f docker-compose.integration.dev.yml automatically)
+#
+# Adds hot-mounted source to headnode, daqnode, daqnode-2, and int-tester so
+# edits to control/ and grpc/ take effect without a rebuild.
+# LOCAL_UID/LOCAL_GID drive the runtime UID rewrite in entrypoint.sh.
+
+services:
+  headnode:
+    volumes:
+      - ${PSETI_CONTROL_BUILD:-./}:/app
+      - ${PSETI_ROOT_BUILD:-../../}/grpc:/grpc
+    environment:
+      LOCAL_UID: "${LOCAL_UID:-1000}"
+      LOCAL_GID: "${LOCAL_GID:-1000}"
+
+  daqnode:
+    volumes:
+      - ${PSETI_CONTROL_BUILD:-./}:/app
+      - ${PSETI_ROOT_BUILD:-../../}/grpc:/grpc
+    environment:
+      LOCAL_UID: "${LOCAL_UID:-1000}"
+      LOCAL_GID: "${LOCAL_GID:-1000}"
+
+  daqnode-2:
+    volumes:
+      - ${PSETI_CONTROL_BUILD:-./}:/app
+      - ${PSETI_ROOT_BUILD:-../../}/grpc:/grpc
+    environment:
+      LOCAL_UID: "${LOCAL_UID:-1000}"
+      LOCAL_GID: "${LOCAL_GID:-1000}"
+
+  int-tester:
+    volumes:
+      - ${PSETI_CONTROL_BUILD:-./}:/app
+      - ${PSETI_ROOT_BUILD:-../../}/grpc:/grpc
+    environment:
+      LOCAL_UID: "${LOCAL_UID:-1000}"
+      LOCAL_GID: "${LOCAL_GID:-1000}"

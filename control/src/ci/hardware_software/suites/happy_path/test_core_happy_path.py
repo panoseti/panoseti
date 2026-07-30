@@ -1,0 +1,189 @@
+"""
+happy_path — Parameterized observing-loop test.
+
+Runs the full pseti observing cycle — start → record → stop → transfer queue
+→ verify — for each data-config variant in DATA_CONFIGS.  No power cycle is
+required between variants; maroc_config + mask_config are re-applied by the
+active_data_config fixture.
+
+Required state: PH_CALIBRATED (ensured by the booted_calibrated session fixture).
+Leaves state: PH_CALIBRATED (no hardware reconfiguration after each run).
+
+Class: happy_path (batch_priority = 0)
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from pathlib import Path
+
+import pytest
+
+from ci.hardware_software.core import ledger as ledger_core
+from ci.hardware_software.suites.happy_path.checks import (
+    daq,
+    data,
+    hk,
+)
+from ci.hardware_software.suites.happy_path.checks import (
+    ledger as ledger_checks,
+)
+from ci.hardware_software.suites.happy_path.checks import (
+    queue as queue_checks,
+)
+from control.pseti import app
+from control.utils import config_file, util
+
+logger = logging.getLogger(__name__)
+
+pytestmark = [
+    pytest.mark.hw_class("happy_path"),
+    pytest.mark.timeout(600),
+]
+
+# pseti start (no --nsecs) returns immediately after the ledger reaches ACTIVE,
+# leaving the run going in background daemons. We sleep this long before stopping.
+_RUN_DURATION_S = 15
+_TRANSFER_TIMEOUT_S = 30
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+
+def _invoke(runner, args: list[str]) -> str:
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, (
+        f"pseti {' '.join(args)} failed (exit {result.exit_code}):\n{result.output}"
+    )
+    return result.output
+
+
+def _stop_if_active(runner) -> None:
+    """Stop the run if the ledger is currently ACTIVE (teardown helper).
+
+    This runs on the exception path (a mid-run assertion failed), so the
+    normal ledger-status precondition `pseti stop` relies on may not hold.
+    A silently-swallowed failure here leaves Hashpipe running on the DAQ
+    node, which then blocks every subsequent test in the session with
+    "Found N hashpipe instances running" -- so we check the result and
+    escalate to --force-stop rather than assume the first attempt worked.
+    """
+    try:
+        current = ledger_core.load()
+        if current and str(current.status) in ("ACTIVE", "STARTING"):
+            logger.warning("[HAPPY-PATH] teardown: stopping active run")
+            result = runner.invoke(app, ["stop", "-y"])
+            if result.exit_code != 0:
+                logger.warning(
+                    "[HAPPY-PATH] teardown: 'pseti stop -y' failed (exit %s), "
+                    "escalating to --force-stop: %s",
+                    result.exit_code, result.output,
+                )
+                forced = runner.invoke(app, ["stop", "-y", "--force-stop"])
+                if forced.exit_code != 0:
+                    logger.error(
+                        "[HAPPY-PATH] teardown: 'pseti stop -y --force-stop' also "
+                        "failed (exit %s); DAQ node Hashpipe may still be running: %s",
+                        forced.exit_code, forced.output,
+                    )
+    except Exception as exc:
+        logger.warning("[HAPPY-PATH] teardown: stop attempt failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Happy path test
+# ---------------------------------------------------------------------------
+
+def test_happy_path(booted_calibrated, active_data_config, runner, topology) -> None:
+    """
+    Full observing loop:
+      1. Isolate the transfer queue (stop daemon so queue assertions are deterministic).
+      2. Start run with no --nsecs: pseti start returns as soon as ledger reaches ACTIVE.
+      3. In-flight checks: ledger ACTIVE, HK in Redis, DAQ disk growing.
+      4. Sleep _RUN_DURATION_S to accumulate data, then stop explicitly.
+      5. Assert the run is enqueued in the transfer pending bucket.
+      6. Start the transfer daemon and wait for completion.
+      7. Assert the run is in the completed bucket only.
+      8. Verify the manifest.
+    """
+    daq_cfg = config_file.get_daq_config()
+    network_cfg = config_file.get_network_config()
+    util.attach_daq_config(daq_cfg, network_cfg)
+    # Check every configured node, not just the first -- this suite currently
+    # only runs against a 1-node fleet, but daq_nodes[0] would silently stop
+    # covering nodes 2-N the moment the topology grows past that.
+    active_nodes = [n for n in daq_cfg.daq_nodes if n.module_ids]
+    quabo_addrs = topology.quabo_ips()
+
+    # Step 1: isolate queue (stop daemon — idempotent if already stopped)
+    runner.invoke(app, ["xfr", "stop"])  # not asserted — ok if already stopped
+    time.sleep(2)
+
+    # Step 2: start run — returns immediately after ledger reaches ACTIVE.
+    # (pseti start --nsecs blocks the full duration; without it, start returns
+    # after setup so in-flight checks can run in the main thread.)
+    logger.info("[HAPPY-PATH] data_config=%s: pseti start --no-hv", active_data_config)
+    _invoke(runner, ["start", "-y", "--no-hv"])
+    run_name = ledger_core.current_run_name()
+    logger.info("[HAPPY-PATH] run_name=%s", run_name)
+
+    try:
+        if active_data_config == "interleave":
+            logger.info("[HAPPY-PATH] Starting background interleave scheduler")
+            _invoke(runner, ["cfg", "start-interleave"])
+
+        # Step 3a: ledger must be ACTIVE immediately after start returns
+        ledger_checks.is_active(run_name)
+
+        # Step 3b: HK packets should appear in Redis within 30s
+        boardlocs = [a.boardloc for a in quabo_addrs]
+        hk.redis_populated(boardlocs, timeout=30)
+
+        # Step 3b.5: Hashpipe must be running AND past its stuck-at-init window,
+        # on every configured DAQ node. A live PID is not sufficient: Hashpipe
+        # can block forever during shared-memory/semaphore init without ever
+        # spawning its pipeline threads, and the disk-growing check below
+        # would only catch this indirectly ~10s later as "no bytes written"
+        # (misleading -- it looks like a data-rate/trigger-config issue, not
+        # a stuck process).
+        for node in active_nodes:
+            daq.hashpipe_healthy(node=node, daq_config=daq_cfg, run_name=run_name)
+
+        # Step 3c: every DAQ node should be writing data
+        for node in active_nodes:
+            daq.disk_growing(
+                node=node,
+                daq_config=daq_cfg,
+                run_name=run_name,
+                min_bytes=500_000,
+                window_s=10,
+            )
+
+        # Step 4: let it record for a while, then stop explicitly
+        logger.info("[HAPPY-PATH] sleeping %ds then stopping", _RUN_DURATION_S)
+        time.sleep(_RUN_DURATION_S)
+        _invoke(runner, ["stop", "-y"])
+
+    except Exception:
+        _stop_if_active(runner)
+        raise
+
+    ledger_checks.reaches("RECORDING_ENDED", timeout=60)
+
+    # Step 5: run should be enqueued in transfer pending
+    queue_checks.only_in_bucket(run_name, "pending")
+
+    # Step 6: start transfer daemon and wait for completion
+    _invoke(runner, ["xfr", "start"])
+    queue_checks.only_in_bucket(run_name, "completed", timeout=_TRANSFER_TIMEOUT_S)
+
+    # Step 7: verify manifest
+    _invoke(runner, ["xfr", "verify", run_name])
+
+    # Step 8: Data Product Verification
+    run_path = Path(daq_cfg.head_node_data_dir) / run_name
+    data.verify_data_products(run_path, num_frames_to_read=10, num_headers_to_print=4)
+
+    logger.info("[HAPPY-PATH] data_config=%s run=%s: ALL CHECKS PASSED", active_data_config, run_name)

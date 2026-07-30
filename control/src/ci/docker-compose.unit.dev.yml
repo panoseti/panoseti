@@ -1,0 +1,18 @@
+# docker-compose.unit.dev.yml — dev overlay for unit/logic test container.
+#
+# Usage: pseti test sw unit --dev
+#   (test_cli.py adds -f docker-compose.unit.dev.yml automatically)
+#
+# Adds hot-mounted source so edits to control/ and grpc/ are visible inside
+# the container without rebuilding. LOCAL_UID/LOCAL_GID drive the runtime
+# UID rewrite in entrypoint.sh so files written inside the container are
+# owned by the host user, not panoseti:panoseti (UID 1000).
+
+services:
+  unit-test-runner:
+    volumes:
+      - ${PSETI_CONTROL_BUILD:-./}:/app
+      - ${PSETI_ROOT_BUILD:-../../}/grpc:/grpc
+    environment:
+      LOCAL_UID: "${LOCAL_UID:-1000}"
+      LOCAL_GID: "${LOCAL_GID:-1000}"

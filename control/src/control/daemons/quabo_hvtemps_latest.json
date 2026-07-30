@@ -1,0 +1,137 @@
+{
+  "generated_time_ns": 1770159819507730308,
+  "generated_utc": "2026-02-03T23:03:39.507Z",
+  "max_age_minutes": 100,
+  "database": "metadata",
+  "host": "localhost:8086",
+  "summary": {
+    "counts": {
+      "fresh": 0,
+      "stale": 16,
+      "missing": 0,
+      "errors": 0,
+      "total": 16
+    },
+    "lists": {
+      "fresh": [],
+      "stale": [
+        "QUABO_1000",
+        "QUABO_1001",
+        "QUABO_1002",
+        "QUABO_1003",
+        "QUABO_1008",
+        "QUABO_1009",
+        "QUABO_1010",
+        "QUABO_1011",
+        "QUABO_1012",
+        "QUABO_1013",
+        "QUABO_1014",
+        "QUABO_1015",
+        "QUABO_1016",
+        "QUABO_1017",
+        "QUABO_1018",
+        "QUABO_1019"
+      ],
+      "missing": [],
+      "errors": []
+    }
+  },
+  "quabos": {
+    "QUABO_1000": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.010Z",
+      "age_seconds": 15442.498
+    },
+    "QUABO_1001": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.872Z",
+      "age_seconds": 15441.635
+    },
+    "QUABO_1002": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.504Z",
+      "age_seconds": 15442.003
+    },
+    "QUABO_1003": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:16.123Z",
+      "age_seconds": 15443.384
+    },
+    "QUABO_1008": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:15.741Z",
+      "age_seconds": 15443.766
+    },
+    "QUABO_1009": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:18.032Z",
+      "age_seconds": 15441.476
+    },
+    "QUABO_1010": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.751Z",
+      "age_seconds": 15441.756
+    },
+    "QUABO_1011": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:15.913Z",
+      "age_seconds": 15443.594
+    },
+    "QUABO_1012": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.293Z",
+      "age_seconds": 15442.214
+    },
+    "QUABO_1013": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.192Z",
+      "age_seconds": 15442.315
+    },
+    "QUABO_1014": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.159Z",
+      "age_seconds": 15442.349
+    },
+    "QUABO_1015": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.829Z",
+      "age_seconds": 15441.678
+    },
+    "QUABO_1016": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.274Z",
+      "age_seconds": 15442.233
+    },
+    "QUABO_1017": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.401Z",
+      "age_seconds": 15442.106
+    },
+    "QUABO_1018": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:17.312Z",
+      "age_seconds": 15442.195
+    },
+    "QUABO_1019": {
+      "ok": false,
+      "reason": "stale",
+      "time_utc": "2026-02-03T18:46:16.740Z",
+      "age_seconds": 15442.767
+    }
+  }
+}

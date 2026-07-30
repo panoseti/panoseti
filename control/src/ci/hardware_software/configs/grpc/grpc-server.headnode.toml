@@ -1,0 +1,48 @@
+# ============================================================
+# PANOSETI Unified gRPC Server — CI Headnode Config
+#
+# Runs Telemetry + DaqData (gateway/aggregator role) on port 50051.
+# DAQ nodes forward their log records here via grpc_logging.
+# storeLoki.py ships the Redis logs:ingress queue to Loki.
+# The DaqData gateway fans in StreamImages from each edge DAQ node
+# listed in daq_config_path so consumers (pseti show sci, notebooks)
+# connect to a single headnode endpoint instead of each DAQ node.
+#
+# Usage:
+#   pseti-grpc server --config /app/src/ci/integration/configs/grpc/headnode/server.toml
+#
+# Deployed alongside storeLoki.py in the CI headnode container (10.0.1.22).
+# ============================================================
+
+[server]
+port = 50051
+shutdown_grace_period = 5.0
+grpc_logging = true            # forward log records to HEADNODE_IP:HEADNODE_GRPC_PORT
+
+[server.services]
+telemetry   = true
+daq_data    = true
+daq_control = false
+
+# -------------------------------------------------------
+# Telemetry service
+# Redis is local on the host network
+# -------------------------------------------------------
+[telemetry]
+redis_host = "127.0.0.1"
+redis_port = 6379
+redis_db   = 0
+shutdown_grace_period = 5.0
+log_level  = "INFO"
+
+# -------------------------------------------------------
+# DAQ Data service — gateway role
+# Fans in from each edge DAQ node's daq_data service (port 50051)
+# -------------------------------------------------------
+[daq_data]
+role = "gateway"
+
+[daq_data.gateway]
+daq_config_path     = "/mnt/config/daq_config.json"
+network_config_path = "/mnt/config/network_config.json"
+edge_port = 50051

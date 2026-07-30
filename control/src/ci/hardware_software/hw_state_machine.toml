@@ -1,0 +1,96 @@
+# hw_state_machine.toml
+# MVP scope: only the states and primitives used by the active boot + happy-path tests.
+# Archived primitives (soft_reset, tftp_reboot, hv_set, start_acq/stop_acq) are removed
+# because cmd 0x04 does not re-enter the TFTP bootloader — the only reliable reset
+# is a WPS power cycle.
+
+[state_machine]
+initial = "UNPOWERED"
+safe = "UNPOWERED"   # state to leave hardware in on framework exit
+
+# States in cold → warm order
+[[states]]
+name = "UNPOWERED"
+desc = "WPS outlet off."
+
+[[states]]
+name = "POWERED"
+desc = "WPS outlet on; quabo CPU booting."
+
+[[states]]
+name = "BOOTED"
+desc = "Quabo CPU up, FPGA loaded, ping responsive, registers at firmware default."
+
+[[states]]
+name = "HK_ROUTED"
+desc = "Housekeeping packet destination routed to head node."
+
+[[states]]
+name = "MAROC_CONFIGURED"
+desc = "MAROC chip registers programmed."
+
+[[states]]
+name = "MASKS_CONFIGURED"
+desc = "Trigger masks and GOE masks loaded."
+
+[[states]]
+name = "PH_CALIBRATED"
+desc = "Pulse Height baselines calibrated."
+
+# ── Primitives ─────────────────────────────────────────────────────────────────
+
+[[primitives]]
+name = "wps_power_on"
+from_states = ["UNPOWERED"]
+to_state = "POWERED"
+budget_s = { typical = 5, max = 15 }
+safety = "high"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:wps_power_on"
+
+[[primitives]]
+name = "boot_verify"
+from_states = ["POWERED"]
+to_state = "BOOTED"
+budget_s = { typical = 400, max = 600 }
+safety = "low"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:boot_verify"
+
+[[primitives]]
+name = "wps_power_off"
+from_states = ["*"]
+to_state = "UNPOWERED"
+budget_s = { typical = 5, max = 10 }
+safety = "high"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:wps_power_off"
+
+[[primitives]]
+name = "route_hk"
+from_states = ["BOOTED"]
+to_state = "HK_ROUTED"
+budget_s = { typical = 1, max = 5 }
+safety = "low"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:route_hk"
+
+[[primitives]]
+name = "configure_maroc"
+from_states = ["HK_ROUTED"]
+to_state = "MAROC_CONFIGURED"
+budget_s = { typical = 5, max = 30 }
+safety = "low"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:configure_maroc"
+
+[[primitives]]
+name = "configure_masks"
+from_states = ["MAROC_CONFIGURED"]
+to_state = "MASKS_CONFIGURED"
+budget_s = { typical = 5, max = 30 }
+safety = "low"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:configure_masks"
+
+[[primitives]]
+name = "calibrate_ph"
+from_states = ["MASKS_CONFIGURED"]
+to_state = "PH_CALIBRATED"
+budget_s = { typical = 15, max = 60 }
+safety = "low"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:calibrate_ph"

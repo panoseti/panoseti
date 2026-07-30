@@ -1,0 +1,15 @@
+{
+    "head_node_data_dir": "/data/head",
+    "head_node_ip_addr": "10.0.1.5",
+    "daq_nodes": [
+        {
+            "ip_addr": "192.168.0.10",
+            "data_dir": "/data",
+            "username": "root",
+            "module_ids": [
+                1
+            ],
+            "bindhost": "lo"
+        }
+    ]
+}

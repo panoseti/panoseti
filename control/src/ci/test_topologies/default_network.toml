@@ -1,0 +1,13 @@
+# Default Network Configuration Template
+[[modules]]
+ip_addr = "192.168.3.200"
+[modules.port_forwarding]
+status = true
+gw_ip = "10.0.1.254"
+
+[[daq_nodes]]
+ip_addr = "192.168.0.10"
+[daq_nodes.port_forwarding]
+status = false
+gw_ip = "10.0.1.254"
+grpc_port = 50051

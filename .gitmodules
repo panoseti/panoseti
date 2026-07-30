@@ -4,6 +4,17 @@
 [submodule "grpc"]
 	path = grpc
 	url = https://github.com/panoseti/panoseti_grpc.git
+	branch = dev
 [submodule "web"]
 	path = web
 	url = https://github.com/panoseti/panoseti_web.git
+[submodule "grafana"]
+	path = grafana
+	url = https://github.com/panoseti/panoseti_grafana.git
+[submodule "wiki_docs"]
+	path = wiki_docs
+	url = https://github.com/panoseti/panoseti.wiki.git
+[submodule "pypff"]
+	path = pypff
+	url = https://github.com/panoseti/pypff.git
+  branch = dev

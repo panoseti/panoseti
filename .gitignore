@@ -1,5 +1,10 @@
 control/__pycache__/*
 control/flashuid
+# get_flashuid() (control/src/control/driver/quabo_tftp.py) writes to a
+# fixed 'flashuid' path relative to cwd -- the new pseti CLI can be
+# invoked from anywhere, so this can also land at the repo root, not just
+# under control/ (the entry above).
+flashuid
 control/quabo_uids.json
 control/obs_config.json
 control/daq_config.json
@@ -9,6 +14,7 @@ control/quabo_ph_baseline.json
 control/quabo_config*.json
 control/skymap_info_dir
 util/__pycache__/*
+sw_info.json
 
 # Ignore Python bytecode cache directories
 __pycache__/
@@ -26,3 +32,41 @@ __pycache__/
 .rdb
 **/.rdb
 
+# Ignore the config files in configs
+control/configs/*
+!control/configs/lick
+!control/configs/lick/**
+!control/configs/palomar
+!control/configs/palomar/**
+!control/configs/ucb
+!control/configs/ucb/**
+
+# Ignore log files under control/driver/logs
+control/driver/logs/**
+
+# ignore test files
+*.jpg
+*.py~
+*.tmp
+observing_logs.db
+palomar_weather_tmp/
+control/Gattini-webcam-current.jpg
+control/daemons/.#capture_guider2.py
+control/daemons/attic/
+control/palomar_weather_tmp/
+control/quabos/detovervol_2v/img/attic/
+control/quabos/detovervol_2v/ph/attic/
+test/
+
+
+# IDE settings
+.vscode
+.idea
+.worktrees/
+.antigravitycli/
+
+# ignore javascript and css library
+lib/
+
+# ignore egg builds
+**.egg**

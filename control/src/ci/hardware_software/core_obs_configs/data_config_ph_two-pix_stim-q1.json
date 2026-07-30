@@ -1,0 +1,19 @@
+{
+    "run_type": "hw-sw-eng",
+    "detector_overvoltage": 2,
+    "max_file_size_mb": 5,
+    "gain": 60,
+    "stim_params": {
+        "rate": 0,
+        "level": 128,
+        "mask": [0, 1, 0, 0]
+    },
+    "pulse_height": {
+        "pe_threshold": 40.5,
+        "any_trigger": {
+            "group_ph_frames": 1
+        },
+        "two_pixel_trigger": 1,
+        "three_pixel_trigger": 0
+    }
+}

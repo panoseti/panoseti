@@ -1,0 +1,34 @@
+# Exclude everything; reinclude only what the Docker build needs.
+# build context is panoseti-software/ (repo root)
+**
+!control/**
+!grpc/**
+!pypff/**
+!sw_info.json
+
+# Ignore dev environments and caches inside included directories
+**/.venv
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+**/__pycache__
+**/.git
+**/tmp
+**/*.ipynb
+**/notebooks/
+**/.ipynb_checkpoints/
+**/docs/
+
+# Runtime data left behind by locally-run docker-compose stacks (e.g. Loki, Grafana
+# provisioning bind-mount targets) -- these are gitignored but not excluded from the
+# build context above, and can contain root-owned files that break the build.
+**/loki-data/
+**/grafana_provisioning/
+
+# control/state/ is PanoPaths.state_dir()'s default location -- a local run/test
+# on the machine doing `docker build` leaves a real ledger, locks, and daemon logs
+# there. Gitignored but (like the entries above) not excluded from the build
+# context, so it was getting baked into the image verbatim: a stale
+# state/logs/transfer_daemon/stderr.log from a pre-uv/miniconda interpreter showed
+# up inside a freshly built container that never actually ran the transfer daemon.
+**/control/state/

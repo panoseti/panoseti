@@ -1,0 +1,52 @@
+# Dockerfile.headnode — Head node / test runner image for integration tests.
+#
+# Build context: panoseti-software/control/
+# (Set by docker-compose.integration.yml context: ../)
+#
+# Contains:
+#   - panoseti-software control/ package source on PYTHONPATH
+#   - panoseti_grpc (for DaqControlClient, DaqDataClient, etc.)
+#   - rsync, ssh-client for data collection simulation
+
+FROM python:3.14-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc build-essential \
+        rsync \
+        openssh-client \
+        docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install panoseti_grpc from PyPI (0.4.0+ supports Python 3.14)
+RUN pip install --no-cache-dir "panoseti-grpc>=0.4.0"
+
+# Install test and runtime dependencies for the control package
+RUN pip install --no-cache-dir \
+        pytest>=8.0 \
+        pytest-asyncio>=0.23 \
+        pytest-mock>=3.12 \
+        pytest-timeout>=4.0 \
+        fakeredis>=2.26 \
+        pydantic>=2.0 \
+        haversine>=2.9 \
+        rich>=13.0 \
+        numpy>=2.0 \
+        redis>=7 \
+        psutil>=5.9 \
+        requests>=2.31 \
+        docker>=7.0
+
+# Copy full control/ source
+COPY . .
+
+# Add control/ to PYTHONPATH so "from utils.X import ..." works
+ENV PYTHONPATH="/app:${PYTHONPATH}"
+
+# Create data directories
+RUN mkdir -p /data /data/head
+
+CMD ["pytest", "tests/integration/", "-v", "--tb=short", "--color=yes"]

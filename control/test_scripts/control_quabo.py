@@ -37,25 +37,19 @@
 #V11.3: add a new command for setting GOE mask
 #V11.4: add SW_1PPS command for resetting nanosec counter
 
-import time
-import string
-import socket
-import sys
 import os
+import socket
 import struct
+import sys
+import time
+from typing import Any
 
 #run this under Python 3.x
-if (sys.version_info < (3,0)):
-	print("Must run under python 3.x")
-	quit()
 
 configfilename = "quabo_config.txt"
 baseline_fname = "./quabo_baseline.csv"
 #Send to hard-coded quabo address
-if (len(sys.argv) > 1):
-    UDP_DEST_IP = sys.argv[1]
-else:
-    UDP_DEST_IP = "192.168.3.248"
+UDP_DEST_IP = sys.argv[1] if (len(sys.argv) > 1) else "192.168.3.248"
 print(UDP_DEST_IP)
 #quabo expects commands on this port and will respond with housekeeping data to this port
 UDP_CMD_PORT= 60000
@@ -85,7 +79,7 @@ step_offtime = 10000
 #Four 104-byte arrays in which to form the 829-bit sequences to be sent to the MAROC chips
 #the LS Bit of byte[0] of each array will be sent out first, and is the ON/OFF_otabg bit
 MAROC_regs=[]
-for i in range (4):
+for _i in range (4):
     MAROC_regs.append([0 for x in range(104)])
 
 #Store the HV values so we can update one at a time if we want
@@ -94,14 +88,16 @@ HV_vals=[0,0,0,0]
 SERIAL_COMMAND_LENGTH = 829
 #Set bits in the command_buf according to the input values.  Maximum value
 # for field_width is 16 (a value can only span three bytes)
-def set_bits(chip, lsb_pos, field_width, value):
+def set_bits(chip: int, lsb_pos: int, field_width: int, value: int) -> None:
     #print("setbits " + str(chip) + " " + str(lsb_pos) + " " + str(field_width) + " " + str(value)  + "\n")
-    if (field_width >16): return
-    if ((field_width + lsb_pos) > SERIAL_COMMAND_LENGTH): return
+    if (field_width >16):
+        return
+    if ((field_width + lsb_pos) > SERIAL_COMMAND_LENGTH):
+        return
     shift = (lsb_pos % 8)
     byte_pos = int((lsb_pos+7-shift)/8)
     mask=0
-    for ii in range(0, field_width):
+    for _ii in range(0, field_width):
         mask = mask << 1
         mask = (mask | 0x1)
     mask = mask << shift
@@ -116,33 +112,35 @@ def set_bits(chip, lsb_pos, field_width, value):
         MAROC_regs[chip][byte_pos + 2] = MAROC_regs[chip][byte_pos + 2] & ((~(mask>>16)) & 0xff)
         MAROC_regs[chip][byte_pos + 2] = MAROC_regs[chip][byte_pos + 2] | (((value >> (16-shift))) & 0xff)
 
-def reverse_bits(data_in, width):
+def reverse_bits(data_in: int, width: int) -> int:
     data_out = 0
-    for ii in range(width):
+    for _ii in range(width):
         data_out = data_out << 1
-        if (data_in & 1): data_out = data_out | 1
+        if (data_in & 1):
+            data_out = data_out | 1
         data_in = data_in >> 1
     return data_out
 
-def flush_rx_buf():
+def flush_rx_buf() -> None:
     dumpcount = 0    
     #How big is the UDP buffer?  This is just guesswork
     while (dumpcount<32):
         try:
             #print (dumpcount)
-            dumpbytes = sock.recvfrom(2048)
+            sock.recvfrom(2048)
             dumpcount +=1
-        except:
+        except Exception:
             break    
 
 #payload is a bytearray of the desired length
-def sendit(payload):
+def sendit(payload: bytearray | bytes) -> None:
     sock.sendto(bytes(payload), (UDP_DEST_IP, UDP_CMD_PORT))
     time.sleep(.001)
-    if debug_print: print (payload)
+    if debug_print:
+        print (payload)
 
 #take a 4-element list and call set_bits 4 times
-def set_bits_4(tag, vals, lsb_pos, field_width):
+def set_bits_4(tag: str, vals: list[int], lsb_pos: int, field_width: int) -> None:
     #vals = instring.split(",")
     if (len(vals) != 4):
         print("need 4 elements for " + tag +"\n")
@@ -152,26 +150,33 @@ def set_bits_4(tag, vals, lsb_pos, field_width):
     set_bits(2, lsb_pos, field_width, vals[2])
     set_bits(3, lsb_pos, field_width, vals[3])
 
-def send_maroc_params(fhand):
+def send_maroc_params(fhand: Any) -> None:
     cmd_payload = bytearray(492)
     for line in fhand:
-        if debug_print == 1:print (line)
-        if line.startswith("*"): continue
+        if debug_print == 1:
+            print (line)
+        if line.startswith("*"):
+            continue
         #strip off the comment
         strippedline = line.split('*')[0]
         #Split the tag field from the cs value field
         fields = strippedline.split("=")
-        if len(fields) !=2: continue
+        if len(fields) !=2:
+            continue
         tag = fields[0].strip()
         #Make a list of the should-be 4 ascii values
         vals = fields[1].split(",")
         #Make a list of integers
         vals_int = []
-        for i in range(len(vals)): vals_int.append(int(vals[i],0))
+        for i in range(len(vals)):
+            vals_int.append(int(vals[i],0))
         #For each tag, set the appropriate bit field
-        if (tag == "OTABG_ON"): set_bits_4(fields[0], vals_int, 0, 1)
-        if (tag == "DAC_ON"): set_bits_4(fields[0], vals_int, 1, 1)
-        if (tag == "SMALL_DAC"): set_bits_4(fields[0], vals_int, 2, 1)
+        if (tag == "OTABG_ON"):
+            set_bits_4(fields[0], vals_int, 0, 1)
+        if (tag == "DAC_ON"):
+            set_bits_4(fields[0], vals_int, 1, 1)
+        if (tag == "SMALL_DAC"):
+            set_bits_4(fields[0], vals_int, 2, 1)
         if (tag == "DAC2"): 
             #need to reverse the bits
             vals_revbits = []
@@ -183,44 +188,82 @@ def send_maroc_params(fhand):
             for i in range (4):
                 vals_revbits.append(reverse_bits(int(vals[i],0),10))
             set_bits_4(fields[0], vals_revbits, 13, 10)
-        if (tag == "ENB_OUT_ADC"): set_bits_4(fields[0], vals_int, 23, 1)
-        if (tag == "INV_START_GRAY"): set_bits_4(fields[0], vals_int, 24, 1)
-        if (tag == "RAMP8B"): set_bits_4(fields[0], vals_int, 25, 1)
-        if (tag == "RAMP10B"): set_bits_4(fields[0], vals_int, 26, 1)
-        if (tag == "CMD_CK_MUX"): set_bits_4(fields[0], vals_int, 155, 1)
-        if (tag == "D1_D2"): set_bits_4(fields[0], vals_int, 156, 1)
-        if (tag == "INV_DISCR_ADC"): set_bits_4(fields[0], vals_int, 157, 1)
-        if (tag == "POLAR_DISCRI"): set_bits_4(fields[0], vals_int, 158, 1)
-        if (tag == "ENB3ST"): set_bits_4(fields[0], vals_int, 159, 1)
-        if (tag == "VAL_DC_FSB2"): set_bits_4(fields[0], vals_int, 160, 1)
-        if (tag == "SW_FSB2_50F"): set_bits_4(fields[0], vals_int, 161, 1)
-        if (tag == "SW_FSB2_100F"): set_bits_4(fields[0], vals_int, 162, 1)
-        if (tag == "SW_FSB2_100K"): set_bits_4(fields[0], vals_int, 163, 1)
-        if (tag == "SW_FSB2_50K"): set_bits_4(fields[0], vals_int, 164, 1)
-        if (tag == "VALID_DC_FS"): set_bits_4(fields[0], vals_int, 165, 1)
-        if (tag == "CMD_FSB_FSU"): set_bits_4(fields[0], vals_int, 166, 1)
-        if (tag == "SW_FSB1_50F"): set_bits_4(fields[0], vals_int, 167, 1)
-        if (tag == "SW_FSB1_100F"): set_bits_4(fields[0], vals_int, 168, 1)
-        if (tag == "SW_FSB1_100K"): set_bits_4(fields[0], vals_int, 169, 1)
-        if (tag == "SW_FSB1_50k"): set_bits_4(fields[0], vals_int, 170, 1)
-        if (tag == "SW_FSU_100K"): set_bits_4(fields[0], vals_int, 171, 1)
-        if (tag == "SW_FSU_50K"): set_bits_4(fields[0], vals_int, 172, 1)
-        if (tag == "SW_FSU_25K"): set_bits_4(fields[0], vals_int, 173, 1)
-        if (tag == "SW_FSU_40F"): set_bits_4(fields[0], vals_int, 174, 1)
-        if (tag == "SW_FSU_20F"): set_bits_4(fields[0], vals_int, 175, 1)
-        if (tag == "H1H2_CHOICE"): set_bits_4(fields[0], vals_int, 176, 1)
-        if (tag == "EN_ADC"): set_bits_4(fields[0], vals_int, 177, 1)
-        if (tag == "SW_SS_1200F"): set_bits_4(fields[0], vals_int, 178, 1)
-        if (tag == "SW_SS_600F"): set_bits_4(fields[0], vals_int, 179, 1)
-        if (tag == "SW_SS_300F"): set_bits_4(fields[0], vals_int, 180, 1)
-        if (tag == "ON_OFF_SS"): set_bits_4(fields[0], vals_int, 181, 1)
-        if (tag == "SWB_BUF_2P"): set_bits_4(fields[0], vals_int, 182, 1)
-        if (tag == "SWB_BUF_1P"): set_bits_4(fields[0], vals_int, 183, 1)
-        if (tag == "SWB_BUF_500F"): set_bits_4(fields[0], vals_int, 184, 1)
-        if (tag == "SWB_BUF_250F"): set_bits_4(fields[0], vals_int, 185, 1)
-        if (tag == "CMD_FSB"): set_bits_4(fields[0], vals_int, 186, 1)
-        if (tag == "CMD_SS"): set_bits_4(fields[0], vals_int, 187, 1)
-        if (tag == "CMD_FSU"): set_bits_4(fields[0], vals_int, 188, 1)
+        if (tag == "ENB_OUT_ADC"):
+            set_bits_4(fields[0], vals_int, 23, 1)
+        if (tag == "INV_START_GRAY"):
+            set_bits_4(fields[0], vals_int, 24, 1)
+        if (tag == "RAMP8B"):
+            set_bits_4(fields[0], vals_int, 25, 1)
+        if (tag == "RAMP10B"):
+            set_bits_4(fields[0], vals_int, 26, 1)
+        if (tag == "CMD_CK_MUX"):
+            set_bits_4(fields[0], vals_int, 155, 1)
+        if (tag == "D1_D2"):
+            set_bits_4(fields[0], vals_int, 156, 1)
+        if (tag == "INV_DISCR_ADC"):
+            set_bits_4(fields[0], vals_int, 157, 1)
+        if (tag == "POLAR_DISCRI"):
+            set_bits_4(fields[0], vals_int, 158, 1)
+        if (tag == "ENB3ST"):
+            set_bits_4(fields[0], vals_int, 159, 1)
+        if (tag == "VAL_DC_FSB2"):
+            set_bits_4(fields[0], vals_int, 160, 1)
+        if (tag == "SW_FSB2_50F"):
+            set_bits_4(fields[0], vals_int, 161, 1)
+        if (tag == "SW_FSB2_100F"):
+            set_bits_4(fields[0], vals_int, 162, 1)
+        if (tag == "SW_FSB2_100K"):
+            set_bits_4(fields[0], vals_int, 163, 1)
+        if (tag == "SW_FSB2_50K"):
+            set_bits_4(fields[0], vals_int, 164, 1)
+        if (tag == "VALID_DC_FS"):
+            set_bits_4(fields[0], vals_int, 165, 1)
+        if (tag == "CMD_FSB_FSU"):
+            set_bits_4(fields[0], vals_int, 166, 1)
+        if (tag == "SW_FSB1_50F"):
+            set_bits_4(fields[0], vals_int, 167, 1)
+        if (tag == "SW_FSB1_100F"):
+            set_bits_4(fields[0], vals_int, 168, 1)
+        if (tag == "SW_FSB1_100K"):
+            set_bits_4(fields[0], vals_int, 169, 1)
+        if (tag == "SW_FSB1_50k"):
+            set_bits_4(fields[0], vals_int, 170, 1)
+        if (tag == "SW_FSU_100K"):
+            set_bits_4(fields[0], vals_int, 171, 1)
+        if (tag == "SW_FSU_50K"):
+            set_bits_4(fields[0], vals_int, 172, 1)
+        if (tag == "SW_FSU_25K"):
+            set_bits_4(fields[0], vals_int, 173, 1)
+        if (tag == "SW_FSU_40F"):
+            set_bits_4(fields[0], vals_int, 174, 1)
+        if (tag == "SW_FSU_20F"):
+            set_bits_4(fields[0], vals_int, 175, 1)
+        if (tag == "H1H2_CHOICE"):
+            set_bits_4(fields[0], vals_int, 176, 1)
+        if (tag == "EN_ADC"):
+            set_bits_4(fields[0], vals_int, 177, 1)
+        if (tag == "SW_SS_1200F"):
+            set_bits_4(fields[0], vals_int, 178, 1)
+        if (tag == "SW_SS_600F"):
+            set_bits_4(fields[0], vals_int, 179, 1)
+        if (tag == "SW_SS_300F"):
+            set_bits_4(fields[0], vals_int, 180, 1)
+        if (tag == "ON_OFF_SS"):
+            set_bits_4(fields[0], vals_int, 181, 1)
+        if (tag == "SWB_BUF_2P"):
+            set_bits_4(fields[0], vals_int, 182, 1)
+        if (tag == "SWB_BUF_1P"):
+            set_bits_4(fields[0], vals_int, 183, 1)
+        if (tag == "SWB_BUF_500F"):
+            set_bits_4(fields[0], vals_int, 184, 1)
+        if (tag == "SWB_BUF_250F"):
+            set_bits_4(fields[0], vals_int, 185, 1)
+        if (tag == "CMD_FSB"):
+            set_bits_4(fields[0], vals_int, 186, 1)
+        if (tag == "CMD_SS"):
+            set_bits_4(fields[0], vals_int, 187, 1)
+        if (tag == "CMD_FSU"):
+            set_bits_4(fields[0], vals_int, 188, 1)
 
         #Look for a MASKOR1 value; chan is in range 0-63, with a quad of values, one for each chip
         if tag.startswith("MASKOR1"):
@@ -250,8 +293,10 @@ def send_maroc_params(fhand):
             for i in range (4):
                 vals_revbits.append(reverse_bits((vals_int[i]),8))
             set_bits_4(fields[0], vals_revbits, 757-9*chan,8)
-        if (echo_command): cmd_payload[0] = 0x81
-        else: cmd_payload[0] = 0x01
+        if (echo_command):
+            cmd_payload[0] = 0x81
+        else:
+            cmd_payload[0] = 0x01
         for ii in range(104): 
             cmd_payload[ii+4] = MAROC_regs[0][ii]
             cmd_payload[ii+132] = MAROC_regs[1][ii]
@@ -259,23 +304,21 @@ def send_maroc_params(fhand):
             cmd_payload[ii+388] = MAROC_regs[3][ii]
     if (debug_file):
         try:
-            fdebug = open(".\debug.txt", 'w')
+            with open(".\\debug.txt", 'w') as fdebug:
+                for i in range(492):
+                    fdebug.write((hex(cmd_payload[i])) + "\n")
         except Exception as e:
             print (e)
             #continue
-        for i in range(492):
-            fdebug.write((hex(cmd_payload[i])) + "\n")
-        fdebug.close()
         try:
-            fdebug_bits = open(".\debug_bits.txt", 'w')
+            with open(".\\debug_bits.txt", 'w') as fdebug_bits:
+                for i in range(4,108):
+                    for j in range(8):
+                        fdebug_bits.write((str((int(cmd_payload[i])>>j) & 1))+"\n")
+                        #print(i,j)
         except Exception as e:
             print (e)
             #continue
-        for i in range(4,108):
-            for j in range(8):
-                fdebug_bits.write((str((int(cmd_payload[i])>>j) & 1))+"\n")
-                #print(i,j)
-        fdebug_bits.close()
     if connected == 1:
         flush_rx_buf()
         sendit(cmd_payload)
@@ -284,7 +327,7 @@ def send_maroc_params(fhand):
             try:
                 OK = 1
                 reply = sock.recvfrom(1024)
-            except:
+            except Exception:
                 print ("No response from hardware")
                 OK=0
             if OK:
@@ -293,29 +336,40 @@ def send_maroc_params(fhand):
                 #print(bytesback)
                 match=1
                 for i in range(108):
-                    if cmd_payload[i]!=bytesback[i]: match=0
+                    if cmd_payload[i]!=bytesback[i]:
+                        match=0
                 for i in range(132,236):
-                    if cmd_payload[i]!=bytesback[i]: match=0
+                    if cmd_payload[i]!=bytesback[i]:
+                        match=0
                 for i in range(260,364):
-                    if cmd_payload[i]!=bytesback[i]: match=0
+                    if cmd_payload[i]!=bytesback[i]:
+                        match=0
                 for i in range(388,492):
-                    if cmd_payload[i]!=bytesback[i]: match=0
+                    if cmd_payload[i]!=bytesback[i]:
+                        match=0
                     
-                if match: print("Data read from MAROCs MATCHES that sent out")
-                else: print("Data read back DOESN'T MATCH that sent out")
+                if match:
+                    print("Data read from MAROCs MATCHES that sent out")
+                else:
+                    print("Data read back DOESN'T MATCH that sent out")
             
-def send_HV_params(fhand):
+def send_HV_params(fhand: Any) -> None:
     cmd_payload = bytearray(64)
-    for i in range(64): cmd_payload[i]=0
-    if (echo_command): cmd_payload[0] = 0x82
-    else: cmd_payload[0] = 0x02
+    for i in range(64):
+        cmd_payload[i]=0
+    if (echo_command):
+        cmd_payload[0] = 0x82
+    else:
+        cmd_payload[0] = 0x02
     for line in fhand:
-        if line.startswith("*"): continue
+        if line.startswith("*"):
+            continue
         #strip off the comment
         strippedline = line.split('*')[0]
         #Split the tag field from the cs value field
         fields = strippedline.split("=")
-        if len(fields) !=2: continue
+        if len(fields) !=2:
+            continue
         tag = fields[0].strip()
         if (tag.startswith("HV")):
             chan = tag.split('_')[1]
@@ -332,18 +386,23 @@ def send_HV_params(fhand):
         flush_rx_buf()
         sendit(cmd_payload)
         
-def send_acq_parameters(fhand): 
+def send_acq_parameters(fhand: Any) -> None: 
     cmd_payload = bytearray(64)
-    for i in range(64): cmd_payload[i]=0
-    if (echo_command): cmd_payload[0] = 0x83
-    else: cmd_payload[0] = 0x03
+    for i in range(64):
+        cmd_payload[i]=0
+    if (echo_command):
+        cmd_payload[0] = 0x83
+    else:
+        cmd_payload[0] = 0x03
     for line in fhand:
-        if line.startswith("*"): continue
+        if line.startswith("*"):
+            continue
         #strip off the comment
         strippedline = line.split('*')[0]
         #Split the tag field from the cs value field
         fields = strippedline.split("=")
-        if len(fields) !=2: continue
+        if len(fields) !=2:
+            continue
         tag = fields[0].strip()
         if (tag == "ACQMODE"):
             val = int(fields[1],0)
@@ -429,18 +488,23 @@ def send_acq_parameters(fhand):
         flush_rx_buf()
         sendit(cmd_payload)
 
-def send_trigger_mask(fhand):
+def send_trigger_mask(fhand: Any) -> None:
     cmd_payload = bytearray(64)
-    for i in range(64): cmd_payload[i]=0
-    if (echo_command): cmd_payload[0] = 0x86
-    else: cmd_payload[0] = 0x06
+    for i in range(64):
+        cmd_payload[i]=0
+    if (echo_command):
+        cmd_payload[0] = 0x86
+    else:
+        cmd_payload[0] = 0x06
     for line in fhand:
-        if line.startswith("*"): continue
+        if line.startswith("*"):
+            continue
         #strip off the comment
         strippedline = line.split('*')[0]
         #Split the tag field from the cs value field
         fields = strippedline.split("=")
-        if len(fields) !=2: continue
+        if len(fields) !=2:
+            continue
         tag = fields[0].strip()
         chan_mask = [0,0,0,0,0,0,0,0,0]
         if (tag.startswith("CHANMASK")):
@@ -448,7 +512,7 @@ def send_trigger_mask(fhand):
             chan = int(chan)
             val = int(fields[1],0)
             chan_mask[chan]=val
-            for i in range (4):
+            for _i in range (4):
                 cmd_payload[4*chan+4]=val & 0xff
                 cmd_payload[4*chan+5]=(val>>8) & 0xff
                 cmd_payload[4*chan+6]=(val>>16) & 0xff
@@ -457,19 +521,21 @@ def send_trigger_mask(fhand):
         flush_rx_buf()
         sendit(cmd_payload)
 
-def send_goe_mask(fhand):
+def send_goe_mask(fhand: Any) -> None:
     cmd_payload = bytearray(64)
-    for i in range(64): cmd_payload[i]=0
+    for i in range(64):
+        cmd_payload[i]=0
     cmd_payload[0] = 0x0e
     for line in fhand:
-        if line.startswith("*"): continue
+        if line.startswith("*"):
+            continue
         #strip off the comment
         strippedline = line.split('*')[0]
         #Split the tag field from the cs value field
         fields = strippedline.split("=")
-        if len(fields) !=2: continue
+        if len(fields) !=2:
+            continue
         tag = fields[0].strip()
-        chan_mask = [0]
         if (tag.startswith("GOEMASK")):
             val = int(fields[1],0)
             print(val)
@@ -483,7 +549,7 @@ def send_goe_mask(fhand):
 # convert IP addr string, eg. '192.0.100.3' to a byte array
 # Do error checking.
 #
-def get_ip(str_in):
+def get_ip(str_in: str) -> bytearray | int:
     ip_str = str_in.split('.')
     if(len(ip_str) != 4):
         return -1
@@ -502,8 +568,8 @@ print ("Quadrant Board Control")
 try :
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
     print ("Socket Created")
-except socket.error as msg :
-    print ('Failed to create socket. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+except OSError as msg :
+    print (f'Failed to create socket. Error Code : {msg.errno} Message {msg.strerror}')
     sys.exit()    
 sock.settimeout(0.5)
 #os.system('arp -a')
@@ -513,14 +579,20 @@ sock.settimeout(0.5)
 
 try:
     #sock.bind((UDP_DEST_IP, UDP_CMD_PORT))    
-    sock.bind(("", UDP_CMD_PORT))
-except socket.error as msg:
-    print ('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+    #sock.bind(("", UDP_CMD_PORT))
+    pass
+except OSError as msg:
+    print (f'Bind failed. Error Code : {msg.errno} Message {msg.strerror}')
     sys.exit()
      
 print ('Socket bind complete')
+# Open baseline file using contextlib if possible, but here it's kept open throughout the loop?
+# Actually it's open(baseline_fname, 'w') and then fhand_bl.write() inside loop.
+# I should probably just use
+# Or move it inside the loop if it's opened for each write, but it's 'w' so it would truncate.
+
 try:
-    fhand_bl = open(baseline_fname, 'w')
+    fhand_bl = open(baseline_fname, 'w')  # noqa: SIM115
 except Exception as e:
     print (e)
 
@@ -557,15 +629,15 @@ while True:
 
     elif inp == 'M':
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_maroc_params(fhand)
         except Exception as e:
             print (e)
             continue
-        send_maroc_params(fhand)
-        fhand.close()
     elif inp == 'B':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x07
         flush_rx_buf()
         sendit(cmd_payload)
@@ -584,12 +656,11 @@ while True:
     elif inp == 'V':
       #while(1):
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_HV_params(fhand)
         except Exception as e:
             print (e)
             continue
-        send_HV_params(fhand)
-        fhand.close()
         #time.sleep(1)
 
     elif inp == 'v':
@@ -601,9 +672,12 @@ while True:
         else:
             HV_vals[int(vals[0])] = int(vals[1])
             cmd_payload = bytearray(64)
-            for i in range(64): cmd_payload[i]=0
-            if (echo_command): cmd_payload[0] = 0x82
-            else: cmd_payload[0] = 0x02
+            for i in range(64):
+                cmd_payload[i]=0
+            if (echo_command):
+                cmd_payload[0] = 0x82
+            else:
+                cmd_payload[0] = 0x02
             for i in range(4):
                 LSbyte = HV_vals[i] & 0xff
                 MSbyte = (HV_vals[i] >> 8) & 0xff
@@ -613,9 +687,12 @@ while True:
             sendit(cmd_payload)
     elif inp == 'VV':
             cmd_payload = bytearray(64)
-            for i in range(64): cmd_payload[i]=0
-            if (echo_command): cmd_payload[0] = 0x82
-            else: cmd_payload[0] = 0x02
+            for i in range(64):
+                cmd_payload[i]=0
+            if (echo_command):
+                cmd_payload[0] = 0x82
+            else:
+                cmd_payload[0] = 0x02
             for i in range(4):
                 LSbyte = 0
                 MSbyte = 0
@@ -627,31 +704,30 @@ while True:
     elif inp == 'A':
       #while(1):
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_acq_parameters(fhand)
         except Exception as e:
             print (e)
             continue
-        send_acq_parameters(fhand)
-        fhand.close()
         #time.sleep(2)
     elif inp == 'T':
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_trigger_mask(fhand)
         except Exception as e:
             print (e)
             continue
-        send_trigger_mask(fhand)
-        fhand.close()
     elif inp == 'GT':
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_goe_mask(fhand)
         except Exception as e:
             print (e)
             continue
-        send_goe_mask(fhand)
     elif inp == 'R':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x04
         sendit(cmd_payload)
 
@@ -660,7 +736,8 @@ while True:
       steps = int(inp)
       #while(1):
       cmd_payload = bytearray(64)
-      for i in range(64): cmd_payload[i]=0
+      for i in range(64):
+          cmd_payload[i]=0
       cmd_payload[0] = 0x05
       cmd_payload[4] = steps & 0xff
       cmd_payload[5] = (steps >> 8)&0xff
@@ -680,7 +757,8 @@ while True:
 
     elif inp == 'SHO':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x05
         shutter_open = 1
         shutter_power = 1
@@ -695,7 +773,8 @@ while True:
         sendit(cmd_payload)
     elif inp == 'SHC':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x05
         shutter_open = 0
         shutter_power = 1
@@ -712,7 +791,8 @@ while True:
         inp = input("Input fan speed, 0 to 15")
         fanspeed = int(inp) & 0xf
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x05
         cmd_payload[6] = shutter_open | (shutter_power<<1)
         cmd_payload[8] = fanspeed
@@ -724,32 +804,37 @@ while True:
     
     elif inp =='SHO_NEW':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x08
         cmd_payload[1] = 0x00
         sendit(cmd_payload)
 		
     elif inp == 'SHC_NEW':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x08
         cmd_payload[1] = 0x01
         sendit(cmd_payload)
     elif inp == 'LF0':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x09
         cmd_payload[1] = 0x00
         sendit(cmd_payload)
     elif inp == 'LF1':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x09
         cmd_payload[1] = 0x01
         sendit(cmd_payload)
     elif inp == 'IM-PH-IP':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x0a
         str_in = input('PH IP: ')
         ph_ip = get_ip(str_in)
@@ -760,10 +845,11 @@ while True:
         if(ph_ip == -2):
             print('Please check the IP address: value incorrect')
             continue
-        cmd_payload[1] = ph_ip[0]
-        cmd_payload[2] = ph_ip[1]
-        cmd_payload[3] = ph_ip[2]
-        cmd_payload[4] = ph_ip[3]
+        if isinstance(ph_ip, bytearray):
+            cmd_payload[1] = ph_ip[0]
+            cmd_payload[2] = ph_ip[1]
+            cmd_payload[3] = ph_ip[2]
+            cmd_payload[4] = ph_ip[3]
         str_in = input('IM IP: ')
         im_ip = get_ip(str_in)
         #print(im_ip)
@@ -773,10 +859,11 @@ while True:
         if(im_ip == -2):
             print('Please check the IP address: value incorrect')
             continue
-        cmd_payload[5] = im_ip[0]
-        cmd_payload[6] = im_ip[1]
-        cmd_payload[7] = im_ip[2]
-        cmd_payload[8] = im_ip[3]
+        if isinstance(im_ip, bytearray):
+            cmd_payload[5] = im_ip[0]
+            cmd_payload[6] = im_ip[1]
+            cmd_payload[7] = im_ip[2]
+            cmd_payload[8] = im_ip[3]
         sendit(cmd_payload)
         try:
             reply = sock.recvfrom(1024)
@@ -789,12 +876,13 @@ while True:
                 print('PH MAC: ', mac1)
                 print('IM MAC: ', mac2)
             else:
-                print('data length is incorrect: expect 12 bytes, but got %d'%len(reply[0]))
-        except:
+                print(f'data length is incorrect: expect 12 bytes, but got {len(reply[0])}')
+        except Exception:
             print('No data received.')
     elif inp == 'HK-IP':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x0b
         str_in = input('HK IP: ')
         hk_ip = get_ip(str_in)
@@ -804,14 +892,16 @@ while True:
         if(hk_ip == -2):
             print('Please check the IP address: value incorrect')
             continue
-        cmd_payload[1] = hk_ip[0]
-        cmd_payload[2] = hk_ip[1]
-        cmd_payload[3] = hk_ip[2]
-        cmd_payload[4] = hk_ip[3]
+        if isinstance(hk_ip, bytearray):
+            cmd_payload[1] = hk_ip[0]
+            cmd_payload[2] = hk_ip[1]
+            cmd_payload[3] = hk_ip[2]
+            cmd_payload[4] = hk_ip[3]
         sendit(cmd_payload)
     elif inp == 'R-PH':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x0c
         sendit(cmd_payload)
         time.sleep(0.5)
@@ -819,19 +909,19 @@ while True:
         bytesback = reply[0]
         print(len(bytesback))
         now =time.ctime().split(" ")[3]
-        fp = open('quabo_ph.csv', 'w')
-        fp.write(str(now) + ',')
-        for n in range(256):
-            val=bytesback[2*n+4]+256*bytesback[2*n+5]
-            fp.write(str(val) + ',')
-        fp.write('\n')
-        fp.close()
+        with open('quabo_ph.csv', 'w') as fp:
+            fp.write(str(now) + ',')
+            for n in range(256):
+                val=bytesback[2*n+4]+256*bytesback[2*n+5]
+                fp.write(str(val) + ',')
+            fp.write('\n')
     elif inp == 'W-BL':
         cmd_payload = bytearray(514)
-        for i in range(514): cmd_payload[i]=0
+        for i in range(514):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x0d
-        fp = open('bl.txt','r')
-        d_str = fp.readlines()
+        with open('bl.txt') as fp:
+            d_str = fp.readlines()
         n = 2
         for i in range(256):
             tmp = struct.pack('h',int(d_str[i]))
@@ -841,6 +931,7 @@ while True:
         sendit(cmd_payload)
     elif inp == 'SW_1PPS':
         cmd_payload = bytearray(64)
-        for i in range(64): cmd_payload[i]=0
+        for i in range(64):
+            cmd_payload[i]=0
         cmd_payload[0] = 0x0f
         sendit(cmd_payload)

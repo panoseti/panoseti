@@ -1,0 +1,15 @@
+# Runtime dependencies for control/legacy/ -- the vendored old-software
+# DAQ-stop fallback (see control/legacy/README.md). Python 3.9 required
+# (the old control software's only supported interpreter).
+#
+# Trimmed from the original mount-metadata branch's control/packages/
+# requirements.txt to just what this fallback subset actually imports.
+# panoseti_grpc and python3-netsnmp are NOT needed here: nothing in this
+# subset touches gRPC or SNMP.
+
+netifaces==0.11.0
+numpy>=1.24.3
+psutil>=5.9.5
+haversine>=2.9.0
+pydantic>=2.0
+rich>=13.0

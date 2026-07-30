@@ -1,0 +1,33 @@
+# ============================================================
+# PANOSETI Unified gRPC Server — CI Headnode Config
+#
+# Runs the Telemetry gRPC service only (port 50051).
+# DAQ nodes forward their log records here via grpc_logging.
+# storeLoki.py ships the Redis logs:ingress queue to Loki.
+#
+# Usage:
+#   pseti-grpc server --config /app/src/ci/integration/configs/grpc/headnode/server.toml
+#
+# Deployed alongside storeLoki.py in the CI headnode container (10.0.1.22).
+# ============================================================
+
+[server]
+port = 50051
+shutdown_grace_period = 5.0
+grpc_logging = true            # forward log records to HEADNODE_IP:HEADNODE_GRPC_PORT
+
+[server.services]
+telemetry   = true
+daq_data    = false
+daq_control = false
+
+# -------------------------------------------------------
+# Telemetry service
+# Redis is the CI redis container at 10.0.1.20
+# -------------------------------------------------------
+[telemetry]
+redis_host = "redis"
+redis_port = 6379
+redis_db   = 0
+shutdown_grace_period = 5.0
+log_level  = "INFO"

@@ -1,0 +1,10 @@
+# Base DAQ Configuration Template
+head_node_data_dir = "/data"
+head_node_ip_addr = "10.0.0.1"
+
+[[daq_nodes]]
+username = "panoseti"
+data_dir = "/data"
+ip_addr = "10.0.0.2"
+module_ids = "250, 254"
+bindhost = "0.0.0.0"

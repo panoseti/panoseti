@@ -1,0 +1,11 @@
+{
+    "daemons": {
+        "hk": true,
+        "gps": false,
+        "telemetry_service": false,
+        "power": false,
+        "wr": false
+    },
+    "permanent_daemons": {
+    }
+}

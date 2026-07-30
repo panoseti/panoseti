@@ -1,0 +1,211 @@
+"""
+conftest for happy_path tests.
+
+Provides two key fixtures:
+  booted_calibrated  — session-scoped; ensures hardware is in PH_CALIBRATED.
+  active_data_config — function-scoped, parameterized; swaps data_config.json
+                       symlink and re-applies maroc_config + mask_config.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import time
+from pathlib import Path
+
+import pytest
+
+from ci.hardware_software.core.reachability import wait_until_all_quabos_reachable
+from control.pseti import app
+
+logger = logging.getLogger(__name__)
+
+# Paths used by the data-config swap fixture.
+# CONFIGS is where pseti reads data_config.json (set via $PSETI_CONFIG) --
+# must be resolved the same way PanoPaths.config_dir() resolves it, NOT via
+# __file__. Inside the headnode-server container, this module's own __file__
+# lives under /app/src/ci/... (a build-time COPY baked into the image),
+# which is a completely different mount (different device/inode) than the
+# live /mnt/config bind mount `pseti` actually reads through $PSETI_CONFIG.
+# Swapping the symlink at the __file__-relative path was a silent no-op from
+# `pseti`'s point of view -- it kept reading whatever data_config.json
+# happened to already be at /mnt/config, so every variant test was
+# unknowingly running against the same (usually first/default) config. Only
+# the "interleave" variant's hard `interleave.enable` gate ever surfaced
+# this, since the other variants' assertions didn't depend on which exact
+# variant was active. CORE_OBS_CONFIGS has the same host-vs-container-build
+# split, via $PSETI_CORE_OBS_CONFIGS.
+_HW_SW_DIR = Path(__file__).parent.parent.parent
+CONFIGS = Path(os.environ["PSETI_CONFIG"]) if os.environ.get("PSETI_CONFIG") else _HW_SW_DIR / "configs"
+CORE_OBS_CONFIGS = (
+    Path(os.environ["PSETI_CORE_OBS_CONFIGS"])
+    if os.environ.get("PSETI_CORE_OBS_CONFIGS")
+    else _HW_SW_DIR / "core_obs_configs"
+)
+
+# Ordered list of data-config variant names to parametrize.
+# Add new entries here when more variants are validated.
+DATA_CONFIGS = [
+    "dual_anytrig_stim-q0",
+    "dual_anytrig_stim-q1",
+    "dual_anytrig_stim-q2",
+    "dual_anytrig_stim-q3",
+    "dual_no-anytrig_stim-all",
+    "ph_two-pix_stim-q1",
+    "ph_three-pix_stim-q3",
+    "interleave",
+]
+
+
+# ---------------------------------------------------------------------------
+# booted_calibrated — session-scoped boot gate
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def booted_calibrated(runner, topology):
+    """Ensure hardware is in PH_CALIBRATED before any happy-path test runs.
+
+    If the HITL state file already records PH_CALIBRATED and all quabos are
+    responsive (e.g., from a prior manual session-start), the boot sequence
+    is skipped for speed.  Otherwise the full boot sequence is run once.
+
+    If the boot fails, the fixture raises and all happy_path tests are
+    cascade-skipped by pytest_plugin.py.
+    """
+    from ci.hardware_software.core.boot import quabos_responsive, state_file_says
+    from ci.hardware_software.hw_utils.cli import _STATE_FILE
+    from ci.hardware_software.hw_utils.state_machine import _write_state
+
+    # Check if we can skip the boot sequence
+    state_ok = state_file_says("PH_CALIBRATED")
+    responsive = quabos_responsive()
+    
+    logger.info("[HAPPY-PATH] booted_calibrated: check: state(PH_CALIBRATED)=%s, responsive=%s", state_ok, responsive)
+
+    if state_ok and responsive:
+        logger.info("[HAPPY-PATH] booted_calibrated: hardware already in PH_CALIBRATED — skipping boot")
+        # Ensure redis-daemons are running (precondition for start.py)
+        r = runner.invoke(app, ["cfg", "redis-daemons"])
+        assert r.exit_code == 0, f"booted_calibrated: pseti cfg redis-daemons failed:\n{r.output}"
+        yield
+        return
+
+    logger.info("[HAPPY-PATH] booted_calibrated: running full boot sequence")
+
+    import control.config as config
+    import control.get_uids as get_uids
+    from control.utils import config_file
+
+    obs_config = config_file.get_obs_config()
+    network_config = config_file.get_network_config()
+    modules = config_file.get_modules(obs_config)
+
+    # Stage 0: power off for clean baseline
+    r = runner.invoke(app, ["power", "off"])
+    assert r.exit_code == 0, f"booted_calibrated: pseti power off failed:\n{r.output}"
+    time.sleep(5)
+
+    # Stage 1: power on
+    from ci.hardware_software.hw_utils.driver_ops import wps_power_on
+    wps_power_on()
+
+    # Stage 2: boot wait
+    boot_wait = int(os.environ.get("HW_TEST_QUABO_BOOT_WAIT", 60))
+    logger.info("booted_calibrated: waiting %ds for boot", boot_wait)
+    elapsed = 0
+    while elapsed < boot_wait:
+        chunk = min(15, boot_wait - elapsed)
+        time.sleep(chunk)
+        elapsed += chunk
+
+    # Stage 3-4: UIDs + do_reboot
+    get_uids.get_uids(obs_config, network_config)
+    quabo_uids = config_file.get_quabo_uids()
+    assert quabo_uids is not None
+    config.do_reboot(modules, quabo_uids, network_config)
+    _write_state(_STATE_FILE, "BOOTED")
+
+    # Stage 6-10: hk-dest → redis-daemons → maroc-config → mask-config → calibrate-ph
+    for _stage, args in [
+        ("hk-dest",       ["cfg", "hk-dest"]),
+        ("redis-daemons", ["cfg", "redis-daemons"]),
+        ("maroc-config",  ["cfg", "maroc-config"]),
+        ("mask-config",   ["cfg", "mask-config"]),
+        ("calibrate-ph",  ["cfg", "calibrate-ph", "--strict"]),
+    ]:
+        # maroc-config may prompt "Use default calibration file?" for each quabo
+        # whose UID isn't in quabo_info.json — auto-accept with Y.
+        stdin = "Y\nY\nY\nY\n" if "maroc-config" in args else None
+        r = runner.invoke(app, args, input=stdin)
+        assert r.exit_code == 0, f"booted_calibrated: pseti {' '.join(args)} failed:\n{r.output}"
+
+    _write_state(_STATE_FILE, "PH_CALIBRATED")
+    logger.info("booted_calibrated: hardware in PH_CALIBRATED")
+    wait_until_all_quabos_reachable(topology, timeout=30, retry_every=2)
+    yield
+
+
+# ---------------------------------------------------------------------------
+# active_data_config — parameterized symlink swap fixture
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(params=DATA_CONFIGS)
+def active_data_config(request, runner, topology):
+    """Point configs/data_config.json at a specific variant, re-apply maroc+mask.
+
+    Parameterized over DATA_CONFIGS so each variant gets its own test run.
+    No power cycle is needed between variants — only maroc_config and
+    mask_config need re-applying to reload gains/masks from the new config.
+    """
+    name = request.param
+    src = CORE_OBS_CONFIGS / f"data_config_{name}.json"
+    dst = CONFIGS / "data_config.json"
+
+    if not src.exists():
+        pytest.skip(f"Data config variant not found: {src}")
+
+    # Swap the symlink. Relative (not resolve()/absolute) so it stays valid
+    # inside containers that bind-mount configs/ and core_obs_configs/ as
+    # siblings under a different absolute path than the host's.
+    if dst.is_symlink() or dst.exists():
+        dst.unlink()
+    dst.symlink_to(os.path.relpath(src, dst.parent))
+    logger.info("active_data_config: configs/data_config.json → %s", src.name)
+
+    # Verify the swap actually took effect from `pseti`'s own point of view
+    # (i.e. resolve $PSETI_CONFIG the same way PanoPaths.config_dir() does),
+    # not just that *this* path's symlink looks right. CONFIGS is meant to
+    # already equal that resolution (see the module-level comment above),
+    # but a future refactor could silently reintroduce the mismatch that
+    # made every dual_anytrig_stim-qN test silently run against whichever
+    # config was already active -- this catches that class of bug at the
+    # point of the swap, with a clear message, instead of several steps
+    # downstream as a confusing "Interleaving is disabled" or similarly
+    # unrelated-looking failure.
+    from control.utils.paths import PanoPaths
+    resolved = (PanoPaths.config_dir() / "data_config.json").resolve()
+    assert resolved == src.resolve(), (
+        f"active_data_config({name}): symlink swap didn't take effect where "
+        f"pseti actually reads from. Wrote to {dst} (resolves to {dst.resolve()}), "
+        f"but PanoPaths.config_dir()/data_config.json resolves to {resolved}. "
+        "These must be the same file/mount."
+    )
+
+    # Re-apply hardware config for this variant
+    from control.pseti import app
+    r = runner.invoke(app, ["cfg", "maroc-config"], input="Y\nY\nY\nY\n")
+    assert r.exit_code == 0, f"active_data_config({name}): pseti cfg maroc-config failed:\n{r.output}"
+    r = runner.invoke(app, ["cfg", "mask-config"])
+    assert r.exit_code == 0, f"active_data_config({name}): pseti cfg mask-config failed:\n{r.output}"
+
+    wait_until_all_quabos_reachable(topology, timeout=30, retry_every=2)
+    yield name
+
+    # Restore symlink to dual_anytrig_stim-q0 as a safe default
+    default_src = CORE_OBS_CONFIGS / "data_config_dual_anytrig_stim-q0.json"
+    if dst.is_symlink() or dst.exists():
+        dst.unlink()
+    if default_src.exists():
+        dst.symlink_to(os.path.relpath(default_src, dst.parent))
+        logger.info("active_data_config: restored configs/data_config.json → data_config_dual_anytrig_stim-q0.json")

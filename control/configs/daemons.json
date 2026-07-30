@@ -2,7 +2,25 @@
     "daemons": {
         "hk": true,
         "gps": false,
-        "power": true,
-        "wr": true
+        "telemetry_service": true,
+        "loki": false,
+        "guider": false,
+        "power": false,
+        "datarecweb": true,
+        "guider_im": true,
+        "webhk": true,
+        "wr": false
+    },
+
+    "permanent_daemons": {
+        "mount_ssh": true,
+        "palomar_webcam": true,
+        "weather2": true,
+        "webcam": true,
+        "power_switches": true,
+        "dome": true,
+        "cond_overall": true,
+        "alerts_forecast": true
     }
 }
+

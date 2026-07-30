@@ -1,0 +1,41 @@
+# Dockerfile.daqnode — DAQ node image for integration tests.
+#
+# Build context: panoseti-software/control/
+# (Set by docker-compose.integration.yml context: ../)
+#
+# Contains:
+#   - panoseti_grpc (daq_control + daq_data gRPC servers)
+#   - fake_hashpipe.py on PATH as 'hashpipe' (swap for real binary in hw CI)
+#   - socat for local port-forwarding tests
+#
+# For hardware CI: override the hashpipe binary via volume mount:
+#   docker run -v /path/to/real/hashpipe:/usr/local/bin/hashpipe ...
+
+FROM python:3.14-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        socat \
+        gcc build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /daqnode
+
+# Install panoseti_grpc from PyPI (0.4.0+ supports Python 3.14)
+RUN pip install --no-cache-dir "panoseti-grpc>=0.4.0"
+
+# fake hashpipe: install on PATH as 'hashpipe'
+COPY run-ci/integration/fake_hashpipe.py /usr/local/bin/hashpipe
+RUN chmod +x /usr/local/bin/hashpipe
+
+# Create data directory
+RUN mkdir -p /data
+
+# Start both gRPC servers:
+#   - daq_control (port 50051): manages hashpipe lifecycle
+#   - daq_data    (port 50052): streams science data
+CMD ["sh", "-c", \
+     "python -m panoseti_grpc.daq_control.server & \
+      python -m panoseti_grpc.daq_data.server & \
+      wait"]

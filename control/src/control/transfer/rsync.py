@@ -1,0 +1,73 @@
+"""Port-forwarding-aware rsync command builder for DAQ node transfers."""
+from __future__ import annotations
+
+import pathlib
+
+from control.utils.pydantic_config_models import TransferNodeSpec
+from control.utils.util import ssh_options
+
+
+def build_rsync_cmd(
+    node: TransferNodeSpec,
+    run_name: str,
+    head_run_dir: str | pathlib.Path,
+    bwlimit: int | None = None,
+) -> list[str]:
+    """Build an rsync command for a single DAQ node's run directory.
+
+    Pulls per-run stdout/snapshot files and all per-module PFF data from the
+    remote DAQ node into the matching head-node run directory.  When the node's
+    ``port_forwarding`` config has ``status=True``, the rsync tunnel is routed
+    through the gateway.
+
+    Args:
+        node: A ``TransferNodeSpec`` describing the remote DAQ node.
+        run_name: Name of the run directory to transfer.
+        head_run_dir: Absolute path to the destination run directory on the
+            head node.
+        bwlimit: Optional bandwidth limit in KiB/s (passed to --bwlimit).
+
+    Returns:
+        A list of strings forming a complete rsync invocation, ready to pass
+        to ``subprocess.run``.
+
+    Raises:
+        ValueError: If the port-forwarding port is outside [1024, 65535].
+    """
+    pf = node.port_forwarding
+    use_pf = pf is not None and pf.status
+
+    cmd: list[str] = ["rsync", "-aP", "--info=progress2", "--partial-dir=.rsync-partial"]
+    if bwlimit:
+        cmd.append(f"--bwlimit={bwlimit}")
+    
+    # Exclude manifest files to prevent DAQ-side manifests from overwriting 
+    # the secure manifest obtained via gRPC.
+    cmd.append("--exclude=dp_manifest.node_*.txt")
+    cmd.append("--exclude=manifest.*")
+    
+    ssh_base = list(ssh_options)  # copy to avoid mutation
+
+    if use_pf and pf is not None:
+        port = pf.port
+        if port is None:
+            raise ValueError(
+                f"Port-forwarding port {port!r} is None"
+            )
+        full_ssh_cmd = f"ssh -p {port} {' '.join(ssh_base)}"
+        cmd += ["-e", full_ssh_cmd]
+        host = f"{node.username}@{pf.gw_ip}"
+    else:
+        cmd += ["-e", f"ssh {' '.join(ssh_base)}"]
+        host = f"{node.username}@{node.ip_addr}"
+
+    head_run = str(head_run_dir)
+    cmd += [
+        # 1. Pull everything from the root run directory (configs, logs, manifests)
+        # Note: trailing slash ensures we copy contents into 
+        f"{host}:{node.data_dir}/{run_name}/",
+        # 2. Pull everything from each module's run directory (science data)
+        *[f"{host}:{node.data_dir}/module_{m}/{run_name}/" for m in node.module_ids],
+        head_run,
+    ]
+    return cmd

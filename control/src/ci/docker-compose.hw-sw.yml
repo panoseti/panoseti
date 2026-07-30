@@ -1,0 +1,225 @@
+# Alloy's config is declared inline (not bind-mounted from
+# grpc/deploy/alloy/config.alloy) so it also works for the DAQ node profile,
+# which is deployed to a *remote* Docker context: bind-mount sources resolve
+# against the remote daemon's filesystem, which has no mirrored repo
+# checkout (unlike the headnode, where the bind mount happens to work
+# because it's the same machine). Inline config content ships over the
+# Docker API regardless of context. Keep this in sync with
+# grpc/deploy/alloy/config.alloy if you change one.
+configs:
+  alloy_config:
+    content: |
+      // Unified log aggregation for PANOSETI components.
+      // Reads per-host .jsonl files written by panoseti_grpc get_logger().
+      // Directory layout: /var/log/panoseti/{hostname}/{service}.jsonl
+
+      local.file_match "panoseti" {
+        path_targets = [{ "__path__" = "/var/log/panoseti/*/*.jsonl", "job" = "panoseti" }]
+      }
+
+      loki.source.file "panoseti" {
+        targets    = local.file_match.panoseti.targets
+        forward_to = [loki.process.panoseti.receiver]
+      }
+
+      loki.process "panoseti" {
+        stage.json {
+          expressions = {
+            message    = "message",
+            service    = "service",
+            level      = "level",
+            hostname   = "hostname",
+            git_commit = "git_commit",
+            run_id     = "run_id",
+          }
+        }
+        stage.labels {
+          values = {
+            service    = "service",
+            level      = "level",
+            hostname   = "hostname",
+            git_commit = "git_commit",
+          }
+        }
+        forward_to = [loki.write.headnode.receiver]
+      }
+
+      loki.write "headnode" {
+        // network_mode: host on both profiles, so the bridge-network DNS
+        // name "loki" never resolves -- always go via the headnode's real IP.
+        endpoint { url = string.format("http://%s:3100/loki/api/v1/push", sys.env("HEADNODE_IP")) }
+        external_labels = { cluster = "panoseti" }
+      }
+
+services:
+  # ── Head Node Profile ──────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  influxdb:
+    image: influxdb:1.8
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/influxdb:/var/lib/influxdb
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "show databases"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  loki:
+    image: grafana/loki:3.7.0
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+    # The grafana/loki image runs as UID/GID 10001 by default (not root).
+    # Pin it explicitly so it's self-documenting, and so a host where the
+    # bind-mount source gets auto-created by a *different* root-run
+    # container (Docker creates missing bind-mount sources as root:root)
+    # fails loudly instead of silently reintroducing the permission bug --
+    # `chown -R 10001:10001 ${PSETI_DATA_DIR}/loki` on the host fixes it.
+    user: "10001:10001"
+    volumes:
+      - ${PSETI_DATA_DIR:-/mnt/panoseti-data}/loki:/loki
+
+  alloy:
+    image: grafana/alloy:latest
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+    configs:
+      - source: alloy_config
+        target: /etc/alloy/config.alloy
+    volumes:
+      - /var/log/panoseti:/var/log/panoseti:ro
+    environment:
+      HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
+    command: ["run", "/etc/alloy/config.alloy"]
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["headnode"]
+    network_mode: host
+    volumes:
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
+      # - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/a/grafana-lokiexplore-app/explore
+    restart: always
+
+  headnode-server:
+    image: pseti-headnode:hitl
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: headnode
+      args:
+        LOCAL_UID: "${HOST_UID:-1000}"
+        LOCAL_GID: "${HOST_GID:-1000}"
+    profiles: ["headnode"]
+    network_mode: host
+    user: root
+    volumes:
+      - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
+      - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
+      - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
+      # Read-write: the happy_path test suite's active_data_config fixture
+      # swaps data_config.json's symlink between variants from inside this
+      # container (see suites/happy_path/conftest.py) -- it needs to write
+      # through the same mount `pseti` reads via $PSETI_CONFIG, not a
+      # separate read-only view.
+      - ${PSETI_CONFIG}:/mnt/config
+      - ${PSETI_CORE_OBS_CONFIGS}:/mnt/core_obs_configs:ro
+      # Shared with the headnode alloy service (read-only there) -- was
+      # missing entirely, so this service's own logs never reached the
+      # host path Alloy tails (same bug fixed for daqnode-server).
+      - /var/log/panoseti:/var/log/panoseti
+    environment:
+      REDIS_HOST: "127.0.0.1"
+      LOKI_URL: "http://127.0.0.1:3100/loki/api/v1/push"
+      PSETI_CONFIG: "/mnt/config"
+      PSETI_QUABOS: "/app/quabos"
+      PSETI_FIRMWARE: "/app/firmware"
+      SSH_AUTH_SOCK: "/run/host-ssh-agent"
+      IN_DOCKER_CI: "1"
+      LOCAL_UID: "${HOST_UID:-1000}"
+      LOCAL_GID: "${HOST_GID:-1000}"
+    entrypoint: ["/entrypoint-headnode-hw.sh"]
+    command: ["pseti-grpc", "server", "--config", "/app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml"]
+    restart: always
+
+  # ── DAQ Node Profile ───────────────────────────────────────────────────────
+  alloy-daqnode:
+    image: grafana/alloy:latest
+    profiles: ["daqnode"]
+    network_mode: host
+    restart: always
+    configs:
+      - source: alloy_config
+        target: /etc/alloy/config.alloy
+    volumes:
+      - /var/log/panoseti:/var/log/panoseti:ro
+    environment:
+      # Ships this DAQ node's own daq_control/daq_data logs to the
+      # headnode's Loki directly, in parallel with (eventually replacing)
+      # the legacy grpc_logging Log RPC forward path. See
+      # wiki_docs/Deploying-the-Modernized-Control-System.md §6.
+      HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
+    command: ["run", "/etc/alloy/config.alloy"]
+
+  daqnode-server:
+    image: pseti-daqnode:hitl
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: integration-daqnode
+      args:
+        LOCAL_UID: "${HOST_UID:-1000}"
+        LOCAL_GID: "${HOST_GID:-1000}"
+    profiles: ["daqnode"]
+    network_mode: host
+    user: root
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_NICE
+    shm_size: '2gb'
+    volumes:
+      - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
+      - ${PSETI_CONFIG}:/mnt/config:ro
+      - ${PSETI_CORE_OBS_CONFIGS}:/mnt/core_obs_configs:ro
+      # Shared with alloy-daqnode (read-only there) so its jsonl logs are
+      # actually visible to ship -- previously this mount was missing
+      # entirely and log_dir pointed at a container-local /tmp path, so
+      # this service's logs never reached the host at all.
+      - /var/log/panoseti:/var/log/panoseti
+    environment:
+      HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
+      GRPC_PORT: "50051"
+      HEADNODE_GRPC_PORT: "50051"
+      PSETI_CONFIG: "/mnt/config"
+      PSETI_QUABOS: "/app/quabos"
+      PSETI_FIRMWARE: "/app/firmware"
+      DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-test}"
+      GRPC_SERVER_CONFIG: "/app/src/ci/hardware_software/configs/grpc/grpc-server.daqnode.toml"
+      LOCAL_UID: "${HOST_UID:-1000}"
+      LOCAL_GID: "${HOST_GID:-1000}"
+    restart: always
+

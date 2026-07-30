@@ -1,0 +1,8 @@
+# Base Data Configuration Template
+run_type = "sci"
+detector_overvoltage = 3
+
+[image]
+integration_time_usec = 100000
+pe_threshold = 1.0
+quabo_sample_size = 16

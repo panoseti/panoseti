@@ -1,3 +1,31 @@
-logs/*
+# Logs
+*logs*
+
+# Symlinks
 hk
 run
+
+# Package info
+panoseti_control.egg-info
+
+# Testing artefacts
+<MagicMock*
+
+# Transient state
+tmp*
+
+# Operator reports
+*.png
+*.html
+topology_*.json
+
+# js and css 
+lib/
+lib/*.js
+lib/*.css
+
+# Transient operation state
+state/
+
+# pseti cfg edit's automatic pre-edit backups (any configs/ directory)
+*.bak-cfg-*

@@ -1,0 +1,65 @@
+# ── Global settings ──────────────────────────────────────────────────────────
+
+[settings]
+default_parallel = 4
+project_prefix = "pseti"
+
+# ── Physical Environments ────────────────────────────────────────────────────
+# Note: Environments for software-only tests are typically dynamic (testcontainers),
+# but some static integration environments may be defined here.
+
+# ── Test Suites ──────────────────────────────────────────────────────────────
+
+[suites.lint]
+description = "Static analysis (Ruff + MyPy)"
+type = "lint"
+requires_docker = true
+compose_file = "docker-compose.unit.yml"
+profiles = ["unit"]
+service = "unit-test-runner"
+tasks = { ruff = "/usr/bin/env UV_FROZEN=1 uv run ruff check . --fix --color=always", mypy = "/usr/bin/env UV_FROZEN=1 uv run mypy . --explicit-package-bases --color-output" }
+
+[suites.unit]
+description = "Tier 1: Parallel unit tests (Logic & Parsing)"
+type = "test"
+requires_docker = true
+compose_file = "docker-compose.unit.yml"
+profiles = ["unit"]
+service = "unit-test-runner"
+test_dir = "software_only/tier1_unit/"
+parallel = true
+
+[suites.logic]
+description = "Tier 2: Subsystem logic (Isolated State, Mocked gRPC)"
+type = "test"
+requires_docker = true
+compose_file = "docker-compose.unit.yml"
+profiles = ["unit"]
+service = "unit-test-runner"
+test_dir = "software_only/tier2_logic/"
+parallel = true
+
+[suites.fleet]
+description = "Tier 3: Distributed flows (Dynamic Fleets, Real gRPC)"
+type = "test"
+requires_docker = false
+test_dir = "software_only/tier3_fleet/"
+parallel = false
+
+[suites.chaos]
+description = "Tier 4: Fault injection (Active failure scenarios)"
+type = "test"
+requires_docker = false
+test_dir = "software_only/tier4_chaos/"
+env = { ENABLE_TELEMETRY_TESTS = "1" }
+
+[suites.integration]
+description = "Tier 5: Heavy Integration (Hashpipe, Static stack)"
+type = "test"
+service = "int-tester"
+requires_docker = true
+compose_file = "docker-compose.integration.yml"
+test_dir = "software_only/tier5_integration/"
+pytest_args = ["--ignore=integration/scenarios"]
+env = { HEAD_NET_PREFIX = "10.51.1", DAQ_NET_PREFIX = "172.25.0", QUABO_NET_PREFIX = "172.25.3", DAQNODE_DIRECT_HOST = "172.25.0.10", DAQNODE2_DIRECT_HOST = "172.25.0.20", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/integration_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/app/src/ci/fixtures/configs/direct", PSETI_LOGS = "/tmp/pseti_test/logs" }
+pre_run = "python3 /app/src/ci/tier5_setup.py"

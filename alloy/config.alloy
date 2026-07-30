@@ -1,0 +1,36 @@
+// /etc/alloy/config.alloy
+// Unified log aggregation for PANOSETI components.
+
+local.file_match "panoseti" {
+  path_targets = [{ "__path__" = "/var/log/panoseti/*.jsonl", "job" = "panoseti" }]
+}
+
+loki.source.file "panoseti" {
+  targets    = local.file_match.panoseti.targets
+  forward_to = [loki.process.panoseti.receiver]
+}
+
+loki.process "panoseti" {
+  stage.json {
+    expressions = { 
+      message = "message",
+      service = "service", 
+      level = "level", 
+      git_commit = "git_commit", 
+      run_id = "run_id", 
+    }
+  }
+  stage.labels {
+    values = { service = "service", level = "level", git_commit = "git_commit", }
+  }
+  stage.static_labels {
+    values = { hostname = env("HOSTNAME") }
+  }
+  stage.output { source = "message" }
+  forward_to = [loki.write.headnode.receiver]
+}
+
+loki.write "headnode" {
+  endpoint { url = "http://loki:3100/loki/api/v1/push" }
+  external_labels = { cluster = "panoseti" }
+}
