@@ -45,7 +45,7 @@ class tftpw:
     def get_flashuid(self, filename: str = 'flashuid') -> None:
         self.logger.info(f'get_flashuid: filename - {filename}')
         self.client.download('/flashuid', filename, timeout=3)
-        print('Get flash Device ID successfully!')
+        self.logger.info('Get flash Device ID successfully!')
     
     #get wrpc_filesys
     #space     : 0x00E00000--0x00F0FFFF
@@ -69,7 +69,7 @@ class tftpw:
                     #write the data to the final file
                     fp_w.write(data)
         os.remove('tmp')
-        print('Download wrpc file system successfully!')
+        self.logger.info('Download wrpc file system successfully!')
         
     #get mb_file 
     #space    : 0x00F10000--0x0100FFFF
@@ -93,7 +93,7 @@ class tftpw:
                     #write the data to the final file
                     fp_w.write(data)
         os.remove('tmp')
-        print('Download mb file successfully!')
+        self.logger.info('Download mb file successfully!')
         
     #put wprc_filesys, starting from 0x00E00000
     def put_wrpc_filesys(self, filename: str = 'wrpc_filesys', addr: int = 0x00E00000) -> None:
@@ -104,7 +104,7 @@ class tftpw:
         size = os.path.getsize(filename)
         #check the size of wrpc_filesys
         if size != 0x110000 :
-            print('The size of wrpc_filesys is incorrect, please check it!')
+            self.logger.error('The size of wrpc_filesys is incorrect, please check it!')
             return
         self.client.upload(remote_filename, filename)    
         # print('Upload %s to panoseti wrpc_filesys space successfully!' %filename)
@@ -118,10 +118,10 @@ class tftpw:
         size = os.path.getsize(filename)
         #check the size of mb_file
         if size > 0x100000 :
-            print('The size of mb file is too large, and it will mess up other parts on the flash chip!')
+            self.logger.error('The size of mb file is too large, and it will mess up other parts on the flash chip!')
             return
         self.client.upload(remote_filename, filename)
-        print(f'Upload {filename} to panoseti mb_file space successfully!')
+        self.logger.info(f'Upload {filename} to panoseti mb_file space successfully!')
         
     #put bin file,starting from 0x01010000
     def put_bin_file(self, filename: str, addr: int = 0x01010000) -> None:
@@ -130,7 +130,7 @@ class tftpw:
         remote_filename = '/flash.' + offset[2:]
         #print('remote_filename :',remote_filename)
         self.client.upload(remote_filename, filename)
-        print(f'Upload {filename} to panoseti bin file space successfully!')
+        self.logger.info(f'Upload {filename} to panoseti bin file space successfully!')
         
     def reboot(self, addr: int = 0x00010100) -> None:
         self.logger.info(f'reboot: addr - 0x{addr:08x}')
