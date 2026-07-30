@@ -1232,7 +1232,7 @@ wheels = [
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.12"
+version = "0.4.14"
 source = { editable = "../grpc" }
 dependencies = [
     { name = "anyio" },
