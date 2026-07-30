@@ -1,3 +1,4 @@
+import importlib.metadata
 import sys
 from typing import Annotated, Any
 
@@ -10,6 +11,12 @@ if "--no-env" not in sys.argv:
 
 import typer
 from panoseti_grpc.util.cli import BaseLazyGroup, display_tree_callback
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"pseti {importlib.metadata.version('pseti-ctl')}")
+        raise typer.Exit()
 
 
 class PanoLazyGroup(BaseLazyGroup):
@@ -61,7 +68,16 @@ app = typer.Typer(
 def main_callback(
     ctx: typer.Context,
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree and exit.", callback=display_tree_callback)] = False,
-    no_env: Annotated[bool, typer.Option("--no-env", help="Disable automatic loading of .env files.")] = False
+    no_env: Annotated[bool, typer.Option("--no-env", help="Disable automatic loading of .env files.")] = False,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Print the installed pseti-ctl package version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = False,
 ) -> None:
     """PSETI Control Plane."""
     pass

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pseti-ctl"
-version = "0.1.0"
+version = "0.1.1"
 description = "PANOSETI observatory instrument control system"
 requires-python = ">=3.14"
 dependencies = [
