@@ -431,9 +431,9 @@ def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, daq_config
             quabo.hk_packet_destination(ip_address(headnode_ip_addr))
             quabo.close()
 
-def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfig, verbose: bool = False) -> None:
+def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfig, verbose: bool = False, non_interactive: bool = False) -> None:
     """Enable high voltage (HV) for all detectors in multiple modules.
-    
+
     Calculates DAC values based on per-detector operating voltages.
 
     Args:
@@ -443,6 +443,8 @@ def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
         detector_info: Dictionary of per-detector operating voltages.
         network_config: Network routing rules.
         verbose: If True, prints HV settings for each Quabo.
+        non_interactive: If True, uses default detector info if a Quabo's
+            UID is missing from quabo_info instead of asking.
     """
     for module in modules:
         m_ip = str(module.ip_addr)
@@ -450,14 +452,26 @@ def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '':
                 continue
-            qi = quabo_info[uid]
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
+            try:
+                qi = quabo_info[uid]
+            except KeyError:
+                logger.warning(f"No detector info found for {ip_addr} (UID {uid}).")
+                if non_interactive:
+                    logger.warning(f"Using default detector info for {ip_addr} (non-interactive mode).")
+                    use_default = True
+                else:
+                    use_default = ask_use_default_calibration(ip_addr)
+                if use_default:
+                    qi = quabo_info['default']
+                else:
+                    raise Exception(f'No detector info is found for {ip_addr}') from None
             v = [0]*4
             for j in range(4):
                 det_ser = qi['detector_serialno'][j]
                 op_voltage = detector_info[str(det_ser)]
                 # DAC LSB is 0.0011324717, instead of 0.00114
                 v[j] = int(op_voltage/0.0011324717)
-            ip_addr = config_file.quabo_ip_addr(m_ip, i)
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
