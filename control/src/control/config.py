@@ -836,17 +836,38 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
     Args:
         data_config: Science/engineering acquisition parameters.
         daq_config: DAQ node configuration with data paths.
-        verbose: If True, prints per-node volume details.
+        verbose: If True, prints a colon-aligned report of the per-node
+            volume details.
 
     Returns:
         Estimated recording time in hours.
     """
     logger.info('Check disk space.')
     bps = util.daq_bytes_per_sec_per_module(data_config)
-    if verbose:
-        logger.info(f'Data rate per module: {bps/1e6:.2f} MB/sec')
     nmod_total = 0
     available_hours = 1e9
+
+    # The head node's data volume is whatever daq_config.json names as
+    # head_node_data_dir -- query its actual free/used/total space by
+    # running `df` (util.get_volume_disk_usage()) rather than reading a
+    # hardcoded, site-specific snapshot file. Resolved up front so the
+    # report can lead with *where* the data goes before the numbers that
+    # describe it.
+    hnd = os.path.realpath(str(daq_config.head_node_data_dir))
+    usage = util.get_volume_disk_usage(hnd)
+    hfree = usage['free']
+
+    # (label, value) pairs, logged in one pass at the end so the colons can
+    # be aligned to a common column (logger.info(f'{label}: {value}') calls
+    # made one at a time can't do this -- the RichHandler prefixes every
+    # line with its own [time]/[level]/[name] columns, so each line's label
+    # starts at the same terminal column but has no way to know how wide
+    # the *widest* label across the whole report will be until they're all
+    # collected).
+    fields: list[tuple[str, str]] = [
+        ('Head node data dir', hnd),
+        ('Data rate per module', f'{bps/1e6:.2f} MB/sec'),
+    ]
 
     # loop over DAQ nodes
     #
@@ -854,11 +875,8 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
         # Check if this node has any modules assigned (node.modules is a list of Any)
         if not node.modules:
             continue
-        nmod = len(node.modules)
-        nmod_total += nmod
+        nmod_total += len(node.modules)
         ip_addr = str(node.ip_addr)
-        if verbose:
-            logger.info(f'DAQ node {ip_addr}: {nmod} modules')
 
         # get list of volumes on the DAQ node
         #
@@ -888,51 +906,35 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
             if not found and default_vol:
                 default_vol['mods_here'].append(mid)
 
-        for name in vols:
-            vol = vols[name]
+        for name, vol in vols.items():
             free = vol['free']
             mods_here_list = vol.get('mods_here', [])
-            nmods = len(mods_here_list)
-            if verbose:
-                logger.info(f'   {name}:')
-            if nmods:
-                t = free/(3600.*bps*nmods)
-                if verbose:
-                    logger.info(f'      modules: {mods_here_list}')
-                    logger.info(f'      space: {free/1e12:.2f}TB ({t:.2f} hours)')
+            if mods_here_list:
+                t = free/(3600.*bps*len(mods_here_list))
                 if t < available_hours:
                     available_hours = t
+                value = f'{free/1e12:.2f}TB free, modules {mods_here_list} ({t:.2f} hours)'
             else:
-                if verbose:
-                    logger.info(f'      space: {free/1e12:.2f}TB')
-    # The head node's data volume is whatever daq_config.json names as
-    # head_node_data_dir -- query its actual free/used/total space by
-    # running `df` (util.get_volume_disk_usage()) rather than reading a
-    # hardcoded, site-specific snapshot file.
-    hnd = os.path.realpath(str(daq_config.head_node_data_dir))
-    logger.info('head node:')
-    usage = util.get_volume_disk_usage(hnd)
-    hfree = usage['free']
-    if verbose:
-        logger.info(f'   {hnd}')
+                value = f'{free/1e12:.2f}TB free (no modules assigned)'
+            fields.append((f'DAQ {ip_addr} ({name})', value))
+
     if nmod_total:
         # Same "no modules -> can't estimate hours, just show space" pattern
-        # as the per-DAQ-node-volume loop above (nmods == 0 branch) --
-        # nmod_total is 0 when no DAQ node has any modules assigned, and
-        # dividing by it would be a ZeroDivisionError.
+        # as the per-DAQ-node-volume loop above -- nmod_total is 0 when no
+        # DAQ node has any modules assigned, and dividing by it would be a
+        # ZeroDivisionError.
         t = hfree/(3600*bps*nmod_total)
         if t < available_hours:
             available_hours = t
-        if verbose:
-            logger.info(
-                f'      space: {hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB '
-                f'({t:.2f} hours)'
-            )
-    elif verbose:
-        logger.info(f'      space: {hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB')
+        fields.append(('Available Space', f'{hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB ({t:.2f} hours)'))
+    else:
+        fields.append(('Available Space', f'{hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB'))
 
     if verbose:
-        logger.info(f'---------------\nAvailable recording time: {available_hours:.2f} hours')
+        width = max(len(label) for label, _ in fields) + 1
+        for label, value in fields:
+            logger.info(f'{label:<{width}}: {value}')
+        logger.info(f'Available recording time: {available_hours:.2f} hours')
     return available_hours
 
 
