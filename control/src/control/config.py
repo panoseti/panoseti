@@ -971,10 +971,17 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
 def do_shutter(action: str) -> None:
     from control.tools import shutter
     shutter_path = (Path(shutter.__file__)) # resolve absolute shutter.py path
+    # Launch with sys.executable, not the bare path -- running shutter_path
+    # directly relies on its "#!/usr/bin/env python3" shebang, which
+    # resolves via the *subprocess's* $PATH at launch time and may pick a
+    # different interpreter than the one running `pseti` itself (e.g. a
+    # system python3 with no panoseti_grpc installed, vs. the venv/conda
+    # env pseti is actually running in) -- same class of bug documented for
+    # util.start_daemon()'s list form.
     if action == "open":
-        subprocess.run([shutter_path, "--open"])
+        subprocess.run([sys.executable, str(shutter_path), "--open"])
     elif action == "close":
-        subprocess.run([shutter_path, "--close"])
+        subprocess.run([sys.executable, str(shutter_path), "--close"])
     else:
         raise ValueError(f"{action=} but must be 'open' or 'close'")
 
@@ -1036,9 +1043,18 @@ def do_dry_run_interleave() -> None:
     """Runs the interleaver in the foreground for 2 cycles without hardware commands."""
     logger.info("Starting interleave DRY RUN (2 cycles) in the foreground...")
 
+    from control.tools import interleave
+    interleave_script_path = str(Path(interleave.__file__))
+
+    # sys.executable (not the bare string 'python3') and an absolute path
+    # (not the CWD-relative 'tools/interleave.py') -- a bare 'python3'
+    # resolves via the *subprocess's* $PATH at launch time, which may not
+    # be the interpreter running `pseti` itself (same class of bug fixed in
+    # do_shutter()); the relative path only worked when launched from
+    # control/, per this module's CWD contract.
     # We use subprocess.run to block and stream output directly to the console for CI tools
     result = subprocess.run(
-        ['python3', 'tools/interleave.py', '--dry-run', '--max-cycles', '2']
+        [sys.executable, interleave_script_path, '--dry-run', '--max-cycles', '2']
     )
 
     if result.returncode == 0:
