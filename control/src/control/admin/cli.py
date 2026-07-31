@@ -289,10 +289,12 @@ def get_headnode_compose_env() -> dict[str, str] | None:
 
 # Services in docker-compose.headnode.yml that a deployment may already run
 # bare-metal elsewhere and want to skip starting a duplicate of here.
-# loki/alloy/headnode-server are never optional: alloy is the log-shipping
-# path this whole stack exists to provide, and headnode-server is the gRPC
-# server pseti admin deploy is fundamentally deploying.
-_HEADNODE_OPTIONAL_SERVICES = ("redis", "influxdb", "grafana")
+# loki/alloy are never optional: alloy is the log-shipping path this whole
+# stack exists to provide, and loki is where it ships to. headnode-server
+# (the gRPC server) is optional too -- a deployment may run it bare-metal
+# (see deploy_node()'s --mode bare-metal branch) while still wanting this
+# compose stack for observability only.
+_HEADNODE_OPTIONAL_SERVICES = ("redis", "influxdb", "grafana", "headnode-server")
 
 
 def _headnode_enabled_services() -> list[str] | None:
@@ -326,7 +328,7 @@ def _headnode_enabled_services() -> list[str] | None:
             f"[yellow][headnode][/yellow] Skipping service(s) already running "
             f"elsewhere: {', '.join(sorted(disabled))}"
         )
-    return [*enabled_optional, "loki", "alloy", "headnode-server"]
+    return [*enabled_optional, "loki", "alloy"]
 
 
 async def deploy_headnode_async(mode: str) -> bool:
