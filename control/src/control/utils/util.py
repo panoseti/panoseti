@@ -681,6 +681,35 @@ def free_space(path: str) -> int:
     return free
 
 
+def get_volume_disk_usage(path: str) -> dict[str, int]:
+    """Get total/used/free space (bytes) for the volume backing `path` by running `df`.
+
+    Uses `df` (same `-B1 --output=...` invocation as
+    `ci/fixtures/chaos/disk_chaos.py::fill_volume`) rather than
+    `shutil.disk_usage` so this reflects whatever `df` reports for the
+    mount -- e.g. quota-limited NFS/CIFS mounts where the raw statvfs
+    numbers `shutil.disk_usage`/`free_space()` read can disagree with the
+    space actually available to this user.
+
+    Args:
+        path: Any path on the volume to query (need not be the mount point
+            itself -- `df` resolves it).
+
+    Returns:
+        Dict with 'total', 'used', 'free' keys (bytes).
+
+    Raises:
+        subprocess.CalledProcessError: If `df` exits non-zero (e.g. path
+            doesn't exist).
+    """
+    result = subprocess.run(
+        ["df", "-B1", "--output=size,used,avail", os.path.realpath(path)],
+        capture_output=True, text=True, check=True,
+    )
+    total_str, used_str, free_str = result.stdout.strip().splitlines()[-1].split()
+    return {"total": int(total_str), "used": int(used_str), "free": int(free_str)}
+
+
 # estimate bytes per second per module for a given data config
 def daq_bytes_per_sec_per_module(data_config: DataConfig) -> float:
     """Estimate the data generation rate (bytes per second) per module.

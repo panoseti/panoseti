@@ -905,25 +905,23 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
             else:
                 if verbose:
                     logger.info(f'      space: {free/1e12:.2f}TB')
-    # TODO: this is hard-coded??
-    with open("/home/panosetigraph/web/head_node_volumes.json") as f:
-        head_node_vols = json.loads(f.read())
-    hnd = str(daq_config.head_node_data_dir)
-    hnd = os.path.realpath(hnd)
+    # The head node's data volume is whatever daq_config.json names as
+    # head_node_data_dir -- query its actual free/used/total space by
+    # running `df` (util.get_volume_disk_usage()) rather than reading a
+    # hardcoded, site-specific snapshot file.
+    hnd = os.path.realpath(str(daq_config.head_node_data_dir))
     logger.info('head node:')
-    for vol in head_node_vols:
-        path = f'/home/panosetigraph/web/{vol}/data'
-        path = os.path.realpath(path)
-        hfree = util.free_space(path)
-        if verbose:
-            logger.info(f'   {path} ({vol})')
-        t = hfree/(3600*bps*nmod_total)
-        if hnd == path:
-            if t < available_hours:
-                available_hours = t
-            if verbose:
-                logger.info('      selected for write')
-        logger.info(f'      space: {hfree/1e12:.2f}TB ({t:.2f} hours)')
+    usage = util.get_volume_disk_usage(hnd)
+    hfree = usage['free']
+    t = hfree/(3600*bps*nmod_total)
+    if t < available_hours:
+        available_hours = t
+    if verbose:
+        logger.info(f'   {hnd}')
+        logger.info(
+            f'      space: {hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB '
+            f'({t:.2f} hours)'
+        )
 
     if verbose:
         logger.info(f'---------------\nAvailable recording time: {available_hours:.2f} hours')
