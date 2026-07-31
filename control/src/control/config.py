@@ -913,15 +913,23 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
     logger.info('head node:')
     usage = util.get_volume_disk_usage(hnd)
     hfree = usage['free']
-    t = hfree/(3600*bps*nmod_total)
-    if t < available_hours:
-        available_hours = t
     if verbose:
         logger.info(f'   {hnd}')
-        logger.info(
-            f'      space: {hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB '
-            f'({t:.2f} hours)'
-        )
+    if nmod_total:
+        # Same "no modules -> can't estimate hours, just show space" pattern
+        # as the per-DAQ-node-volume loop above (nmods == 0 branch) --
+        # nmod_total is 0 when no DAQ node has any modules assigned, and
+        # dividing by it would be a ZeroDivisionError.
+        t = hfree/(3600*bps*nmod_total)
+        if t < available_hours:
+            available_hours = t
+        if verbose:
+            logger.info(
+                f'      space: {hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB '
+                f'({t:.2f} hours)'
+            )
+    elif verbose:
+        logger.info(f'      space: {hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB')
 
     if verbose:
         logger.info(f'---------------\nAvailable recording time: {available_hours:.2f} hours')
