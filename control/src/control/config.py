@@ -24,7 +24,9 @@ from panoseti_grpc.util.cli import BaseLazyGroup
 
 from control.driver import quabo_driver
 from control.driver.quabo_tftp import tftpw
-from control.utils import config_file, file_xfer, pixel_coords, util
+from control.utils import config_file, pixel_coords, util
+# file_xfer is only used by the deprecated init_daq_nodes() command below.
+# from control.utils import file_xfer
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfig,
@@ -50,7 +52,9 @@ class ConfigLazyGroup(BaseLazyGroup):
             "reboot": ("control.config", "reboot", "Reboot quabos."),
             "reboot-single": ("control.config", "reboot_single", "Reboot a single quabo."),
             "loads": ("control.config", "loads", "Load silver firmware in quabos."),
-            "init-daq-nodes": ("control.config", "init_daq_nodes", "Copy software to daq nodes."),
+            # "init-daq-nodes" is deprecated -- see the commented-out init_daq_nodes()
+            # command below.
+            # "init-daq-nodes": ("control.config", "init_daq_nodes", "Copy software to daq nodes."),
             "hk-dest": ("control.config", "hk_dest", "Set the dest IP for HK packet."),
             "redis-daemons": ("control.config", "redis_daemons", "Start background HK/GPS/WR/Influx daemons."),
             "stop-redis-daemons": ("control.config", "stop_redis_daemons", "Stop background Redis daemons."),
@@ -1088,12 +1092,14 @@ def loads() -> None:
     network_config = config_file.get_network_config()
     do_loads(modules, quabo_uids, quabo_info, network_config)
 
-@app.command()
-def init_daq_nodes() -> None:
-    """Copy software to daq nodes."""
-    logger.info('Init daq nodes.')
-    daq_config = config_file.get_daq_config()
-    file_xfer.copy_daq_files(daq_config)
+# Deprecated: "pseti cfg init-daq-nodes" is no longer wired up (see the
+# commented-out lazy_mapping entry in ConfigLazyGroup above).
+# @app.command()
+# def init_daq_nodes() -> None:
+#     """Copy software to daq nodes."""
+#     logger.info('Init daq nodes.')
+#     daq_config = config_file.get_daq_config()
+#     file_xfer.copy_daq_files(daq_config)
 
 @app.command()
 def hk_dest() -> None:
