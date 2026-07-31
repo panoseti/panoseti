@@ -926,15 +926,15 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
         t = hfree/(3600*bps*nmod_total)
         if t < available_hours:
             available_hours = t
-        fields.append(('Available Space', f'{hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB ({t:.2f} hours)'))
+        fields.append(('Available space', f'{hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB ({t:.2f} hours)'))
     else:
-        fields.append(('Available Space', f'{hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB'))
+        fields.append(('Available space', f'{hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB'))
 
     if verbose:
+        fields.append(('Available recording time', f'{available_hours:.2f} hours'))
         width = max(len(label) for label, _ in fields) + 1
         for label, value in fields:
             logger.info(f'{label:<{width}}: {value}')
-        logger.info(f'Available recording time: {available_hours:.2f} hours')
     return available_hours
 
 
