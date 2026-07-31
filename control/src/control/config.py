@@ -768,6 +768,9 @@ def do_calibrate_ph(
         min_baseline: Minimum allowed baseline value (default 600).
         max_baseline: Maximum allowed baseline value (default 800).
         strict: If True, raises an error if validation fails.
+
+    A Quabo that doesn't respond (powered off/unreachable) logs a warning
+    and is skipped rather than aborting calibration for the rest.
     """
     quabos: list[dict[str, Any]] = []
     for module in modules:
@@ -784,7 +787,16 @@ def do_calibrate_ph(
             logger.debug(f'Real IP: {real_ip}')
             logger.debug(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
-            coefs = quabo.calibrate_ph_baseline()
+            try:
+                coefs = quabo.calibrate_ph_baseline()
+            except (TimeoutError, OSError):
+                logger.warning(
+                    f"No response from Quabo {ip_addr} while calibrating PH baseline "
+                    f"(timed out waiting for a reply). Check that the device is powered "
+                    f"on and reachable, then re-run calibration for it. Skipping for now."
+                )
+                quabo.close()
+                continue
             quabo.close()
             q: dict[str, Any] = {}
             q['uid'] = uid
