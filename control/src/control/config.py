@@ -993,7 +993,7 @@ def do_start_interleave() -> None:
         sys.exit(1)
 
     if not os.path.exists("tmp/current_run") and not os.path.exists(PanoPaths.tmp_dir() / STATE_FILE):
-        logger.error("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
+        logger.error("ERROR: Cannot start interleaving. No active observation running. Run 'pseti start' first.")
         sys.exit(1)
 
     # Validate interleave config before starting
