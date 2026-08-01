@@ -213,7 +213,8 @@ def _docker_context_create_hint(host: str, context: str) -> str:
         if pf is not None and pf.status and pf.port is not None:
             return (
                 f"Port forwarding is enabled for {host} -- it's only reachable via "
-                f"gateway {pf.gw_ip}:{pf.port}. Create the context against the gateway instead:\n"
+                f"gateway {pf.gw_ip}:{pf.port}.\n"
+                f"Create the context against the gateway instead:\n"
                 f"    docker context create {context} --docker \"host=ssh://<user>@{pf.gw_ip}:{pf.port}\""
             )
     except Exception:
