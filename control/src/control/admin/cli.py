@@ -188,6 +188,39 @@ def get_docker_context_for_node(host: str) -> str:
         pass
     return f"pseti-daq-{host.replace('.', '-')}"
 
+
+def _docker_context_create_hint(host: str, context: str) -> str:
+    """Build the "docker context create" suggestion printed when a node's context is missing.
+
+    `host` is typically the DAQ node's internal IP (daq_config.json's
+    ip_addr). If network_config.json's port_forwarding is enabled for this
+    node, that address is only reachable *through* a gateway -- pointing
+    docker context create at `host` directly (the naive default) would
+    create a context that can never actually connect. Point it at the
+    gateway's SSH endpoint instead, same resolution
+    `_resolve_bare_metal_ssh_target()` applies for `--mode bare-metal`.
+    Falls back to the plain host if no forwarding is configured, or if
+    daq_config/network_config can't be loaded.
+    """
+    try:
+        from control.utils.config_file import get_daq_config, get_network_config
+        from control.utils.util import attach_daq_config
+        daq_config = get_daq_config()
+        network_config = get_network_config()
+        attach_daq_config(daq_config, network_config)
+        node = daq_config.get_node_by_ip(host)
+        pf = node.port_forwarding
+        if pf is not None and pf.status and pf.port is not None:
+            return (
+                f"Port forwarding is enabled for {host} -- it's only reachable via "
+                f"gateway {pf.gw_ip}:{pf.port}. Create the context against the gateway instead:\n"
+                f"    docker context create {context} --docker \"host=ssh://<user>@{pf.gw_ip}:{pf.port}\""
+            )
+    except Exception:
+        pass
+    return f"    docker context create {context} --docker \"host=ssh://<user>@{host}\""
+
+
 async def _run_node_job(label: str, coro: Coroutine[Any, Any, bool | None], results: dict[str, bool]) -> None:
     """Run one node's build/deploy job under a TaskGroup, recording its outcome.
 
@@ -487,7 +520,7 @@ async def deploy_node(host: str, mode: str, dry_run: bool = False) -> bool:
         )
         if context not in res.stdout:
             console.print(f"[[yellow]{host}[/yellow]] Docker context '{context}' not found. Please create it first:")
-            console.print(f"    docker context create {context} --docker \"host=ssh://<user>@{host}\"")
+            console.print(_docker_context_create_hint(host, context))
             return False
 
         env = _daq_compose_env()
