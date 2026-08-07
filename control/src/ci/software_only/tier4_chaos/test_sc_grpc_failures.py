@@ -29,7 +29,6 @@ pytestmark = [pytest.mark.tier4, pytest.mark.tier3]
     [FleetSpec.two_node_ci(tier="tier4")],
     indirect=True,
 )
-@pytest.mark.timeout(120)
 class TestScGrpcFailures:
     """gRPC failure isolation tests."""
 

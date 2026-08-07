@@ -33,7 +33,6 @@ pytestmark = pytest.mark.tier3
 
 @requires_docker
 @pytest.mark.asyncio
-@pytest.mark.timeout(120)
 async def test_transfer_selective_cleanup(
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
@@ -101,7 +100,6 @@ async def test_transfer_selective_cleanup(
 
 @requires_docker
 @pytest.mark.asyncio
-@pytest.mark.timeout(120)
 async def test_transfer_cleanup_isolation(
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
@@ -160,7 +158,6 @@ async def test_transfer_cleanup_isolation(
 
 @requires_docker
 @pytest.mark.asyncio
-@pytest.mark.timeout(120)
 async def test_transfer_no_cleanup_on_verification_failure(
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,

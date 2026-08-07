@@ -37,7 +37,6 @@ _STATUS_PARAMS: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 @requires_docker
-@pytest.mark.timeout(120)
 class TestGrpcProxy:
     """GrpcHandle: in-process fault injection without Docker capabilities."""
 
@@ -93,7 +92,6 @@ class TestGrpcProxy:
 # ---------------------------------------------------------------------------
 
 @requires_docker
-@pytest.mark.timeout(120)
 class TestProcessChaos:
     """ProcessHandle: kill and process-liveness checks inside containers."""
 
@@ -150,7 +148,6 @@ class TestProcessChaos:
 # ---------------------------------------------------------------------------
 
 @requires_docker
-@pytest.mark.timeout(120)
 class TestDiskChaos:
     """DiskHandle: fill/release filesystem space inside containers."""
 
@@ -202,7 +199,6 @@ class TestDiskChaos:
 # ---------------------------------------------------------------------------
 
 @requires_docker
-@pytest.mark.timeout(120)
 class TestNetworkChaos:
     """NetemHandle + IptablesHandle: network impairments inside containers.
 

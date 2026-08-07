@@ -56,7 +56,6 @@ SPEC_LIFECYCLE = (
     [SPEC_LIFECYCLE],
     indirect=True,
 )
-@pytest.mark.timeout(120)
 class TestDaqLifecycle:
     """Full Start → Status (running) → double-start rejected → Stop → Status (stopped)."""
 

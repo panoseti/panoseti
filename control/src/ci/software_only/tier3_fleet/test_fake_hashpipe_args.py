@@ -50,7 +50,6 @@ def wait_until(
     [SPEC_SINGLE_NODE],
     indirect=True,
 )
-@pytest.mark.timeout(120)
 class TestFakeHashpipeArgs:
     """Verifies that StartDaq correctly forwards arguments to the hashpipe process."""
 

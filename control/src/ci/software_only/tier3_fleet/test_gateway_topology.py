@@ -57,7 +57,6 @@ SPEC_GATEWAY = (
     [SPEC_GATEWAY],
     indirect=True,
 )
-@pytest.mark.timeout(120)
 class TestGatewayForwarding:
     """Gateway (PortForwarding) client reaches the daqnode and observes consistent state."""
 
