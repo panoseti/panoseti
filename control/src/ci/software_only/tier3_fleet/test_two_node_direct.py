@@ -22,6 +22,7 @@ pytestmark = pytest.mark.tier3
     [FleetSpec.two_node_ci(tier="tier3")],
     indirect=True,
 )
+@pytest.mark.timeout(120)
 class TestTwoNodeDirect:
     """Two DAQ nodes can be managed completely independently."""
 

@@ -112,8 +112,9 @@ def test_admin_down_all(mock_get_daq_config, mock_is_local, mock_get_ctx):
 def test_admin_deploy_headnode_disable_services():
     """PSETI_HEADNODE_DISABLE_SERVICES should omit named services from the
     compose `up` command's service args while still including the
-    never-optional ones (loki, alloy, headnode-server) and any optional
-    service *not* named (grafana)."""
+    never-optional ones (loki, alloy) and any optional service *not* named
+    here (grafana, headnode-server -- the latter is itself disableable via
+    this same env var, just not exercised by this test case)."""
     with _mock_create_subprocess_exec() as mock_exec:
         result = runner.invoke(app, ["deploy", "headnode"])
         assert result.exit_code == 0, f"Command failed: {result.stdout}"

@@ -25,6 +25,7 @@ requires_docker = pytest.mark.requires_docker
 
 @requires_docker
 @pytest.mark.asyncio
+@pytest.mark.timeout(120)
 async def test_when_pff_corrupted_after_transfer_then_verify_fails_and_cleanup_skipped(
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,
@@ -115,6 +116,7 @@ async def test_when_pff_corrupted_after_transfer_then_verify_fails_and_cleanup_s
 
 @requires_docker
 @pytest.mark.asyncio
+@pytest.mark.timeout(120)
 async def test_when_cleanup_dag_rejects_digest_then_job_fails(
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,

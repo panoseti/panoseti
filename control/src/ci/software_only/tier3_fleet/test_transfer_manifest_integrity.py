@@ -24,6 +24,7 @@ requires_docker = pytest.mark.requires_docker
 
 @requires_docker
 @pytest.mark.asyncio
+@pytest.mark.timeout(120)
 async def test_when_poisoned_manifest_on_daq_node_then_grpc_content_wins(
     session_fleet: Fleet,
     mock_rsync_transfer: RsyncMock,

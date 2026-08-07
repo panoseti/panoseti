@@ -41,6 +41,7 @@ def wait_until(
     [FleetSpec.minimal_fleet()],
     indirect=True,
 )
+@pytest.mark.timeout(120)
 class TestConcurrentDaqOperations:
     """Server must serialize concurrent StartDaq requests."""
 
