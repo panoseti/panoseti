@@ -246,14 +246,14 @@ wheels = [
 
 [[package]]
 name = "click"
-version = "8.4.2"
+version = "8.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/76/d4/81420972a676e8ffea40450d8c8c92943e7218a78fe9b64359836cc9876b/click-8.4.2.tar.gz", hash = "sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6", size = 338000, upload-time = "2026-06-24T17:45:15.148Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/63/f9e1ea081ce35720d8b92acde70daaedace594dc93b693c869e0d5910718/click-8.3.3.tar.gz", hash = "sha256:398329ad4837b2ff7cbe1dd166a4c0f8900c3ca3a218de04466f38f6497f18a2", size = 328061, upload-time = "2026-04-22T15:11:27.506Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/e2/79c688af8b210d232694e31e59da9f6ec747bae31c3f5946e4e9b98860d5/click-8.4.2-py3-none-any.whl", hash = "sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76", size = 119243, upload-time = "2026-06-24T17:45:13.73Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/44/c1221527f6a71a01ec6fbad7fa78f1d50dfa02217385cf0fa3eec7087d59/click-8.3.3-py3-none-any.whl", hash = "sha256:a2bf429bb3033c89fa4936ffb35d5cb471e3719e1f3c8a7c3fff0b8314305613", size = 110502, upload-time = "2026-04-22T15:11:25.044Z" },
 ]
 
 [[package]]
@@ -1232,7 +1232,7 @@ wheels = [
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.15"
+version = "0.4.16"
 source = { editable = "../grpc" }
 dependencies = [
     { name = "anyio" },
@@ -1266,7 +1266,7 @@ dependencies = [
 requires-dist = [
     { name = "anyio" },
     { name = "blake3" },
-    { name = "click" },
+    { name = "click", specifier = ">=8.3,<8.4" },
     { name = "coverage", specifier = ">=7.10.7" },
     { name = "cython" },
     { name = "gitpython" },
@@ -1296,7 +1296,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
     { name = "sphinx", marker = "extra == 'docs'" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'" },
-    { name = "typer" },
+    { name = "typer", specifier = ">=0.24,<0.25" },
     { name = "types-protobuf" },
     { name = "types-protobuf", marker = "extra == 'dev'" },
     { name = "wheel" },
@@ -1459,6 +1459,7 @@ source = { editable = "." }
 dependencies = [
     { name = "astropy" },
     { name = "blake3" },
+    { name = "click" },
     { name = "docker" },
     { name = "filelock" },
     { name = "gitpython" },
@@ -1510,6 +1511,7 @@ dev = [
 requires-dist = [
     { name = "astropy", specifier = ">=5.2" },
     { name = "blake3" },
+    { name = "click", specifier = ">=8.3,<8.4" },
     { name = "docker", specifier = ">=7.0" },
     { name = "docker", specifier = ">=7.1.0" },
     { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.26" },
@@ -1547,7 +1549,7 @@ requires-dist = [
     { name = "testcontainers", extras = ["redis"], marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "textual" },
     { name = "tftpy", specifier = ">=0.8.2" },
-    { name = "typer" },
+    { name = "typer", specifier = ">=0.24,<0.25" },
     { name = "types-paramiko", marker = "extra == 'dev'" },
     { name = "types-requests", marker = "extra == 'dev'" },
     { name = "typing-extensions", specifier = ">=4.5" },
@@ -2241,17 +2243,17 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.27.1"
+version = "0.24.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "click" },
     { name = "rich" },
     { name = "shellingham" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ae/40/4a3db7990d1f62a53182aa96eaef57aeb2886a27f90a195bc66713565d31/typer-0.27.1.tar.gz", hash = "sha256:a79bef8469a79c45498e7b814ecf8d603cc7644e9acbd9e19cac0334240b18df", size = 203994, upload-time = "2026-08-03T14:41:03.438Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/b8/9ebb531b6c2d377af08ac6746a5df3425b21853a5d2260876919b58a2a4a/typer-0.24.2.tar.gz", hash = "sha256:ec070dcfca1408e85ee203c6365001e818c3b7fffe686fd07ff2d68095ca0480", size = 119849, upload-time = "2026-04-22T17:45:34.413Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/43/89/9518bc0c3929bee36b3a4a8e3daddd6e03f92f9961c66d4983b837160543/typer-0.27.1-py3-none-any.whl", hash = "sha256:53150287edd11baeb4e4722c8e394fcdf8181c0ae89485cba8d25c778d5edd56", size = 122874, upload-time = "2026-08-03T14:41:04.391Z" },
+    { url = "https://files.pythonhosted.org/packages/39/d1/9484b497e0a0410b901c12b8251c3e746e1e863f7d28419ffe06f7892fda/typer-0.24.2-py3-none-any.whl", hash = "sha256:b618bc3d721f9a8d30f3e05565be26416d06e9bcc29d49bc491dc26aba674fa8", size = 55977, upload-time = "2026-04-22T17:45:33.055Z" },
 ]
 
 [[package]]
