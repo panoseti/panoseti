@@ -867,19 +867,39 @@ def status(
             env = _daq_compose_env()
             project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
+            # `docker compose ps -p <project>` lists every container Docker has
+            # labeled with that project name, regardless of which -f file is
+            # passed -- daqnode-server and alloy are deployed under the same
+            # project_name (see deploy_node()), so a single call already shows
+            # both. A second call against docker-compose.alloy.yml used to be
+            # made here purely to print a separate "Alloy Status:" header, but
+            # it returned the exact same container list and additionally
+            # triggered a WARN[0000] from compose trying to interpolate that
+            # file's ${HOSTNAME} (which is never in _ENV_FILE_KEYS).
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
             cmd = [*_compose_prefix(context, project_name, compose_file, env), "ps"]
             console.print(f"[[bold cyan]{host}[/bold cyan]] DAQ Node Status:")
             run_cmd(host, cmd, env=env, quiet=True)
 
-            from control.utils.config_file import get_daq_config
-            from control.utils.util import is_local
-            is_headnode = is_local(host, get_daq_config())
-            if not is_headnode:
-                alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-                alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "ps"]
-                console.print(f"[[bold cyan]{host}[/bold cyan]] Alloy Status:")
-                run_cmd(host, alloy_cmd, env=env, quiet=True)
+            # Commented out (not deleted): this used to be a second, separate
+            # `docker compose ps` call scoped to docker-compose.alloy.yml just
+            # to print an "Alloy Status:" header. It's redundant -- `ps -p
+            # <project>` above already returns every container under that
+            # project name (daqnode-server AND alloy, since deploy_node()
+            # deploys both under the same project_name), so this block only
+            # ever reprinted the identical table a second time, and also
+            # triggered a spurious WARN[0000] from compose trying to
+            # interpolate this file's ${HOSTNAME} (never set via --env-file,
+            # see _ENV_FILE_KEYS). Kept here in case Alloy is ever deployed
+            # under its own distinct project name in the future.
+            # from control.utils.config_file import get_daq_config
+            # from control.utils.util import is_local
+            # is_headnode = is_local(host, get_daq_config())
+            # if not is_headnode:
+            #     alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+            #     alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "ps"]
+            #     console.print(f"[[bold cyan]{host}[/bold cyan]] Alloy Status:")
+            #     run_cmd(host, alloy_cmd, env=env, quiet=True)
         else:
             ssh_target = _resolve_bare_metal_ssh_target(host)
             remote_check = "systemctl is-active panoseti_grpc panoseti_alloy"
