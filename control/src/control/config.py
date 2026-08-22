@@ -1191,7 +1191,11 @@ def hv_off() -> None:
     do_hv_off(modules, quabo_uids, network_config)
 
 @app.command()
-def maroc_config() -> None:
+def maroc_config(
+    non_interactive: bool = typer.Option(
+        False, "--non-interactive", help="Use default calibration automatically instead of prompting when a Quabo has none."
+    )
+) -> None:
     """Configure MAROCs based on data_config.json and quabo_calib_*.json."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
@@ -1202,7 +1206,10 @@ def maroc_config() -> None:
     util.attach_daq_config(daq_config, network_config)
     config_file.associate(daq_config, quabo_uids)
     data_config = config_file.get_data_config()
-    do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
+    do_maroc_config(
+        modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config,
+        verbose=True, non_interactive=non_interactive
+    )
 
 @app.command()
 def mask_config() -> None:

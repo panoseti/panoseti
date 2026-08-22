@@ -112,7 +112,10 @@ def session_start(
         quabo_uids = config_file.get_quabo_uids() # type: ignore[assignment]
         if not quabo_uids:
             raise RuntimeError("Missing quabo_uids.json")
-        config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
+        config.do_maroc_config(
+            modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config,
+            verbose=True, non_interactive=True
+        )
 
     if stage == 'mask_config':
         stage = 'calibrate_ph'
