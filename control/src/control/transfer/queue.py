@@ -221,6 +221,25 @@ class TransferQueue:
         os.unlink(src)
         return True
 
+    def delete(self, run_name: str) -> bool:
+        """Remove a job from pending/ so the daemon never claims it.
+
+        Only ``pending/`` is targeted: a job already claimed into ``active/``
+        is already being transferred and can't be safely skipped this way.
+
+        Args:
+            run_name: The run identifier of the job to remove.
+
+        Returns:
+            ``True`` if a pending job was removed; ``False`` if none existed
+            for *run_name*.
+        """
+        path = self._job_path(TransferStatus.PENDING, run_name)
+        if not path.exists():
+            return False
+        os.unlink(path)
+        return True
+
     def list_jobs(self, bucket: TransferStatus) -> list[str]:
         """Return run names in a queue bucket.
 

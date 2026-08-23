@@ -205,6 +205,21 @@ def retry(run_name: Annotated[str, typer.Argument(help="Run name to retry")]) ->
         raise typer.Exit(1)
 
 
+@app.command()
+def delete(run_name: Annotated[str, typer.Argument(help="Run name to remove from pending/")]) -> None:
+    """Remove a job from pending/ so the daemon skips it (no data is copied from the DAQ node)."""
+    from control.transfer.queue import TransferQueue
+
+    console = Console()
+    tq = TransferQueue()
+
+    if tq.delete(run_name):
+        console.print(f"[bold green]Success:[/bold green] Removed {run_name} from pending/")
+    else:
+        console.print(f"[bold red]Error:[/bold red] No pending job found for '{run_name}'")
+        raise typer.Exit(1)
+
+
 @app.command("start")
 def start_daemon() -> None:
     """Start the transfer daemon (idempotent: no-op if already running)."""
