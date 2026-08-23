@@ -1,6 +1,7 @@
 """Transfer queue CLI — `pseti xfr`."""
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import os
@@ -206,18 +207,33 @@ def retry(run_name: Annotated[str, typer.Argument(help="Run name to retry")]) ->
 
 
 @app.command()
-def delete(run_name: Annotated[str, typer.Argument(help="Run name to remove from pending/")]) -> None:
-    """Remove a job from pending/ so the daemon skips it (no data is copied from the DAQ node)."""
+def clean(run_name: Annotated[str, typer.Argument(help="Run name to remove from pending/")]) -> None:
+    """Remove a job from pending/ and try to delete its run directory on each DAQ node.
+
+    The job never reached manifest generation, so there's no verified manifest to
+    checksum against -- this uses CLEANUP_FULL (removes the whole run directory on
+    each DAQ node) rather than the daemon's own selective, manifest-gated cleanup.
+    DAQ-node deletion is best-effort: a node that's unreachable or errors out is
+    reported as a warning but does not undo the local pending/ removal.
+    """
+    from control.transfer.daq_control import cleanup_daq_nodes
     from control.transfer.queue import TransferQueue
 
     console = Console()
     tq = TransferQueue()
 
-    if tq.delete(run_name):
-        console.print(f"[bold green]Success:[/bold green] Removed {run_name} from pending/")
-    else:
+    job = tq.clean(run_name)
+    if job is None:
         console.print(f"[bold red]Error:[/bold red] No pending job found for '{run_name}'")
         raise typer.Exit(1)
+
+    console.print(f"[bold green]Success:[/bold green] Removed {run_name} from pending/")
+
+    errors = asyncio.run(cleanup_daq_nodes(job, mode="CLEANUP_FULL"))
+    if errors:
+        console.print("[bold yellow]Warning:[/bold yellow] Could not clean up on all DAQ nodes:")
+        for err in errors:
+            console.print(f"  [yellow]{err}[/yellow]")
 
 
 @app.command("start")

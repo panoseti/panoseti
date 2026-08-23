@@ -221,7 +221,7 @@ class TransferQueue:
         os.unlink(src)
         return True
 
-    def delete(self, run_name: str) -> bool:
+    def clean(self, run_name: str) -> TransferJob | None:
         """Remove a job from pending/ so the daemon never claims it.
 
         Only ``pending/`` is targeted: a job already claimed into ``active/``
@@ -231,14 +231,18 @@ class TransferQueue:
             run_name: The run identifier of the job to remove.
 
         Returns:
-            ``True`` if a pending job was removed; ``False`` if none existed
-            for *run_name*.
+            The removed ``TransferJob`` (so callers can still see which DAQ
+            nodes it named, e.g. to also clean up remotely), or ``None`` if
+            no pending job existed for *run_name*.
         """
         path = self._job_path(TransferStatus.PENDING, run_name)
         if not path.exists():
-            return False
+            return None
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+        job = TransferJob.model_validate(data)
         os.unlink(path)
-        return True
+        return job
 
     def list_jobs(self, bucket: TransferStatus) -> list[str]:
         """Return run names in a queue bucket.
