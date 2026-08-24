@@ -1232,7 +1232,7 @@ wheels = [
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.17"
+version = "0.4.19"
 source = { editable = "../grpc" }
 dependencies = [
     { name = "anyio" },
@@ -1253,6 +1253,7 @@ dependencies = [
     { name = "psutil" },
     { name = "pydantic" },
     { name = "pyserial" },
+    { name = "python-dotenv" },
     { name = "pyubx2" },
     { name = "redis" },
     { name = "requests" },
@@ -1289,6 +1290,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-timeout", marker = "extra == 'dev'" },
+    { name = "python-dotenv" },
     { name = "pyubx2" },
     { name = "redis", specifier = ">=7" },
     { name = "requests" },
