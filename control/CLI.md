@@ -52,7 +52,8 @@ Control Quabo power via Web Power Switches (WPS). By default, queries the status
 Fetch quabo IP addrs based on the current `obs_config.json` to get UIDs.
 
 ### `pseti xfr`
-Manage the background file transfer queue. Supports `stat`, `queue`, `retry`, `tail`, `verify`, and `start`/`stop` for the daemon.
+Manage the background file transfer queue. Supports `stat`, `queue`, `retry`, `clean`, `tail`, `verify`, and `start`/`stop` for the daemon.
+- `clean <run_name>`: Remove a job from `pending/` so the daemon skips it — no data is copied from the DAQ node for that run.
 
 ### `pseti session-start`
 Initialize hardware, power, and calibration for an observing session.
