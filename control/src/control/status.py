@@ -236,7 +236,9 @@ async def _sweep_summary() -> list[Text]:
 
     # DAQ gRPC
     try:
-        await _check_daq_reachability(daq_config)
+        from control.adapters.real_adapters import RealNetworkClient
+        net_client = RealNetworkClient(daq_config)
+        await _check_daq_reachability(daq_config, net_client)
         lines.append(Text.assemble(("DAQ gRPC:  ", "bold"), ("OK — all nodes reachable", "green")))
     except Exception as e:
         lines.append(Text.assemble(("DAQ gRPC:  ", "bold"), (f"FAILED — {e}", "red")))

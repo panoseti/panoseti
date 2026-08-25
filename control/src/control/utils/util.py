@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import json
+import logging
 
 # control script utilities
 # CWD CONTRACT: relative paths in this module are relative to the control/ directory.
@@ -19,9 +20,11 @@ from ipaddress import ip_address
 from typing import Any
 
 import psutil
+from panoseti_grpc.telemetry.logger import get_logger
 from pydantic import IPvAnyAddress
 
-import __main__
+# __main__ was only used by the now-deprecated write_log() below.
+# import __main__
 
 # this script will be copied to daq nodes,
 # but the quabo_driver and config_file won't be copied to daq nodes
@@ -40,6 +43,26 @@ from control.utils.pydantic_config_models import (
     QuaboUids,
     TransferNodeSpec,
 )
+
+
+def _init_logger() -> logging.Logger:
+    """Idempotently initialize the project-specific logger for control.utils.util.
+
+    Console and file handlers are enabled; the gRPC Telemetry handler is
+    disabled (grpc_enabled=False) -- these are low-level utility functions,
+    not a user-facing service, so shipping every debug-level message to the
+    Telemetry service would be noise. Higher-level callers (e.g.
+    control.config) ship their own gRPC-enabled logger for user-facing
+    events.
+    """
+    global logger
+    log_dir = PanoPaths.logs_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logger = get_logger("PSETI.Util", console=True, log_dir=str(log_dir), grpc_enabled=False)
+    return logger
+
+
+logger: logging.Logger = _init_logger()
 
 #-------------- DEFAULTS ---------------
 
@@ -275,9 +298,9 @@ def mac_addr_str(b: bytes) -> str:
 
 def print_binary(data: bytes) -> None:
     n = len(data)
-    print(f'got {n} bytes')
+    logger.debug(f'got {n} bytes')
     for i in range(n):
-        print(f"{i}: {data[i]}")
+        logger.debug(f"{i}: {data[i]}")
 
 #-------------- QUABO OPS ---------------
 
@@ -319,7 +342,7 @@ def is_quabo_old_version(module: ObsModuleConfig, i: int, quabo_uids: QuaboUids,
     try:
         v = quabo_info[uid]['board_version']
     except (KeyError, TypeError):
-        print(f'uid: {uid} can\'t be found in quabo_info.json')
+        logger.warning(f'uid: {uid} can\'t be found in quabo_info.json')
         return None
     return v == 'qfp'
 
@@ -350,7 +373,7 @@ def start_daemon(prog: str | list[str], name: str | None = None) -> None:
         _name = name or os.path.splitext(os.path.basename(prog))[0]
 
     if is_script_running(prog_label):
-        print(f'{prog_label} is already running')
+        logger.info(f'{prog_label} is already running')
         return
 
     log_dir = PanoPaths.daemon_logs_dir(_name)
@@ -369,9 +392,9 @@ def start_daemon(prog: str | list[str], name: str | None = None) -> None:
         os.close(stdout_fd)
         os.close(stderr_fd)
     except OSError:
-        print(f"can't launch {prog_label}")
+        logger.error(f"can't launch {prog_label}")
         return
-    print(f'started {prog_label}')
+    logger.info(f'started {prog_label}')
 
 
 def _stop_daemon(prog: str, sig: int = signal.SIGKILL) -> None:
@@ -386,14 +409,14 @@ def _stop_daemon(prog: str, sig: int = signal.SIGKILL) -> None:
         if prog in c:
             with contextlib.suppress(ProcessLookupError):
                 os.kill(p.pid, sig)
-            print(f'stopped {prog}')
+            logger.debug(f'stopped {prog}')
 
 
 def _show_daemon(prog: str) -> None:
     if is_script_running(prog):
-        print(f'{prog} is running')
+        logger.debug(f'{prog} is running')
     else:
-        print(f'{prog} is not running')
+        logger.debug(f'{prog} is not running')
 
 
 def _are_daemons_running(progs: list[str]) -> bool:
@@ -495,31 +518,31 @@ def start_hk_recorder(daq_config: DaqConfig, run_name: str) -> None:
     try:
         subprocess.Popen([sys.executable, hk_recorder_name, path])
     except OSError:
-        print("can't launch HK recorder")
+        logger.error("can't launch HK recorder")
         raise
 
 
 # Start high-voltage updater daemon
 def start_hv_updater() -> None:
     if is_hv_updater_running():
-        print('hv_updater.py is already running')
+        logger.debug('hv_updater.py is already running')
         return
     try:
         subprocess.Popen([sys.executable, hv_updater_name])
     except OSError:
-        print("can't launch HV updater")
+        logger.error("can't launch HV updater")
         raise
 
 
 # Start module temperature monitor daemon.
 def start_module_temp_monitor() -> None:
     if is_module_temp_monitor_running():
-        print('module_temp_monitor.py is already running')
+        logger.debug('module_temp_monitor.py is already running')
         return
     try:
         subprocess.Popen([sys.executable, module_temp_monitor_name])
     except OSError:
-        print("can't launch module temperature monitor")
+        logger.error("can't launch module temperature monitor")
         raise
 
 
@@ -655,18 +678,20 @@ def kill_transfer_daemon() -> None:
                 pid_file.unlink()
 
 
-# write a message to per-run log file, and to stdout
-#
-def write_log(msg: str) -> None:
-    now = datetime.datetime.now().strftime("%B %d, %Y, %I:%M%p")
-    log_line = f"{__main__.__file__}: {now}: {msg}"
-    print(log_line)
-    try:
-        with open("run/log.txt", "a") as f:
-            f.write(log_line)
-    except OSError:
-        with open("log.txt", "a") as f:
-            f.write(log_line)
+# Deprecated: no callers remain anywhere in the codebase (superseded by the
+# structured logger set up via _init_logger()/get_logger() above). It also
+# wrote to hardcoded relative paths ("run/log.txt" / "log.txt") instead of
+# PanoPaths, predating that convention.
+# def write_log(msg: str) -> None:
+#     now = datetime.datetime.now().strftime("%B %d, %Y, %I:%M%p")
+#     log_line = f"{__main__.__file__}: {now}: {msg}"
+#     logger.debug(log_line)
+#     try:
+#         with open("run/log.txt", "a") as f:
+#             f.write(log_line)
+#     except OSError:
+#         with open("log.txt", "a") as f:
+#             f.write(log_line)
 
 
 def disk_usage(dir: str) -> int:
@@ -679,6 +704,35 @@ def disk_usage(dir: str) -> int:
 def free_space(path: str) -> int:
     _total, _used, free = shutil.disk_usage(os.path.realpath(path))
     return free
+
+
+def get_volume_disk_usage(path: str) -> dict[str, int]:
+    """Get total/used/free space (bytes) for the volume backing `path` by running `df`.
+
+    Uses `df` (same `-B1 --output=...` invocation as
+    `ci/fixtures/chaos/disk_chaos.py::fill_volume`) rather than
+    `shutil.disk_usage` so this reflects whatever `df` reports for the
+    mount -- e.g. quota-limited NFS/CIFS mounts where the raw statvfs
+    numbers `shutil.disk_usage`/`free_space()` read can disagree with the
+    space actually available to this user.
+
+    Args:
+        path: Any path on the volume to query (need not be the mount point
+            itself -- `df` resolves it).
+
+    Returns:
+        Dict with 'total', 'used', 'free' keys (bytes).
+
+    Raises:
+        subprocess.CalledProcessError: If `df` exits non-zero (e.g. path
+            doesn't exist).
+    """
+    result = subprocess.run(
+        ["df", "-B1", "--output=size,used,avail", os.path.realpath(path)],
+        capture_output=True, text=True, check=True,
+    )
+    total_str, used_str, free_str = result.stdout.strip().splitlines()[-1].split()
+    return {"total": int(total_str), "used": int(used_str), "free": int(free_str)}
 
 
 # estimate bytes per second per module for a given data config

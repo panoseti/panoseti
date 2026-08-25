@@ -291,6 +291,7 @@ def init_quabo_status(rkey: str, quabo_status: dict[str, Any]) -> None:
         'monitored_hv' : [0, 0, 0, 0],
         'monitored_det_cur' : [0, 0, 0, 0],
         'adjusted_hv' : [0, 0, 0, 0],
+        'no_calib_warned' : False,
     }
 
 def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
@@ -359,7 +360,9 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
                         q_info = quabo_info[uid]
                     except Exception:
                         q_info = quabo_info['default']
-                        logger.warning(f'No calibration data: UID - {uid}')
+                        if not quabo_status[rkey]['no_calib_warned']:
+                            logger.warning(f'No calibration data: UID - {uid}')
+                            quabo_status[rkey]['no_calib_warned'] = True
                     detector_serial_nums = [s for s in q_info['detector_serialno']]
                     # record the detector_serial_nums in the quabo_status dict
                     quabo_status[rkey]['detector_serial_nums'] = detector_serial_nums

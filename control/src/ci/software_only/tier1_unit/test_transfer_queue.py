@@ -190,6 +190,30 @@ class TestRetry:
         assert tq.retry("no_such_run") is False
 
 
+class TestClean:
+    def test_clean_removes_pending(self, tq: TransferQueue) -> None:
+        """clean() must remove the job file from pending/."""
+        tq.enqueue(_make_job("run_010"))
+
+        removed = tq.clean("run_010")
+        assert removed is not None
+        assert removed.run_name == "run_010"
+        assert not (tq._queue / "pending" / "run_010.job.toml").exists()
+
+    def test_clean_nonexistent_returns_none(self, tq: TransferQueue) -> None:
+        """clean() returns None if the run name is not in pending/."""
+        assert tq.clean("no_such_run") is None
+
+    def test_clean_does_not_touch_active(self, tq: TransferQueue) -> None:
+        """clean() must not remove a job that's already been claimed into active/."""
+        tq.enqueue(_make_job("run_011"))
+        job = tq.claim()
+        assert job is not None
+
+        assert tq.clean("run_011") is None
+        assert (tq._queue / "active" / "run_011.job.toml").exists()
+
+
 class TestListJobs:
     def test_list_jobs_pending(self, tq: TransferQueue) -> None:
         """list_jobs('pending') must return all enqueued run names."""

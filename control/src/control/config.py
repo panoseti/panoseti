@@ -24,7 +24,9 @@ from panoseti_grpc.util.cli import BaseLazyGroup
 
 from control.driver import quabo_driver
 from control.driver.quabo_tftp import tftpw
-from control.utils import config_file, file_xfer, pixel_coords, util
+from control.utils import config_file, pixel_coords, util
+# file_xfer is only used by the deprecated init_daq_nodes() command below.
+# from control.utils import file_xfer
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfig,
@@ -50,7 +52,9 @@ class ConfigLazyGroup(BaseLazyGroup):
             "reboot": ("control.config", "reboot", "Reboot quabos."),
             "reboot-single": ("control.config", "reboot_single", "Reboot a single quabo."),
             "loads": ("control.config", "loads", "Load silver firmware in quabos."),
-            "init-daq-nodes": ("control.config", "init_daq_nodes", "Copy software to daq nodes."),
+            # "init-daq-nodes" is deprecated -- see the commented-out init_daq_nodes()
+            # command below.
+            # "init-daq-nodes": ("control.config", "init_daq_nodes", "Copy software to daq nodes."),
             "hk-dest": ("control.config", "hk_dest", "Set the dest IP for HK packet."),
             "redis-daemons": ("control.config", "redis_daemons", "Start background HK/GPS/WR/Influx daemons."),
             "stop-redis-daemons": ("control.config", "stop_redis_daemons", "Stop background Redis daemons."),
@@ -175,8 +179,8 @@ def do_reboot_single_quabo(ip: str, obs_config: ObsConfig, network_config: Netwo
         cmd_port = ip_ports.cmd_port
         reboot_port = ip_ports.reboot_port
         logger.info(f'Quabo IP: {ip_addr}')
-        logger.info(f'Real IP: {real_ip}')
-        logger.info(f'Reboot port: {reboot_port}')
+        logger.debug(f'Real IP: {real_ip}')
+        logger.debug(f'Reboot port: {reboot_port}')
         x = tftpw(real_ip, reboot_port)
         x.reboot()
         # wait for the board to reboot
@@ -234,9 +238,9 @@ def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUids, network_config
         real_ip = ip_ports.ip_addr
         cmd_port = ip_ports.cmd_port
         reboot_port = ip_ports.reboot_port
-        logger.info(f'Quabo IP: {ip_addr}')
-        logger.info(f'Real IP: {real_ip}')
-        logger.info(f'Reboot port: {reboot_port}')
+        logger.debug(f'Quabo IP: {ip_addr}')
+        logger.debug(f'Real IP: {real_ip}')
+        logger.debug(f'Reboot port: {reboot_port}')
         x = tftpw(real_ip, reboot_port)
         # check timing mode, and only use it on Quabo0
         if i == 0:
@@ -343,7 +347,7 @@ def do_loads(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             port = ip_ports.reboot_port
-            logger.info(f'Real IP: {real_ip}')
+            logger.debug(f'Real IP: {real_ip}')
             logger.info('Reboot Port: %d', port)
             
             if util.is_quabo_old_version(module, i, quabo_uids, quabo_info):
@@ -387,8 +391,8 @@ def do_ping(modules: list[ObsModuleConfig], network_config: NetworkConfig, verbo
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
             real_ip = ip_ports.ip_addr
             port = ip_ports.cmd_port
-            logger.info(f'Real IP: {real_ip}')
-            logger.info('Cmd Port: %d', port)
+            logger.debug(f'Real IP: {real_ip}')
+            logger.debug('Cmd Port: %d', port)
             if util.ping(real_ip, port):
                 ping_record["ping_true"].append(ip_addr)
             else:
@@ -424,16 +428,16 @@ def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, daq_config
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
             logger.info(f'Quabo IP: {ip_addr}')
-            logger.info(f'Real IP: {real_ip}')
-            logger.info(f'Cmd Port: {cmd_port}')
+            logger.debug(f'Real IP: {real_ip}')
+            logger.debug(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             from ipaddress import ip_address
             quabo.hk_packet_destination(ip_address(headnode_ip_addr))
             quabo.close()
 
-def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfig, verbose: bool = False) -> None:
+def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfig, verbose: bool = False, non_interactive: bool = False) -> None:
     """Enable high voltage (HV) for all detectors in multiple modules.
-    
+
     Calculates DAC values based on per-detector operating voltages.
 
     Args:
@@ -443,6 +447,8 @@ def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
         detector_info: Dictionary of per-detector operating voltages.
         network_config: Network routing rules.
         verbose: If True, prints HV settings for each Quabo.
+        non_interactive: If True, uses default detector info if a Quabo's
+            UID is missing from quabo_info instead of asking.
     """
     for module in modules:
         m_ip = str(module.ip_addr)
@@ -450,20 +456,32 @@ def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '':
                 continue
-            qi = quabo_info[uid]
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
+            try:
+                qi = quabo_info[uid]
+            except KeyError:
+                logger.warning(f"No detector info found for {ip_addr} (UID {uid}).")
+                if non_interactive:
+                    logger.warning(f"Using default detector info for {ip_addr} (non-interactive mode).")
+                    use_default = True
+                else:
+                    use_default = ask_use_default_calibration(ip_addr)
+                if use_default:
+                    qi = quabo_info['default']
+                else:
+                    raise Exception(f'No detector info is found for {ip_addr}') from None
             v = [0]*4
             for j in range(4):
                 det_ser = qi['detector_serialno'][j]
                 op_voltage = detector_info[str(det_ser)]
                 # DAC LSB is 0.0011324717, instead of 0.00114
                 v[j] = int(op_voltage/0.0011324717)
-            ip_addr = config_file.quabo_ip_addr(m_ip, i)
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
             logger.info(f'Quabo IP: {ip_addr}')
-            logger.info(f'Real IP: {real_ip}')
-            logger.info(f'Cmd Port: {cmd_port}')
+            logger.debug(f'Real IP: {real_ip}')
+            logger.debug(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
@@ -490,8 +508,8 @@ def do_hv_off(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_con
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
             logger.info(f'Quabo IP: {ip_addr}')
-            logger.info(f'Real IP: {real_ip}')
-            logger.info(f'Cmd Port: {cmd_port}')
+            logger.debug(f'Real IP: {real_ip}')
+            logger.debug(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
@@ -636,8 +654,8 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
             cmd_port = ip_ports.cmd_port
             if do_log:
                 logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
+                logger.debug(f'Real IP: {real_ip}')
+                logger.debug(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             # For ph mode, we seem to have a bug in firmware.
             # we need to set DAC2 to low, and make the quabos send out data first.
@@ -721,8 +739,8 @@ def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfig, netw
             cmd_port = ip_ports.cmd_port
             if do_log:
                 logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
+                logger.debug(f'Real IP: {real_ip}')
+                logger.debug(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.send_trigger_mask(qc_dict_int, do_flush_rx_buf=do_flush_rx_buf)
             quabo.send_goe_mask(qc_dict_int, do_flush_rx_buf=do_flush_rx_buf)
@@ -750,6 +768,9 @@ def do_calibrate_ph(
         min_baseline: Minimum allowed baseline value (default 600).
         max_baseline: Maximum allowed baseline value (default 800).
         strict: If True, raises an error if validation fails.
+
+    A Quabo that doesn't respond (powered off/unreachable) logs a warning
+    and is skipped rather than aborting calibration for the rest.
     """
     quabos: list[dict[str, Any]] = []
     for module in modules:
@@ -766,7 +787,16 @@ def do_calibrate_ph(
             logger.debug(f'Real IP: {real_ip}')
             logger.debug(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
-            coefs = quabo.calibrate_ph_baseline()
+            try:
+                coefs = quabo.calibrate_ph_baseline()
+            except (TimeoutError, OSError):
+                logger.warning(
+                    f"No response from Quabo {ip_addr} while calibrating PH baseline "
+                    f"(timed out waiting for a reply). Check that the device is powered "
+                    f"on and reachable, then re-run calibration for it. Skipping for now."
+                )
+                quabo.close()
+                continue
             quabo.close()
             q: dict[str, Any] = {}
             q['uid'] = uid
@@ -836,17 +866,38 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
     Args:
         data_config: Science/engineering acquisition parameters.
         daq_config: DAQ node configuration with data paths.
-        verbose: If True, prints per-node volume details.
+        verbose: If True, prints a colon-aligned report of the per-node
+            volume details.
 
     Returns:
         Estimated recording time in hours.
     """
     logger.info('Check disk space.')
     bps = util.daq_bytes_per_sec_per_module(data_config)
-    if verbose:
-        logger.info(f'Data rate per module: {bps/1e6:.2f} MB/sec')
     nmod_total = 0
     available_hours = 1e9
+
+    # The head node's data volume is whatever daq_config.json names as
+    # head_node_data_dir -- query its actual free/used/total space by
+    # running `df` (util.get_volume_disk_usage()) rather than reading a
+    # hardcoded, site-specific snapshot file. Resolved up front so the
+    # report can lead with *where* the data goes before the numbers that
+    # describe it.
+    hnd = os.path.realpath(str(daq_config.head_node_data_dir))
+    usage = util.get_volume_disk_usage(hnd)
+    hfree = usage['free']
+
+    # (label, value) pairs, logged in one pass at the end so the colons can
+    # be aligned to a common column (logger.info(f'{label}: {value}') calls
+    # made one at a time can't do this -- the RichHandler prefixes every
+    # line with its own [time]/[level]/[name] columns, so each line's label
+    # starts at the same terminal column but has no way to know how wide
+    # the *widest* label across the whole report will be until they're all
+    # collected).
+    fields: list[tuple[str, str]] = [
+        ('Head node data dir', hnd),
+        ('Data rate per module', f'{bps/1e6:.2f} MB/sec'),
+    ]
 
     # loop over DAQ nodes
     #
@@ -854,11 +905,8 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
         # Check if this node has any modules assigned (node.modules is a list of Any)
         if not node.modules:
             continue
-        nmod = len(node.modules)
-        nmod_total += nmod
+        nmod_total += len(node.modules)
         ip_addr = str(node.ip_addr)
-        if verbose:
-            logger.info(f'DAQ node {ip_addr}: {nmod} modules')
 
         # get list of volumes on the DAQ node
         #
@@ -888,55 +936,52 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
             if not found and default_vol:
                 default_vol['mods_here'].append(mid)
 
-        for name in vols:
-            vol = vols[name]
+        for name, vol in vols.items():
             free = vol['free']
             mods_here_list = vol.get('mods_here', [])
-            nmods = len(mods_here_list)
-            if verbose:
-                logger.info(f'   {name}:')
-            if nmods:
-                t = free/(3600.*bps*nmods)
-                if verbose:
-                    logger.info(f'      modules: {mods_here_list}')
-                    logger.info(f'      space: {free/1e12:.2f}TB ({t:.2f} hours)')
+            if mods_here_list:
+                t = free/(3600.*bps*len(mods_here_list))
                 if t < available_hours:
                     available_hours = t
+                value = f'{free/1e12:.2f}TB free, modules {mods_here_list} ({t:.2f} hours)'
             else:
-                if verbose:
-                    logger.info(f'      space: {free/1e12:.2f}TB')
-    # TODO: this is hard-coded??
-    with open("/home/panosetigraph/web/head_node_volumes.json") as f:
-        head_node_vols = json.loads(f.read())
-    hnd = str(daq_config.head_node_data_dir)
-    hnd = os.path.realpath(hnd)
-    logger.info('head node:')
-    for vol in head_node_vols:
-        path = f'/home/panosetigraph/web/{vol}/data'
-        path = os.path.realpath(path)
-        hfree = util.free_space(path)
-        if verbose:
-            logger.info(f'   {path} ({vol})')
+                value = f'{free/1e12:.2f}TB free (no modules assigned)'
+            fields.append((f'DAQ {ip_addr} ({name})', value))
+
+    if nmod_total:
+        # Same "no modules -> can't estimate hours, just show space" pattern
+        # as the per-DAQ-node-volume loop above -- nmod_total is 0 when no
+        # DAQ node has any modules assigned, and dividing by it would be a
+        # ZeroDivisionError.
         t = hfree/(3600*bps*nmod_total)
-        if hnd == path:
-            if t < available_hours:
-                available_hours = t
-            if verbose:
-                logger.info('      selected for write')
-        logger.info(f'      space: {hfree/1e12:.2f}TB ({t:.2f} hours)')
+        if t < available_hours:
+            available_hours = t
+        fields.append(('Available space', f'{hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB ({t:.2f} hours)'))
+    else:
+        fields.append(('Available space', f'{hfree/1e12:.2f}TB free of {usage["total"]/1e12:.2f}TB'))
 
     if verbose:
-        logger.info(f'---------------\nAvailable recording time: {available_hours:.2f} hours')
+        fields.append(('Available recording time', f'{available_hours:.2f} hours'))
+        width = max(len(label) for label, _ in fields) + 1
+        for label, value in fields:
+            logger.info(f'{label:<{width}}: {value}')
     return available_hours
 
 
 def do_shutter(action: str) -> None:
     from control.tools import shutter
     shutter_path = (Path(shutter.__file__)) # resolve absolute shutter.py path
+    # Launch with sys.executable, not the bare path -- running shutter_path
+    # directly relies on its "#!/usr/bin/env python3" shebang, which
+    # resolves via the *subprocess's* $PATH at launch time and may pick a
+    # different interpreter than the one running `pseti` itself (e.g. a
+    # system python3 with no panoseti_grpc installed, vs. the venv/conda
+    # env pseti is actually running in) -- same class of bug documented for
+    # util.start_daemon()'s list form.
     if action == "open":
-        subprocess.run([shutter_path, "--open"])
+        subprocess.run([sys.executable, str(shutter_path), "--open"])
     elif action == "close":
-        subprocess.run([shutter_path, "--close"])
+        subprocess.run([sys.executable, str(shutter_path), "--close"])
     else:
         raise ValueError(f"{action=} but must be 'open' or 'close'")
 
@@ -948,7 +993,7 @@ def do_start_interleave() -> None:
         sys.exit(1)
 
     if not os.path.exists("tmp/current_run") and not os.path.exists(PanoPaths.tmp_dir() / STATE_FILE):
-        logger.error("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
+        logger.error("ERROR: Cannot start interleaving. No active observation running. Run 'pseti start' first.")
         sys.exit(1)
 
     # Validate interleave config before starting
@@ -998,9 +1043,18 @@ def do_dry_run_interleave() -> None:
     """Runs the interleaver in the foreground for 2 cycles without hardware commands."""
     logger.info("Starting interleave DRY RUN (2 cycles) in the foreground...")
 
+    from control.tools import interleave
+    interleave_script_path = str(Path(interleave.__file__))
+
+    # sys.executable (not the bare string 'python3') and an absolute path
+    # (not the CWD-relative 'tools/interleave.py') -- a bare 'python3'
+    # resolves via the *subprocess's* $PATH at launch time, which may not
+    # be the interpreter running `pseti` itself (same class of bug fixed in
+    # do_shutter()); the relative path only worked when launched from
+    # control/, per this module's CWD contract.
     # We use subprocess.run to block and stream output directly to the console for CI tools
     result = subprocess.run(
-        ['python3', 'tools/interleave.py', '--dry-run', '--max-cycles', '2']
+        [sys.executable, interleave_script_path, '--dry-run', '--max-cycles', '2']
     )
 
     if result.returncode == 0:
@@ -1066,12 +1120,14 @@ def loads() -> None:
     network_config = config_file.get_network_config()
     do_loads(modules, quabo_uids, quabo_info, network_config)
 
-@app.command()
-def init_daq_nodes() -> None:
-    """Copy software to daq nodes."""
-    logger.info('Init daq nodes.')
-    daq_config = config_file.get_daq_config()
-    file_xfer.copy_daq_files(daq_config)
+# Deprecated: "pseti cfg init-daq-nodes" is no longer wired up (see the
+# commented-out lazy_mapping entry in ConfigLazyGroup above).
+# @app.command()
+# def init_daq_nodes() -> None:
+#     """Copy software to daq nodes."""
+#     logger.info('Init daq nodes.')
+#     daq_config = config_file.get_daq_config()
+#     file_xfer.copy_daq_files(daq_config)
 
 @app.command()
 def hk_dest() -> None:
@@ -1135,7 +1191,11 @@ def hv_off() -> None:
     do_hv_off(modules, quabo_uids, network_config)
 
 @app.command()
-def maroc_config() -> None:
+def maroc_config(
+    non_interactive: bool = typer.Option(
+        False, "--non-interactive", help="Use default calibration automatically instead of prompting when a Quabo has none."
+    )
+) -> None:
     """Configure MAROCs based on data_config.json and quabo_calib_*.json."""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
@@ -1146,7 +1206,10 @@ def maroc_config() -> None:
     util.attach_daq_config(daq_config, network_config)
     config_file.associate(daq_config, quabo_uids)
     data_config = config_file.get_data_config()
-    do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
+    do_maroc_config(
+        modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config,
+        verbose=True, non_interactive=non_interactive
+    )
 
 @app.command()
 def mask_config() -> None:

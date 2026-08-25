@@ -99,7 +99,7 @@ class QUABO:
             self.MAROC_regs.append([0 for _x in range(104)])
         # create a logger
         PanoPaths.logs_dir().mkdir(parents=True, exist_ok=True)
-        self.logger = get_logger(service_name='quabo_driver', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
+        self.logger = get_logger(service_name='quabo_driver', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True, console=False)
         # self.logger.info('************************************')
 
     def close(self) -> None:

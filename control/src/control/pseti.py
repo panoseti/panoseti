@@ -1,4 +1,8 @@
+import importlib.metadata
+import shutil
 import sys
+from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 from control.utils.env_loader import load_pseti_env
@@ -10,6 +14,28 @@ if "--no-env" not in sys.argv:
 
 import typer
 from panoseti_grpc.util.cli import BaseLazyGroup, display_tree_callback
+
+from control.utils.paths import PanoPaths
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"pseti {importlib.metadata.version('pseti-ctl')}")
+        raise typer.Exit()
+
+
+def _env_template_callback(value: bool) -> None:
+    if not value:
+        return
+    src = PanoPaths.software_root_dir() / ".env.example"
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    dest = Path.cwd() / f".env_pseti_{timestamp}"
+    if dest.exists():
+        print(f"Refusing to overwrite existing file: {dest}")
+        raise typer.Exit(code=1)
+    shutil.copyfile(src, dest)
+    print(f"Wrote .env template to {dest}")
+    raise typer.Exit()
 
 
 class PanoLazyGroup(BaseLazyGroup):
@@ -61,7 +87,25 @@ app = typer.Typer(
 def main_callback(
     ctx: typer.Context,
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree and exit.", callback=display_tree_callback)] = False,
-    no_env: Annotated[bool, typer.Option("--no-env", help="Disable automatic loading of .env files.")] = False
+    no_env: Annotated[bool, typer.Option("--no-env", help="Disable automatic loading of .env files.")] = False,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Print the installed pseti-ctl package version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = False,
+    env_template: Annotated[
+        bool,
+        typer.Option(
+            "--env-template",
+            help="Copy the packaged .env.example to ./.env_pseti_<timestamp> and exit.",
+            callback=_env_template_callback,
+            is_eager=True,
+        ),
+    ] = False,
 ) -> None:
     """PSETI Control Plane."""
     pass

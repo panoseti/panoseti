@@ -188,6 +188,40 @@ def get_docker_context_for_node(host: str) -> str:
         pass
     return f"pseti-daq-{host.replace('.', '-')}"
 
+
+def _docker_context_create_hint(host: str, context: str) -> str:
+    """Build the "docker context create" suggestion printed when a node's context is missing.
+
+    `host` is typically the DAQ node's internal IP (daq_config.json's
+    ip_addr). If network_config.json's port_forwarding is enabled for this
+    node, that address is only reachable *through* a gateway -- pointing
+    docker context create at `host` directly (the naive default) would
+    create a context that can never actually connect. Point it at the
+    gateway's SSH endpoint instead, same resolution
+    `_resolve_bare_metal_ssh_target()` applies for `--mode bare-metal`.
+    Falls back to the plain host if no forwarding is configured, or if
+    daq_config/network_config can't be loaded.
+    """
+    try:
+        from control.utils.config_file import get_daq_config, get_network_config
+        from control.utils.util import attach_daq_config
+        daq_config = get_daq_config()
+        network_config = get_network_config()
+        attach_daq_config(daq_config, network_config)
+        node = daq_config.get_node_by_ip(host)
+        pf = node.port_forwarding
+        if pf is not None and pf.status and pf.port is not None:
+            return (
+                f"Port forwarding is enabled for {host} -- it's only reachable via "
+                f"gateway {pf.gw_ip}:{pf.port}.\n"
+                f"Create the context against the gateway instead:\n"
+                f"    docker context create {context} --docker \"host=ssh://<user>@{pf.gw_ip}:{pf.port}\""
+            )
+    except Exception:
+        pass
+    return f"    docker context create {context} --docker \"host=ssh://<user>@{host}\""
+
+
 async def _run_node_job(label: str, coro: Coroutine[Any, Any, bool | None], results: dict[str, bool]) -> None:
     """Run one node's build/deploy job under a TaskGroup, recording its outcome.
 
@@ -289,10 +323,12 @@ def get_headnode_compose_env() -> dict[str, str] | None:
 
 # Services in docker-compose.headnode.yml that a deployment may already run
 # bare-metal elsewhere and want to skip starting a duplicate of here.
-# loki/alloy/headnode-server are never optional: alloy is the log-shipping
-# path this whole stack exists to provide, and headnode-server is the gRPC
-# server pseti admin deploy is fundamentally deploying.
-_HEADNODE_OPTIONAL_SERVICES = ("redis", "influxdb", "grafana")
+# loki/alloy are never optional: alloy is the log-shipping path this whole
+# stack exists to provide, and loki is where it ships to. headnode-server
+# (the gRPC server) is optional too -- a deployment may run it bare-metal
+# (see deploy_node()'s --mode bare-metal branch) while still wanting this
+# compose stack for observability only.
+_HEADNODE_OPTIONAL_SERVICES = ("redis", "influxdb", "grafana", "headnode-server")
 
 
 def _headnode_enabled_services() -> list[str] | None:
@@ -326,7 +362,7 @@ def _headnode_enabled_services() -> list[str] | None:
             f"[yellow][headnode][/yellow] Skipping service(s) already running "
             f"elsewhere: {', '.join(sorted(disabled))}"
         )
-    return [*enabled_optional, "loki", "alloy", "headnode-server"]
+    return [*enabled_optional, "loki", "alloy"]
 
 
 async def deploy_headnode_async(mode: str) -> bool:
@@ -485,7 +521,7 @@ async def deploy_node(host: str, mode: str, dry_run: bool = False) -> bool:
         )
         if context not in res.stdout:
             console.print(f"[[yellow]{host}[/yellow]] Docker context '{context}' not found. Please create it first:")
-            console.print(f"    docker context create {context} --docker \"host=ssh://<user>@{host}\"")
+            console.print(_docker_context_create_hint(host, context))
             return False
 
         env = _daq_compose_env()
@@ -831,19 +867,39 @@ def status(
             env = _daq_compose_env()
             project_name = f"pseti-daqnode-{host.replace('.', '-')}"
 
+            # `docker compose ps -p <project>` lists every container Docker has
+            # labeled with that project name, regardless of which -f file is
+            # passed -- daqnode-server and alloy are deployed under the same
+            # project_name (see deploy_node()), so a single call already shows
+            # both. A second call against docker-compose.alloy.yml used to be
+            # made here purely to print a separate "Alloy Status:" header, but
+            # it returned the exact same container list and additionally
+            # triggered a WARN[0000] from compose trying to interpolate that
+            # file's ${HOSTNAME} (which is never in _ENV_FILE_KEYS).
             compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "docker-compose.daqnode.yml"
             cmd = [*_compose_prefix(context, project_name, compose_file, env), "ps"]
             console.print(f"[[bold cyan]{host}[/bold cyan]] DAQ Node Status:")
             run_cmd(host, cmd, env=env, quiet=True)
 
-            from control.utils.config_file import get_daq_config
-            from control.utils.util import is_local
-            is_headnode = is_local(host, get_daq_config())
-            if not is_headnode:
-                alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
-                alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "ps"]
-                console.print(f"[[bold cyan]{host}[/bold cyan]] Alloy Status:")
-                run_cmd(host, alloy_cmd, env=env, quiet=True)
+            # Commented out (not deleted): this used to be a second, separate
+            # `docker compose ps` call scoped to docker-compose.alloy.yml just
+            # to print an "Alloy Status:" header. It's redundant -- `ps -p
+            # <project>` above already returns every container under that
+            # project name (daqnode-server AND alloy, since deploy_node()
+            # deploys both under the same project_name), so this block only
+            # ever reprinted the identical table a second time, and also
+            # triggered a spurious WARN[0000] from compose trying to
+            # interpolate this file's ${HOSTNAME} (never set via --env-file,
+            # see _ENV_FILE_KEYS). Kept here in case Alloy is ever deployed
+            # under its own distinct project name in the future.
+            # from control.utils.config_file import get_daq_config
+            # from control.utils.util import is_local
+            # is_headnode = is_local(host, get_daq_config())
+            # if not is_headnode:
+            #     alloy_compose_file = PanoPaths.software_root_dir() / "grpc" / "deploy" / "alloy" / "docker-compose.alloy.yml"
+            #     alloy_cmd = [*_compose_prefix(context, project_name, alloy_compose_file, env), "ps"]
+            #     console.print(f"[[bold cyan]{host}[/bold cyan]] Alloy Status:")
+            #     run_cmd(host, alloy_cmd, env=env, quiet=True)
         else:
             ssh_target = _resolve_bare_metal_ssh_target(host)
             remote_check = "systemctl is-active panoseti_grpc panoseti_alloy"
