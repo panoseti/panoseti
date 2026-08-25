@@ -32,7 +32,8 @@ if [ "$(id -u)" = "0" ]; then
     chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}" 2>/dev/null || true
 
     # Ensure any metadata files created by root (like sw_info.json or flashuid) are fixed
-    [ -f /app/sw_info.json ] && chown "${TARGET_UID}:${TARGET_GID}" /app/sw_info.json 2>/dev/null || true
+    TMP_DIR="${PSETI_TMP:-/app/tmp}"
+    [ -f "${TMP_DIR}/sw_info.json" ] && chown "${TARGET_UID}:${TARGET_GID}" "${TMP_DIR}/sw_info.json" 2>/dev/null || true
     [ -f /app/flashuid ] && chown "${TARGET_UID}:${TARGET_GID}" /app/flashuid 2>/dev/null || true
 fi
 
