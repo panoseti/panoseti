@@ -395,10 +395,30 @@ class NetworkModule(BaseStrictModel):
 class NetworkDaqNode(BaseStrictModel):
     """Network-level mapping for a DAQ node."""
     ip_addr: IPvAnyAddress
+    # Direct-connection gRPC port -- used when port_forwarding.status is
+    # False (or absent), i.e. this node is reached directly at ip_addr
+    # rather than through a forwarded gateway. Distinct from
+    # port_forwarding.grpc_port, which only applies when status is True.
+    # None (the default when omitted from network_config.json) means "not
+    # set here" -- attach_daq_config() then seeds it onto daq_config.json's
+    # DaqNode.grpc_port (only if that field is itself unset), so
+    # daq_grpc_endpoint() ultimately falls through to the fleet-wide
+    # DAQNODE_GRPC_PORT env var / 50051 default when neither is set.
+    grpc_port: int | None = Field(None, ge=1, le=65535)
     port_forwarding: PortForwarding
+
+class NetworkHeadnode(BaseStrictModel):
+    """Network-level configuration for the head node itself."""
+    # None (the default when omitted from network_config.json) means "not
+    # set here" -- callers pass this straight through as
+    # resolve_grpc_port("headnode", explicit=...)'s explicit override, so
+    # they fall through to the HEADNODE_GRPC_PORT env var / 50051 default
+    # when it's unset.
+    grpc_port: int | None = Field(None, ge=1, le=65535)
 
 class NetworkConfig(BaseStrictModel):
     """Global network routing and port-forwarding map (network_config.json)."""
+    headnode: NetworkHeadnode = Field(default_factory=NetworkHeadnode)
     modules: list[NetworkModule] = Field(default_factory=list)
     daq_nodes: list[NetworkDaqNode] = Field(default_factory=list)
 

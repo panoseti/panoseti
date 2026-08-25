@@ -20,6 +20,9 @@ from control.utils.pydantic_config_models import (
     FirmwareConfig,
     FlashParams,
     InterleaveState,
+    NetworkConfig,
+    NetworkDaqNode,
+    NetworkHeadnode,
     ObsConfig,
     ObsDomeConfig,
     ObsModuleConfig,
@@ -465,3 +468,70 @@ class TestPortForwarding:
         """grpc_port=65535 is the highest valid value."""
         pf = PortForwarding(**self._BASE, grpc_port=65535)  # type: ignore
         assert pf.grpc_port == 65535
+
+
+# ===========================================================================
+# NetworkConfig / NetworkDaqNode / NetworkHeadnode
+# ===========================================================================
+
+class TestNetworkHeadnode:
+    def test_defaults_to_none_when_omitted(self) -> None:
+        """None (not a 50051 literal) so callers can distinguish "operator
+        set it in network_config.json" from "field default" -- see
+        health.py's _check_grpc_headnode(), which passes this straight
+        through as resolve_grpc_port()'s explicit override and only then
+        falls through to HEADNODE_GRPC_PORT / the 50051 default.
+        """
+        cfg = NetworkConfig()
+        assert cfg.headnode.grpc_port is None
+
+    def test_explicit_value(self) -> None:
+        cfg = NetworkConfig(headnode=NetworkHeadnode(grpc_port=60051))
+        assert cfg.headnode.grpc_port == 60051
+
+    def test_out_of_range_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            NetworkHeadnode(grpc_port=70000)  # type: ignore
+
+
+class TestNetworkDaqNode:
+    """NetworkDaqNode.grpc_port is a sibling of port_forwarding -- used for
+    direct connections when port_forwarding.status is False. Distinct from
+    port_forwarding.grpc_port, which only applies when status is True.
+    """
+
+    def test_grpc_port_defaults_to_none_when_omitted(self) -> None:
+        """None (not a 50051 literal) so attach_daq_config() can tell "not
+        set in network_config.json" apart from "explicitly set" and only
+        seed daq_config.json's DaqNode.grpc_port when it's itself unset.
+        """
+        node = NetworkDaqNode(
+            ip_addr="192.168.0.10",  # type: ignore
+            port_forwarding=PortForwarding(status=False, gw_ip="10.0.1.254"),
+        )
+        assert node.grpc_port is None
+
+    def test_grpc_port_explicit_value(self) -> None:
+        node = NetworkDaqNode(
+            ip_addr="192.168.0.10",  # type: ignore
+            grpc_port=50077,
+            port_forwarding=PortForwarding(status=False, gw_ip="10.0.1.254"),
+        )
+        assert node.grpc_port == 50077
+
+    def test_grpc_port_out_of_range_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            NetworkDaqNode(
+                ip_addr="192.168.0.10",  # type: ignore
+                grpc_port=0,  # type: ignore
+                port_forwarding=PortForwarding(status=False, gw_ip="10.0.1.254"),
+            )
+
+    def test_grpc_port_independent_of_port_forwarding_grpc_port(self) -> None:
+        node = NetworkDaqNode(
+            ip_addr="192.168.0.10",  # type: ignore
+            grpc_port=50077,
+            port_forwarding=PortForwarding(status=True, gw_ip="10.0.1.254", grpc_port=50099),
+        )
+        assert node.grpc_port == 50077
+        assert node.port_forwarding.grpc_port == 50099

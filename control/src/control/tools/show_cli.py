@@ -21,7 +21,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from control.utils import util
+from control.utils import config_file, util
 from control.utils.env_loader import get_env_info
 from control.utils.paths import PanoPaths
 
@@ -288,7 +288,10 @@ async def stream_sci_data(
     # The gateway is the head node's unified server -- resolve_grpc_port keeps
     # this in sync with every other headnode client (DAQ_DATA_GATEWAY_PORT is
     # honored as a deprecated fallback, not read directly here anymore).
-    gateway_port = util.resolve_grpc_port("headnode")
+    # network_config.json's headnode.grpc_port (if set) takes precedence over
+    # the env var / default, same as _check_grpc_headnode()/_check_port_collision().
+    network_config = config_file.get_network_config()
+    gateway_port = util.resolve_grpc_port("headnode", explicit=network_config.headnode.grpc_port)
 
     # Shared state between ingestion and rendering
     latest_images: dict[int, dict[str, dict[Any, Any]]] = {}

@@ -19,8 +19,14 @@ from __future__ import annotations
 
 import pytest
 
-from control.utils.pydantic_config_models import DaqNode, PortForwarding
-from control.utils.util import daq_grpc_endpoint, resolve_grpc_port
+from control.utils.pydantic_config_models import (
+    DaqConfig,
+    DaqNode,
+    NetworkConfig,
+    NetworkDaqNode,
+    PortForwarding,
+)
+from control.utils.util import attach_daq_config, daq_grpc_endpoint, resolve_grpc_port
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -176,3 +182,70 @@ class TestPortForwardingGrpcPortDefault:
     def test_explicit_grpc_port_still_respected(self) -> None:
         pf = PortForwarding(status=True, gw_ip="10.0.1.254", grpc_port=12345)
         assert pf.grpc_port == 12345
+
+
+# ---------------------------------------------------------------------------
+# attach_daq_config() -- network_config.json's direct-connect grpc_port as
+# a new middle precedence tier between daq_config.json's own explicit
+# override and resolve_grpc_port()'s env var / 50051 default.
+# ---------------------------------------------------------------------------
+
+
+def _network_config(**node_overrides: object) -> NetworkConfig:
+    defaults: dict = dict(
+        ip_addr="192.168.0.228",
+        port_forwarding=PortForwarding(status=False, gw_ip="10.0.1.254"),
+    )
+    defaults.update(node_overrides)
+    return NetworkConfig(daq_nodes=[NetworkDaqNode(**defaults)])  # type: ignore
+
+
+class TestAttachDaqConfigGrpcPort:
+    def test_network_config_grpc_port_fills_in_when_daq_node_unset(self) -> None:
+        daq_config = DaqConfig(head_node_data_dir="/data/head", head_node_ip_addr="10.99.99.99", daq_nodes=[_daq_node(ip_addr="192.168.0.228")])
+        network_config = _network_config(ip_addr="192.168.0.228", grpc_port=50077)
+
+        attach_daq_config(daq_config, network_config)
+
+        assert daq_config.daq_nodes[0].grpc_port == 50077
+
+    def test_daq_config_own_explicit_grpc_port_wins_over_network_config(self) -> None:
+        daq_config = DaqConfig(
+            head_node_data_dir="/data/head",
+            head_node_ip_addr="10.99.99.99",
+            daq_nodes=[_daq_node(ip_addr="192.168.0.228", grpc_port=50099)],
+        )
+        network_config = _network_config(ip_addr="192.168.0.228", grpc_port=50077)
+
+        attach_daq_config(daq_config, network_config)
+
+        assert daq_config.daq_nodes[0].grpc_port == 50099
+
+    def test_neither_set_stays_none(self) -> None:
+        daq_config = DaqConfig(head_node_data_dir="/data/head", head_node_ip_addr="10.99.99.99", daq_nodes=[_daq_node(ip_addr="192.168.0.228")])
+        network_config = _network_config(ip_addr="192.168.0.228")
+
+        attach_daq_config(daq_config, network_config)
+
+        assert daq_config.daq_nodes[0].grpc_port is None
+
+    def test_no_matching_network_config_node_leaves_grpc_port_unset(self) -> None:
+        daq_config = DaqConfig(head_node_data_dir="/data/head", head_node_ip_addr="10.99.99.99", daq_nodes=[_daq_node(ip_addr="192.168.0.228")])
+        network_config = _network_config(ip_addr="10.0.0.99", grpc_port=50077)
+
+        attach_daq_config(daq_config, network_config)
+
+        assert daq_config.daq_nodes[0].grpc_port is None
+
+    def test_end_to_end_daq_grpc_endpoint_resolves_network_config_port(self) -> None:
+        """The full chain: network_config.json's sibling grpc_port reaches
+        daq_grpc_endpoint()'s resolved (host, port) via attach_daq_config(),
+        with no changes needed to daq_grpc_endpoint() itself.
+        """
+        daq_config = DaqConfig(head_node_data_dir="/data/head", head_node_ip_addr="10.99.99.99", daq_nodes=[_daq_node(ip_addr="192.168.0.228")])
+        network_config = _network_config(ip_addr="192.168.0.228", grpc_port=50077)
+
+        attach_daq_config(daq_config, network_config)
+        node = daq_config.daq_nodes[0]
+
+        assert daq_grpc_endpoint(node, daq_config) == ("192.168.0.228", 50077)
