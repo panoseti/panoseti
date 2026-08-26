@@ -11,6 +11,9 @@ from typing import Any
 
 import redis
 
+from control.utils import config_file
+from control.utils.paths import PanoPaths
+
 
 # Add obs config to the skymap template.
 # The obs config is from obs_config.json by default.
@@ -44,10 +47,12 @@ def add_data_config(skymap_t: dict[str, Any], data_config_file: str = 'data_conf
 # Add software version info to the skymap template.
 # The software version is from sw_info.json by default. 
 # 
-def add_sw_info(skymap_t: dict[str, Any], sw: str = 'Production', Ver: str = 'V0.0.1', sw_info_file: str = 'sw_info.json') -> None:
+def add_sw_info(skymap_t: dict[str, Any], sw: str = 'Production', Ver: str = 'V0.0.1', sw_info_file: str | None = None) -> None:
     skymap_t['software_config']['type'] = sw
     # if it's production code, we will get the Ver from sw_info.json
     if(sw == 'Production'):
+        if sw_info_file is None:
+            sw_info_file = str(PanoPaths.tmp_dir() / config_file.sw_info_filename)
         with open(sw_info_file) as f:
             sw_info = json.load(f)
         skymap_t['software_config']['version'] = sw_info['commit']

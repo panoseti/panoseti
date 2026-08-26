@@ -77,6 +77,15 @@ dependencies = [
   where = ["src"]
   include = ["control*", "ci*"]
 
+  [tool.setuptools.package-data]
+  # quabo_config.txt is read via a __file__-relative path (control/config.py's
+  # CONTROL_DRIVER_DIR) at module import time -- setuptools only bundles .py
+  # files by default, so a non-editable install (uv tool install pseti-ctl,
+  # without --editable) silently drops it, breaking every command that
+  # imports control.config (cfg, val, stop, session-start, ...) with
+  # "No such file or directory" the moment they're imported.
+  "control.driver" = ["quabo_config.txt"]
+
   [tool.pytest.ini_options]
   pythonpath = ["src"]
   testpaths = ["src/ci"]

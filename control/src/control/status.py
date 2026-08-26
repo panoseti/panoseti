@@ -70,7 +70,7 @@ def _local_summary() -> list[Text]:
 
     hk_running = util.is_hk_recorder_running()
     hk_style = "green" if hk_running else "red"
-    lines.append(Text.assemble(("HK rec:  ", "bold"), (f"{'running' if hk_running else 'stopped'}", hk_style)))
+    lines.append(Text.assemble(("HK Recorder: ", "bold"), (f"{'RUNNING' if hk_running else 'STOPPED'}", hk_style)))
 
     age = _transfer_daemon_age()
     if age is None:
@@ -152,7 +152,7 @@ async def _remote_summary(
             hp_style = "green" if hp_running else "red"
             pid = status.get('hashpipe_pid')
             pid_str = f" (PID:{pid})" if pid else ""
-            hp_parts: list[Any] = [(f"HP: {hp_state}", hp_style), f"{pid_str}"]
+            hp_parts: list[Any] = [(f"HASHPIPE: {hp_state}", hp_style), f"{pid_str}"]
             if hp_running:
                 thread_count = status.get("hashpipe_thread_count", 0)
                 healthy = status.get("hashpipe_healthy", True)
@@ -189,7 +189,7 @@ async def _remote_summary(
             summary = Text.assemble(
                 f"  • {ip_str:<14} | ",
                 hp_text,
-                " " * max(0, 16 - len(hp_text.plain)),
+                " " * max(0, 22 - len(hp_text.plain)),
                 "| ",
                 (disk_str, disk_style),
                 " " * max(0, 28 - len(disk_str)),

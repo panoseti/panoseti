@@ -1,4 +1,7 @@
 {
+    "headnode": {
+        "grpc_port": 50051
+    },
     "modules": [
         {
             "ip_addr": "192.168.3.248",
@@ -23,6 +26,7 @@
     "daq_nodes": [
         {
             "ip_addr": "192.168.0.228",
+            "grpc_port": 50051,
             "port_forwarding": {
                 "status": true,
                 "gw_ip": "192.168.88.152",

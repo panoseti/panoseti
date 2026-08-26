@@ -293,8 +293,10 @@ async def _check_daq_data_status(
         # The gateway *is* the head node's unified server -- resolve_grpc_port
         # keeps this in sync with every other headnode client (and with
         # DAQ_DATA_GATEWAY_PORT as a deprecated fallback) instead of reading
-        # that one env var directly.
-        gateway_port = util.resolve_grpc_port("headnode")
+        # that one env var directly. network_config.json's headnode.grpc_port
+        # (if set) takes precedence over the env var / default, same as
+        # _check_grpc_headnode()/_check_port_collision()/show_cli.py.
+        gateway_port = util.resolve_grpc_port("headnode", explicit=network_config.headnode.grpc_port)
 
     logger.info("Performing DaqData gateway status pre-flight check...")
 

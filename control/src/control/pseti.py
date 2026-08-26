@@ -101,7 +101,10 @@ def main_callback(
         bool,
         typer.Option(
             "--env-template",
-            help="Copy the packaged .env.example to ./.env_pseti_<timestamp> and exit.",
+            help=(
+                "Copy the packaged .env.example to ./.env_pseti_<timestamp> and exit. "
+                "Point PSETI_ENV_FILE at the generated file to load it."
+            ),
             callback=_env_template_callback,
             is_eager=True,
         ),

@@ -2,6 +2,7 @@
 import json
 
 from control.utils import config_file
+from control.utils.paths import PanoPaths
 
 
 def get_sw_info() -> None:
@@ -22,8 +23,10 @@ def get_sw_info() -> None:
                  'branch':'unknown',\
                  'commit_date':'unknown',
                  'error': str(e)}
-                 
-    with open(config_file.sw_info_filename,'w') as f:
+
+    tmp_dir = PanoPaths.tmp_dir()
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    with open(tmp_dir / config_file.sw_info_filename, 'w') as f:
         json.dump(sw_info, f, indent=4)
 
 if __name__ == '__main__':

@@ -937,6 +937,15 @@ def attach_daq_config(
                     # Only overwrite if pdaq has a non-None port_forwarding block
                     if pdaq.port_forwarding is not None:
                         daq.port_forwarding = pdaq.port_forwarding
+                    # network_config.json's direct-connect grpc_port is a
+                    # fleet-wide-ish default; daq_config.json's own explicit
+                    # override (if the operator set one directly on this
+                    # node) still wins -- only fill in when daq's own field
+                    # is unset, so daq_grpc_endpoint()'s existing precedence
+                    # (explicit > env var > 50051) gains network_config as a
+                    # new middle tier without any change to that function.
+                    if daq.grpc_port is None and pdaq.grpc_port is not None:
+                        daq.grpc_port = pdaq.grpc_port
                     break
 
 

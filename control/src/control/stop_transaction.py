@@ -188,7 +188,8 @@ class StopTransaction:
                                 username=n.username,
                                 data_dir=n.data_dir,
                                 module_ids=n.module_ids,
-                                port_forwarding=n.port_forwarding
+                                port_forwarding=n.port_forwarding,
+                                grpc_port=n.grpc_port
                             )
                             for n in self.daq_config.daq_nodes if n.module_ids
                         ]
