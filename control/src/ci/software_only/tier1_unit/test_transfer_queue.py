@@ -213,6 +213,28 @@ class TestClean:
         assert tq.clean("run_011") is None
         assert (tq._queue / "active" / "run_011.job.toml").exists()
 
+    def test_clean_removes_failed(self, tq: TransferQueue) -> None:
+        """clean() must also find and remove a job sitting in failed/."""
+        tq.enqueue(_make_job("run_012"))
+        tq.claim()
+        tq.fail("run_012")
+        assert (tq._queue / "failed" / "run_012.job.toml").exists()
+
+        removed = tq.clean("run_012")
+        assert removed is not None
+        assert removed.run_name == "run_012"
+        assert not (tq._queue / "failed" / "run_012.job.toml").exists()
+
+    def test_clean_does_not_touch_completed(self, tq: TransferQueue) -> None:
+        """clean() must not remove a job that already finished successfully."""
+        tq.enqueue(_make_job("run_013"))
+        tq.claim()
+        tq.complete("run_013")
+        assert (tq._queue / "completed" / "run_013.job.toml").exists()
+
+        assert tq.clean("run_013") is None
+        assert (tq._queue / "completed" / "run_013.job.toml").exists()
+
 
 class TestListJobs:
     def test_list_jobs_pending(self, tq: TransferQueue) -> None:

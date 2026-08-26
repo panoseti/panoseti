@@ -207,14 +207,15 @@ def retry(run_name: Annotated[str, typer.Argument(help="Run name to retry")]) ->
 
 
 @app.command()
-def clean(run_name: Annotated[str, typer.Argument(help="Run name to remove from pending/")]) -> None:
-    """Remove a job from pending/ and try to delete its run directory on each DAQ node.
+def clean(run_name: Annotated[str, typer.Argument(help="Run name to remove from pending/ or failed/")]) -> None:
+    """Remove a job from pending/ or failed/ and try to delete its run directory on each DAQ node.
 
-    The job never reached manifest generation, so there's no verified manifest to
-    checksum against -- this uses CLEANUP_FULL (removes the whole run directory on
-    each DAQ node) rather than the daemon's own selective, manifest-gated cleanup.
-    DAQ-node deletion is best-effort: a node that's unreachable or errors out is
-    reported as a warning but does not undo the local pending/ removal.
+    Checks pending/ first, then failed/. The job never reached (or never completed)
+    manifest generation, so there's no verified manifest to checksum against -- this
+    uses CLEANUP_FULL (removes the whole run directory on each DAQ node) rather than
+    the daemon's own selective, manifest-gated cleanup. DAQ-node deletion is
+    best-effort: a node that's unreachable or errors out is reported as a warning but
+    does not undo the local queue removal.
     """
     from control.transfer.daq_control import cleanup_daq_nodes
     from control.transfer.queue import TransferQueue
@@ -224,10 +225,10 @@ def clean(run_name: Annotated[str, typer.Argument(help="Run name to remove from 
 
     job = tq.clean(run_name)
     if job is None:
-        console.print(f"[bold red]Error:[/bold red] No pending job found for '{run_name}'")
+        console.print(f"[bold red]Error:[/bold red] No pending or failed job found for '{run_name}'")
         raise typer.Exit(1)
 
-    console.print(f"[bold green]Success:[/bold green] Removed {run_name} from pending/")
+    console.print(f"[bold green]Success:[/bold green] Removed {run_name} from the transfer queue")
 
     errors = asyncio.run(cleanup_daq_nodes(job, mode="CLEANUP_FULL"))
     if errors:

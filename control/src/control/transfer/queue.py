@@ -227,10 +227,11 @@ class TransferQueue:
         return True
 
     def clean(self, run_name: str) -> TransferJob | None:
-        """Remove a job from pending/ so the daemon never claims it.
+        """Remove a job from pending/ or failed/ so the daemon never (re-)claims it.
 
-        Only ``pending/`` is targeted: a job already claimed into ``active/``
-        is already being transferred and can't be safely skipped this way.
+        Checks ``pending/`` first, then ``failed/``. Neither ``active/`` (a
+        job already claimed and being transferred, which can't be safely
+        skipped this way) nor ``completed/`` is touched.
 
         Args:
             run_name: The run identifier of the job to remove.
@@ -238,16 +239,18 @@ class TransferQueue:
         Returns:
             The removed ``TransferJob`` (so callers can still see which DAQ
             nodes it named, e.g. to also clean up remotely), or ``None`` if
-            no pending job existed for *run_name*.
+            no pending or failed job existed for *run_name*.
         """
-        path = self._job_path(TransferStatus.PENDING, run_name)
-        if not path.exists():
-            return None
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-        job = TransferJob.model_validate(data)
-        os.unlink(path)
-        return job
+        for subdir in (TransferStatus.PENDING, TransferStatus.FAILED):
+            path = self._job_path(subdir, run_name)
+            if not path.exists():
+                continue
+            with open(path, "rb") as f:
+                data = tomllib.load(f)
+            job = TransferJob.model_validate(data)
+            os.unlink(path)
+            return job
+        return None
 
     def list_jobs(self, bucket: TransferStatus) -> list[str]:
         """Return run names in a queue bucket.
