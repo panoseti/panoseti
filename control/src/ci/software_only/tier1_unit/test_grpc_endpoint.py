@@ -25,6 +25,7 @@ from control.utils.pydantic_config_models import (
     NetworkConfig,
     NetworkDaqNode,
     PortForwarding,
+    TransferNodeSpec,
 )
 from control.utils.util import attach_daq_config, daq_grpc_endpoint, resolve_grpc_port
 
@@ -249,3 +250,48 @@ class TestAttachDaqConfigGrpcPort:
         node = daq_config.daq_nodes[0]
 
         assert daq_grpc_endpoint(node, daq_config) == ("192.168.0.228", 50077)
+
+
+# ---------------------------------------------------------------------------
+# TransferNodeSpec -- the Transfer Daemon's node type. It never has a
+# daq_config to pass to daq_grpc_endpoint() (it only ever sees the snapshot
+# in the job TOML), so its own grpc_port override is the only way it can
+# reach a non-default direct-connection port.
+# ---------------------------------------------------------------------------
+
+
+def _transfer_node(**overrides: object) -> TransferNodeSpec:
+    defaults: dict = dict(
+        username="panoseti",
+        data_dir="/data",
+        ip_addr="192.168.0.228",
+        module_ids=[254],
+    )
+    defaults.update(overrides)
+    return TransferNodeSpec(**defaults)
+
+
+class TestDaqGrpcEndpointWithTransferNodeSpec:
+    def test_direct_node_with_own_grpc_port_override_wins_over_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TransferNodeSpec.grpc_port must be honored the same way DaqNode.grpc_port is --
+        this is the only way the Transfer Daemon (which never has a daq_config to pass to
+        daq_grpc_endpoint()) can resolve a per-node port override."""
+        monkeypatch.setenv("DAQNODE_GRPC_PORT", "50099")
+        node = _transfer_node(ip_addr="10.0.0.6", grpc_port=60000)
+        assert daq_grpc_endpoint(node, daq_config=None) == ("10.0.0.6", 60000)
+
+    def test_direct_node_without_override_falls_back_to_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DAQNODE_GRPC_PORT", "50099")
+        node = _transfer_node(ip_addr="10.0.0.7")
+        assert daq_grpc_endpoint(node, daq_config=None) == ("10.0.0.7", 50099)
+
+    def test_forwarded_node_with_explicit_grpc_port_uses_gateway(self) -> None:
+        node = _transfer_node(
+            ip_addr="10.0.0.8",
+            port_forwarding=PortForwarding(status=True, gw_ip="10.0.1.254", grpc_port=12345),
+        )
+        assert daq_grpc_endpoint(node, daq_config=None) == ("10.0.1.254", 12345)

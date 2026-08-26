@@ -263,3 +263,33 @@ class TestRoundTrip:
 
         assert claimed is not None
         assert claimed.daq_nodes[0].port_forwarding is None
+        assert claimed.daq_nodes[0].grpc_port is None
+
+    def test_roundtrip_grpc_port_explicit(self, tq: TransferQueue) -> None:
+        """A node's explicit grpc_port override survives serialize/deserialize."""
+        original = _make_job(
+            "grpc_port_run",
+            daq_nodes=[
+                TransferNodeSpec(
+                    ip_addr=IPv4Address("192.168.0.10"),
+                    username="panoseti",
+                    data_dir="/data",
+                    module_ids=[0, 1],
+                    grpc_port=50099,
+                )
+            ],
+        )
+        tq.enqueue(original)
+        claimed = tq.claim()
+
+        assert claimed is not None
+        assert claimed.daq_nodes[0].grpc_port == 50099
+
+    def test_roundtrip_grpc_port_unset_stays_none(self, tq: TransferQueue) -> None:
+        """An omitted grpc_port must round-trip as None, not the string 'None'."""
+        original = _make_job("grpc_port_unset_run")
+        tq.enqueue(original)
+        claimed = tq.claim()
+
+        assert claimed is not None
+        assert claimed.daq_nodes[0].grpc_port is None

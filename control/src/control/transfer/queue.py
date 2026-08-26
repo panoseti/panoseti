@@ -98,6 +98,11 @@ class TransferQueue:
                     for k, v in node.items():
                         if k == "port_forwarding":
                             continue
+                        if v is None:
+                            # Optional fields (e.g. grpc_port) -- omit rather
+                            # than writing the literal string "None", which
+                            # would round-trip as a str, not int | None.
+                            continue
                         if isinstance(v, list):
                             # module_ids is a list of ints
                             f.write(f"{k} = [{', '.join(str(i) for i in v)}]\n")

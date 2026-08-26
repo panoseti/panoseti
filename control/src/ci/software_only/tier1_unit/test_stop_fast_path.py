@@ -79,6 +79,29 @@ def daq_config(tmp_path, monkeypatch) -> DaqConfig:
 
 
 @pytest.fixture
+def daq_config_with_grpc_port(tmp_path, monkeypatch) -> DaqConfig:
+    """Same as daq_config, but the DAQ node carries an explicit grpc_port override."""
+    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "state" / "transfer" / "queue"))
+
+    return DaqConfig(
+        head_node_data_dir=str(tmp_path),
+        head_node_ip_addr="127.0.0.1",
+        head_node_container=True,
+        daq_nodes=[
+            {
+                "username": "panoseti",
+                "data_dir": str(tmp_path),
+                "ip_addr": "127.0.0.2",
+                "module_ids": [254],
+                "bindhost": "lo",
+                "grpc_port": 50099,
+            }
+        ],
+    )
+
+
+@pytest.fixture
 def network_config() -> NetworkConfig:
     return NetworkConfig()
 
@@ -227,6 +250,38 @@ class TestStopFastPath:
         assert pending_job.exists(), (
             f"Expected pending transfer job at {pending_job}.\n"
             "stop_run() must enqueue the run for background transfer after hardware teardown."
+        )
+
+    async def test_stop_enqueues_transfer_job_with_grpc_port(
+        self, tmp_path, run_dir, state_mgr, daq_config_with_grpc_port, network_config, quabo_uids
+    ):
+        """A node's daq_config.json grpc_port override must be snapshotted into the job TOML."""
+        import tomllib
+
+        from ci.fixtures.adapters.fake_adapters import (
+            FakeFileSystemManager,
+            FakeNetworkClient,
+            FakeProcessManager,
+        )
+        with _stop_patches(state_mgr):
+            await stop.stop_run(
+                daq_config_with_grpc_port,
+                network_config,
+                quabo_uids,
+                FakeProcessManager(),
+                FakeNetworkClient(),
+                FakeFileSystemManager(),
+                run=RUN_NAME,
+                no_collect=True,
+                no_cleanup=True,
+            )
+
+        pending_job = tmp_path / "state" / "transfer" / "queue" / "pending" / f"{RUN_NAME}.job.toml"
+        data = tomllib.loads(pending_job.read_text())
+
+        assert data["daq_nodes"][0]["grpc_port"] == 50099, (
+            "stop_run() must carry the DAQ node's daq_config.json grpc_port override "
+            "into the TransferNodeSpec written to the job TOML."
         )
 
     async def test_stop_ledger_recording_ended(

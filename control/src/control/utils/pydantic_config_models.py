@@ -562,6 +562,13 @@ class TransferNodeSpec(BaseStrictModel):
     data_dir: str
     module_ids: list[int]
     port_forwarding: PortForwarding | None = None
+    # Mirrors DaqNode.grpc_port -- the direct-connection gRPC port override
+    # from daq_config.json/network_config.json, snapshotted at enqueue time
+    # so the Transfer Daemon (which never reloads daq_config.json) resolves
+    # the same port a live client would via daq_grpc_endpoint(). None means
+    # "no override": daq_grpc_endpoint() falls back to the fleet-wide
+    # DAQNODE_GRPC_PORT env var / 50051 default.
+    grpc_port: int | None = Field(None, ge=1, le=65535, description="Direct-connection gRPC port override")
 
 
 class TransferJob(BaseStrictModel):

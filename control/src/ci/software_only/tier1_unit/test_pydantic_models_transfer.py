@@ -55,6 +55,38 @@ class TestTransferNodeSpec:
         assert str(spec.port_forwarding.gw_ip) == "10.0.1.254"
         assert spec.port_forwarding.grpc_port == 50051
 
+    def test_grpc_port_defaults_to_none(self):
+        """TransferNodeSpec.grpc_port defaults to None when omitted."""
+        spec = TransferNodeSpec(
+            ip_addr="192.168.0.10",
+            username="daq_user",
+            data_dir="/data/runs",
+            module_ids=[0, 1],
+        )
+        assert spec.grpc_port is None
+
+    def test_grpc_port_explicit_value(self):
+        """TransferNodeSpec.grpc_port accepts an explicit override."""
+        spec = TransferNodeSpec(
+            ip_addr="192.168.0.10",
+            username="daq_user",
+            data_dir="/data/runs",
+            module_ids=[0, 1],
+            grpc_port=50099,
+        )
+        assert spec.grpc_port == 50099
+
+    def test_grpc_port_out_of_range_raises(self):
+        """TransferNodeSpec.grpc_port validates the port range like DaqNode.grpc_port."""
+        with pytest.raises(ValidationError):
+            TransferNodeSpec(
+                ip_addr="192.168.0.10",
+                username="daq_user",
+                data_dir="/data/runs",
+                module_ids=[0, 1],
+                grpc_port=0,
+            )
+
     def test_node_spec_rejects_extra_fields(self):
         """TransferNodeSpec rejects extra fields (BaseStrictModel)."""
         with pytest.raises(ValidationError):  # Pydantic validation error
