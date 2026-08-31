@@ -1,0 +1,44 @@
+{
+  "poll_seconds": 120,
+
+  "remote_focus_state_path": "~/panoseti/Calibrations/focus_current_state.json",
+
+  "local_output_path": "./capture_focus/focus_current_state_all.json",
+
+  "cylon_destination": "panoseti@132.239.146.24:/volume1/web/panoseti-palomar/logs/focus_current_state_all.json",
+
+  "history_db_path": "/home/obs/panoseti_mount/panoseti/control/daemons/capture_focus/focus_history.db",
+
+  "cylon_history_db_destination": "panoseti@132.239.146.24:/volume1/web/panoseti-palomar/logs/focus_history.db",
+
+  "ssh_timeout_seconds": 15,
+  "cylon_timeout_seconds": 30,
+  "ssh_options": [
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=8",
+    "-o", "StrictHostKeyChecking=accept-new"
+  ],
+
+  "nodes": [
+    {
+      "name": "Fern DAQ",
+      "host": "panoseti-fern",
+      "user": "jerome"
+    },
+    {
+      "name": "Winter DAQ",
+      "host": "panoseti-winter",
+      "user": "jerome"
+    },
+    {
+      "name": "PTI DAQ",
+      "host": "panoseti-pti",
+      "user": "jerome"
+    },
+    {
+      "name": "Gattini DAQ",
+      "host": "panoseti-gattini",
+      "user": "jerome"
+    }
+  ]
+}

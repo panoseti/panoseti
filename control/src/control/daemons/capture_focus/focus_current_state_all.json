@@ -1,0 +1,136 @@
+{
+  "cylon_copy": {
+    "destination": "panoseti@132.239.146.24:/volume1/web/panoseti-palomar/logs/focus_current_state_all.json",
+    "message": "sending incremental file list\nfocus_current_state_all.json\n\nsent 4,125 bytes  received 71 bytes  8,392.00 bytes/sec\ntotal size is 4,002  speedup is 0.95",
+    "ok": true,
+    "timestamp_utc": "2026-06-12T05:14:32+00:00"
+  },
+  "cylon_history_db_copy": {
+    "destination": "panoseti@132.239.146.24:/volume1/web/panoseti-palomar/logs/focus_history.db",
+    "message": "sending incremental file list\nfocus_history.db\n\nsent 10,243 bytes  received 563 bytes  21,612.00 bytes/sec\ntotal size is 61,440  speedup is 5.69",
+    "ok": true,
+    "timestamp_utc": "2026-06-12T05:14:32+00:00"
+  },
+  "focus": {
+    "Fern": {
+      "control_script": "/home/jerome/panoseti/pythonlib/control_quabo.py",
+      "daq_host": "panoseti-fern",
+      "daq_node": "Fern DAQ",
+      "daq_user": "jerome",
+      "focus_steps": 5200,
+      "gathered_utc": "2026-06-12T05:14:29+00:00",
+      "hostname": "panoseti-fern",
+      "ip": "192.168.3.232",
+      "note": "Last commanded focus value only; not a hardware readback.",
+      "returncode": 0,
+      "source": "quabo_focus_via_original.py",
+      "status": "sent",
+      "telescope": "Fern",
+      "timestamp_utc": "2026-06-10T20:49:59+00:00",
+      "valid": true
+    },
+    "Gattini": {
+      "control_script": "/home/jerome/panoseti/pythonlib/control_quabo.py",
+      "daq_host": "panoseti-gattini",
+      "daq_node": "Gattini DAQ",
+      "daq_user": "jerome",
+      "focus_steps": 2000,
+      "gathered_utc": "2026-06-12T05:14:31+00:00",
+      "hostname": "panoseti-gattini",
+      "ip": "192.168.3.248",
+      "note": "Last commanded focus value only; not a hardware readback.",
+      "returncode": 0,
+      "source": "quabo_focus_via_original.py",
+      "status": "sent",
+      "telescope": "Gattini",
+      "timestamp_utc": "2026-05-19T21:01:03+00:00",
+      "valid": true
+    },
+    "PTI": {
+      "control_script": "/home/jerome/panoseti/pythonlib/control_quabo.py",
+      "daq_host": "panoseti-pti",
+      "daq_node": "PTI DAQ",
+      "daq_user": "jerome",
+      "focus_steps": 3800,
+      "gathered_utc": "2026-06-12T05:14:31+00:00",
+      "hostname": "panoseti-pti",
+      "ip": "192.168.3.232",
+      "note": "Last commanded focus value only; not a hardware readback.",
+      "returncode": 0,
+      "source": "quabo_focus_via_original.py",
+      "status": "sent",
+      "telescope": "PTI",
+      "timestamp_utc": "2026-06-10T21:02:56+00:00",
+      "valid": true
+    },
+    "Winter": {
+      "control_script": "/home/jerome/panoseti/pythonlib/control_quabo.py",
+      "daq_host": "panoseti-winter",
+      "daq_node": "Winter DAQ",
+      "daq_user": "jerome",
+      "focus_steps": 5200,
+      "gathered_utc": "2026-06-12T05:14:30+00:00",
+      "hostname": "panoseti-winter",
+      "ip": "192.168.3.244",
+      "note": "Last commanded focus value only; not a hardware readback.",
+      "returncode": 0,
+      "source": "quabo_focus_via_original.py",
+      "status": "sent",
+      "telescope": "Winter",
+      "timestamp_utc": "2026-06-10T21:01:48+00:00",
+      "valid": true
+    }
+  },
+  "generated_by": "panoseti-palomar",
+  "generated_utc": "2026-06-12T05:14:29+00:00",
+  "meaning": "Last commanded focus values only; these are not hardware readbacks.",
+  "nodes": {
+    "Fern DAQ": {
+      "entries": [
+        "Fern"
+      ],
+      "gathered_utc": "2026-06-12T05:14:29+00:00",
+      "host": "panoseti-fern",
+      "ok": true,
+      "remote_focus_state_path": "~/panoseti/Calibrations/focus_current_state.json",
+      "user": "jerome"
+    },
+    "Gattini DAQ": {
+      "entries": [
+        "Gattini"
+      ],
+      "gathered_utc": "2026-06-12T05:14:31+00:00",
+      "host": "panoseti-gattini",
+      "ok": true,
+      "remote_focus_state_path": "~/panoseti/Calibrations/focus_current_state.json",
+      "user": "jerome"
+    },
+    "PTI DAQ": {
+      "entries": [
+        "PTI"
+      ],
+      "gathered_utc": "2026-06-12T05:14:31+00:00",
+      "host": "panoseti-pti",
+      "ok": true,
+      "remote_focus_state_path": "~/panoseti/Calibrations/focus_current_state.json",
+      "user": "jerome"
+    },
+    "Winter DAQ": {
+      "entries": [
+        "Winter"
+      ],
+      "gathered_utc": "2026-06-12T05:14:30+00:00",
+      "host": "panoseti-winter",
+      "ok": true,
+      "remote_focus_state_path": "~/panoseti/Calibrations/focus_current_state.json",
+      "user": "jerome"
+    }
+  },
+  "schema": "pano_focus_commanded_state_v1",
+  "sqlite_history": {
+    "db_path": "/home/obs/panoseti_mount/panoseti/control/daemons/capture_focus/focus_history.db",
+    "ok": true,
+    "rows_written": 4,
+    "timestamp_utc": "2026-06-12T05:14:32+00:00"
+  }
+}
