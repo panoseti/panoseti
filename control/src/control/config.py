@@ -844,13 +844,13 @@ def do_show_ph_baselines(quabo_uids: QuaboUids) -> None:
                     if q.uid == quabo_uid:
                         quabo_baselines = q
                 if quabo_baselines is None:
-                    msg += f'\tquabo {quabo_num}: found no ph baseline data\n'
+                    msg += f'    quabo {quabo_num}: found no ph baseline data\n'
                 else:
                     coefs = quabo_baselines.coefs
                     mean = statistics.mean(coefs)
                     median = statistics.median(coefs)
                     stdev = statistics.stdev(coefs)
-                    msg += f'\tquabo {quabo_num: 5}: mean={round(mean, 2): 7}, ' \
+                    msg += f'    quabo {quabo_num: 5}: mean={round(mean, 2): 7}, ' \
                            f'median={round(median, 2): 7}, stdev={round(stdev, 2): 7},' \
                            f' min={min(coefs): 5}, max={max(coefs): 5}\n'
     logger.info(msg)
