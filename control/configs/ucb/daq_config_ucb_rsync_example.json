@@ -1,0 +1,22 @@
+{
+    "comment": "Example: rsync_bwlimit (KiB/s) limits each rsync in utils/rsync_collect.py when stop.py collects data; 50000 KiB/s is about 400 Mbit/s. Omit it, or set it to null or 0, for no limit.",
+    "head_node_data_dir": "/data/panoseti/data",
+    "head_node_ip_addr": "192.168.1.100",
+    "rsync_bwlimit": 50000,
+    "daq_nodes": [
+        {
+            "username": "panoseti",
+            "data_dir": "/data/panoseti/data",
+            "ip_addr": "192.168.1.100",
+            "module_ids": "0-127",
+            "bindhost": "enp3s0"
+        },
+        {
+            "username": "panoseti",
+            "data_dir": "/data/panoseti/data",
+            "ip_addr": "192.168.1.101",
+            "module_ids": "128-255",
+            "bindhost": "enp3s0"
+        }
+    ]
+}

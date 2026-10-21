@@ -283,6 +283,7 @@ class DaqConfigValidator(BaseStrictModel):
     head_node_data_dir: str
     head_node_ip_addr: IPvAnyAddress
     head_node_container: bool = Field(False)
+    rsync_bwlimit: Optional[int] = Field(None, ge=0)   # KiB/s, used by utils/rsync_collect.py
     daq_nodes: List[DaqNodeValidator]
 
     @model_validator(mode='after')

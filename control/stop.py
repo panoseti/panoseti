@@ -19,7 +19,7 @@ from argparse import ArgumentParser
 import signal
 import logging
 
-from utils import collect
+from utils import collect, rsync_collect
 from driver import quabo_driver
 from utils.util import *
 from utils import pff, config_file
@@ -269,7 +269,9 @@ def stop_run(
         collect_error = ''
         if not no_collect and not complete_file_exists(run_dir, collect_complete_filename):
             print("collecting data from DAQ nodes")
-            collect_error = collect.collect_data(daq_config, run, verbose)
+            collect_error = rsync_collect.collect_data(daq_config, run, verbose)
+            for node in daq_config['daq_nodes']:
+                print('rsync log: %s'%rsync_collect.log_path(daq_config, node, run))
             if collect_error == '':
                 write_complete_file(run_dir, collect_complete_filename)
         if collect_error == '':
